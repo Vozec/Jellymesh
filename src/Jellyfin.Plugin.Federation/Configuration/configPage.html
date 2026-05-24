@@ -52,6 +52,16 @@
                     <input is="emby-input" type="number" id="OutboundBitrateCapBps" min="0" />
                 </div>
 
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="PublicBaseUrl">Our public base URL (for push invalidation, e.g. https://my-jellyfin.example.com)</label>
+                    <input is="emby-input" type="url" id="PublicBaseUrl" placeholder="https://… (leave blank to disable push)" />
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="PushDebounceSeconds">Push debounce window (seconds, ≥5)</label>
+                    <input is="emby-input" type="number" id="PushDebounceSeconds" min="5" max="3600" />
+                </div>
+
                 <h3>Federation status</h3>
                 <div id="FedStats" style="font-family:monospace;font-size:0.9em;padding:0.5em;background:#1a1a1a;border:1px solid #333;">Loading…</div>
 
@@ -98,9 +108,14 @@
                     <input type="text" id="NewShareLibraries" placeholder="Library ids (comma-sep, empty = all)" />
                     <input type="text" id="NewShareHoursStart" placeholder="Allowed hours start HH:mm (optional)" />
                     <input type="text" id="NewShareHoursEnd" placeholder="Allowed hours end HH:mm (optional)" />
+                    <input type="text" id="NewShareTimeZone" placeholder="Schedule TZ id (e.g. Europe/Paris)" />
                     <input type="text" id="NewShareBlockedTags" placeholder="Blocked tags (comma-sep, optional)" />
                     <input type="text" id="NewShareMaxRating" placeholder="Max rating (G/PG/PG-13/R/NC-17, optional)" />
                 </div>
+                <label style="margin-top:0.4em;display:block;">
+                    <input type="checkbox" id="NewShareStrictUnknown" />
+                    Strict mode — also hide items with unrated or regional ratings (e.g. FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.
+                </label>
                 <button is="emby-button" type="button" id="CreateShare" class="raised" style="margin-top:0.5em;">
                     <span>Generate share key</span>
                 </button>
@@ -119,14 +134,14 @@
         function renderServers(servers) {
             var html = '';
             (servers || []).forEach(function (s, i) {
-                html += '<div class="paperList" data-idx="' + i + '" style="padding:1em;margin:0.5em 0;border:1px solid #444;">';
-                html += '<input type="text" placeholder="Name" value="' + (s.Name || '') + '" data-field="Name" />';
-                html += '<input type="text" placeholder="https://peer.example.com" value="' + (s.BaseUrl || '') + '" data-field="BaseUrl" />';
-                html += '<input type="text" placeholder="Jellyfin API key" value="' + (s.ApiKey || '') + '" data-field="ApiKey" />';
-                html += '<input type="text" placeholder="Federation share key (from peer)" value="' + (s.FederationShareKey || '') + '" data-field="FederationShareKey" />';
-                html += '<input type="text" placeholder="Remote user id (optional)" value="' + (s.RemoteUserId || '') + '" data-field="RemoteUserId" />';
-                html += '<label><input type="checkbox" data-field="Enabled" ' + (s.Enabled ? 'checked' : '') + ' /> Enabled</label>';
-                html += '<button type="button" class="remove-server">Remove</button>';
+                html += '<div class="paperList" data-idx="' + i + '" style="padding:1em;margin:0.5em 0;border:1px solid #444;display:grid;grid-template-columns:1fr 1fr;gap:0.4em;">';
+                html += '<input type="text" placeholder="Name" value="' + esc(s.Name || '') + '" data-field="Name" />';
+                html += '<input type="text" placeholder="https://peer.example.com" value="' + esc(s.BaseUrl || '') + '" data-field="BaseUrl" />';
+                html += '<input type="text" placeholder="Jellyfin API key" value="' + esc(s.ApiKey || '') + '" data-field="ApiKey" />';
+                html += '<input type="text" placeholder="Federation share key (from peer)" value="' + esc(s.FederationShareKey || '') + '" data-field="FederationShareKey" />';
+                html += '<input type="text" placeholder="Remote user id on peer (for watch sync)" value="' + esc(s.RemoteUserId || '') + '" data-field="RemoteUserId" />';
+                html += '<input type="text" placeholder="Local user id receiving peer watch state (optional)" value="' + esc(s.LocalUserIdForSync || '') + '" data-field="LocalUserIdForSync" />';
+                html += '<label style="grid-column:span 2;"><input type="checkbox" data-field="Enabled" ' + (s.Enabled ? 'checked' : '') + ' /> Enabled <button type="button" class="remove-server" style="float:right;">Remove</button></label>';
                 html += '</div>';
             });
             document.getElementById('RemoteServersList').innerHTML = html;
@@ -359,6 +374,8 @@
                 document.getElementById('EnableWatchStateSync').checked = config.EnableWatchStateSync;
                 document.getElementById('MatchPriority').value = config.MatchPriority;
                 document.getElementById('OutboundBitrateCapBps').value = config.OutboundBitrateCapBps;
+                document.getElementById('PublicBaseUrl').value = config.PublicBaseUrl || '';
+                document.getElementById('PushDebounceSeconds').value = config.PushDebounceSeconds || 30;
                 renderServers(config.RemoteServers);
                 renderShares();
                 renderPublicShares();
@@ -386,13 +403,16 @@
                     LibraryIds: splitCsv('NewShareLibraries'),
                     AllowedHoursStart: pick('NewShareHoursStart'),
                     AllowedHoursEnd: pick('NewShareHoursEnd'),
+                    ScheduleTimeZoneId: pick('NewShareTimeZone'),
                     BlockedTags: splitCsv('NewShareBlockedTags'),
-                    MaxOfficialRating: pick('NewShareMaxRating')
+                    MaxOfficialRating: pick('NewShareMaxRating'),
+                    StrictUnknownRating: document.getElementById('NewShareStrictUnknown').checked
                 })
             }).then(function (resp) {
                 alert('Share key generated:\n\n' + resp.ApiKey + '\n\nHand it to your friend.');
-                ['NewShareLabel','NewShareLibraries','NewShareHoursStart','NewShareHoursEnd','NewShareBlockedTags','NewShareMaxRating']
+                ['NewShareLabel','NewShareLibraries','NewShareHoursStart','NewShareHoursEnd','NewShareTimeZone','NewShareBlockedTags','NewShareMaxRating']
                     .forEach(function (id) { document.getElementById(id).value = ''; });
+                document.getElementById('NewShareStrictUnknown').checked = false;
                 renderShares();
             });
         });
@@ -448,6 +468,8 @@
                 config.EnableWatchStateSync = document.getElementById('EnableWatchStateSync').checked;
                 config.MatchPriority = document.getElementById('MatchPriority').value;
                 config.OutboundBitrateCapBps = parseInt(document.getElementById('OutboundBitrateCapBps').value);
+                config.PublicBaseUrl = document.getElementById('PublicBaseUrl').value.trim();
+                config.PushDebounceSeconds = parseInt(document.getElementById('PushDebounceSeconds').value) || 30;
                 config.RemoteServers = collectServers();
                 ApiClient.updatePluginConfiguration(FederationPluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
             });
