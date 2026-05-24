@@ -36,6 +36,34 @@ public class PluginConfiguration : BasePluginConfiguration
     /// before firing one batch to peers, to avoid one POST per ItemAdded during a scan.
     /// </summary>
     public int PushDebounceSeconds { get; set; } = 30;
+
+    // === Introductions (delegated key issuance, v0.10) ===
+
+    /// <summary>Reciprocity mode. See docs/introductions.md.</summary>
+    public ReciprocityMode Reciprocity { get; set; } = ReciprocityMode.Off;
+
+    /// <summary>Scope of auto-minted reciprocal keys when Reciprocity=AutoAcceptReciprocal.</summary>
+    public ShareKeyTemplate ReciprocityTemplate { get; set; } = new();
+
+    /// <summary>Reject introductions whose hop_count exceeds this. null = no cap.</summary>
+    public int? IntroductionHopCap { get; set; }
+
+    /// <summary>Per-introducer-key rate limits. Defaults: 5/h, 50/d.</summary>
+    public int IntroductionRatePerHour { get; set; } = 5;
+    public int IntroductionRatePerDay { get; set; } = 50;
+}
+
+public enum ReciprocityMode { Off, AutoRequest, AutoAcceptReciprocal }
+
+public enum IntroductionMintMode { Reject, Request, AutoAccept }
+
+/// <summary>Subset of ShareKey fields used as a scope template (for ReciprocityTemplate).</summary>
+public class ShareKeyTemplate
+{
+    public List<string> LibraryIds { get; set; } = new(); // empty = all libs
+    public List<string> BlockedTags { get; set; } = new();
+    public string? MaxOfficialRating { get; set; }
+    public bool StrictUnknownRating { get; set; } = false;
 }
 
 public class ShareKey
@@ -80,6 +108,24 @@ public class ShareKey
     /// where any share-key holder could claim to be a different peer in our config.
     /// Empty = trust payload.FromBaseUrl (legacy behaviour).</summary>
     public string? BoundPeerUrl { get; set; }
+
+    // === Introductions (v0.10) ===
+
+    /// <summary>"This key may call /Federation/Introduce on me" — opt-in per key,
+    /// can be toggled post-creation. Default false.</summary>
+    public bool CanRequestIntroductions { get; set; } = false;
+
+    /// <summary>How we respond when this key requests a mint: Reject / Request (admin
+    /// approves) / AutoAccept. Default Request.</summary>
+    public IntroductionMintMode MintMode { get; set; } = IntroductionMintMode.Request;
+
+    /// <summary>When this key was minted via an introduction: the canonical URL it was
+    /// minted for. Null for manually-created keys.</summary>
+    public string? IssuedForUrl { get; set; }
+
+    /// <summary>When this key was minted via an introduction: which introducer-key
+    /// requested it. Null for manually-created keys. Used for cascade revoke.</summary>
+    public Guid? IntroducedByKeyId { get; set; }
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
