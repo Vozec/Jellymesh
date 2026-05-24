@@ -58,7 +58,7 @@ public class FederatedMediaSourceProvider : IMediaSourceProvider
                     rs.Id = $"fed_{server.Id:N}_{originalSourceId}";
                     rs.IsRemote = true;
                     rs.Path = BuildProxyUrl(server.Id, match.RemoteItemId, originalSourceId);
-                    // Note: leave rs.Protocol as set by the peer (File/Hls/Http) — the player
+                    // Note: leave rs.Protocol as set by the peer (File/Hls/Http) - the player
                     // sees the proxy URL via Path; forcing Http here strips Hls semantics from
                     // MediaSourceInfo that the player relies on for direct-play decisions.
                     rs.Name = $"[{server.Name}] {rs.Name}";

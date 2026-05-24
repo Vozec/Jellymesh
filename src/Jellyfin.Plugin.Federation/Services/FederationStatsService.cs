@@ -26,7 +26,7 @@ public class FederationStatsService
         long totalBytes = 0;
         int totalStreams = 0;
 
-        // Snapshot the live list once — concurrent admin saves can mutate RemoteServers via
+        // Snapshot the live list once - concurrent admin saves can mutate RemoteServers via
         // /System/Configuration/Plugins endpoint while we iterate, otherwise.
         foreach (var server in config.RemoteServers.ToArray())
         {
@@ -51,7 +51,7 @@ public class FederationStatsService
 
         var totalCachedItems = perPeerCount.Values.Sum();
         // Only TMDB-bearing rows can contribute to dedup detection at all. Comparing distinct
-        // TMDB to all rows (including items lacking a TMDB id — episodes, anime, home media,
+        // TMDB to all rows (including items lacking a TMDB id - episodes, anime, home media,
         // not-yet-matched items) wildly inflates the ratio. Use TMDB-bearing rows on both sides.
         var (tmdbRowCount, distinctTmdb) = _store.CountTmdbRowsAndDistinct();
         var dedupRatio = ComputeDedupRatio(tmdbRowCount, distinctTmdb);
@@ -78,7 +78,7 @@ public class FederationStatsService
 
     /// <summary>
     /// Dedup ratio for the federation dashboard. 0 = every TMDB-bearing item is unique
-    /// across peers. 1 = pure duplication (theoretically — distinct=0). 0.5 = on average,
+    /// across peers. 1 = pure duplication (theoretically - distinct=0). 0.5 = on average,
     /// every item is on two peers. Rounded to 4 decimal places for display.
     /// </summary>
     /// <param name="tmdbRowCount">Total rows in remote_items with non-empty tmdb.</param>

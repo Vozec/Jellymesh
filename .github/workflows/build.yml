@@ -77,9 +77,9 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - name: dotnet format --verify-no-changes
-        # Whitespace + ordering only — does not lint correctness. Catches drift before
+        # Whitespace + ordering only - does not lint correctness. Catches drift before
         # it accumulates across the codebase.
-        run: dotnet format JellyfinFederation.sln --verify-no-changes --severity warn || (echo "::warning::dotnet format would change files — run 'dotnet format' locally before commit" && exit 0)
+        run: dotnet format JellyfinFederation.sln --verify-no-changes --severity warn || (echo "::warning::dotnet format would change files - run 'dotnet format' locally before commit" && exit 0)
 
   diagrams:
     runs-on: ubuntu-latest

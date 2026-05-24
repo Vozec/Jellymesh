@@ -16,7 +16,7 @@ public static class RetrySchedule
     /// <summary>
     /// Returns the wait time before the Nth attempt (1-indexed: attemptNumber=1 is the first
     /// retry after the initial fire, NOT the initial fire itself). Returns null when
-    /// attemptNumber > MaxAttempts — caller should give up and let gossip-pull handle it.
+    /// attemptNumber > MaxAttempts - caller should give up and let gossip-pull handle it.
     /// </summary>
     public static TimeSpan? NextDelay(int attemptNumber)
     {

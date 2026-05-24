@@ -107,7 +107,7 @@ public class PublicShareStoreTests : IDisposable
     public void TryConsume_caps_at_MaxUses_under_high_contention()
     {
         // 50 concurrent callers, cap=10. Atomic UPDATE…WHERE used_count < max_uses RETURNING
-        // must let exactly 10 win — not 50 (no cap), not 40 (over-count), not 5 (busy-throw
+        // must let exactly 10 win - not 50 (no cap), not 40 (over-count), not 5 (busy-throw
         // before retry). This is the regression test for the DEFERRED-tx pre-check race fix.
         var token = _store.Create("item-burst", null, maxUses: 10, null);
 

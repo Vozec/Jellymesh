@@ -4,7 +4,7 @@ namespace Jellyfin.Plugin.Federation.Services;
 
 /// <summary>
 /// Canonical form for peer base-URL comparison. Two URLs are considered the same peer when
-/// their (scheme, host, port) triple matches — case-insensitive on scheme/host, trailing
+/// their (scheme, host, port) triple matches - case-insensitive on scheme/host, trailing
 /// path/query/fragment ignored. Avoids the brittle "string-equal-after-TrimEnd-slash"
 /// pattern that drifted on http vs https, explicit-vs-default port, and trailing-path.
 /// </summary>
@@ -20,7 +20,7 @@ public static class PeerUrl
 
         // Bare hostnames (no scheme) are REJECTED. The previous behaviour silently prepended
         // https:// which broke matching for plain-HTTP LAN deployments (peer.local:8096 was
-        // canonicalized to https:// but the real server is http:// on 8096 — SameHost returned
+        // canonicalized to https:// but the real server is http:// on 8096 - SameHost returned
         // false on every legitimate call). Admin must supply an explicit scheme so we don't
         // guess wrong.
         if (!input.Contains("://", StringComparison.Ordinal)) return null;
@@ -28,7 +28,7 @@ public static class PeerUrl
         if (!Uri.TryCreate(input, UriKind.Absolute, out var u)) return null;
         if (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps) return null;
 
-        // Uri.Port returns the default for the scheme if none was specified — so
+        // Uri.Port returns the default for the scheme if none was specified - so
         // https://x and https://x:443 produce the same canonical string.
         return $"{u.Scheme.ToLowerInvariant()}://{u.Host.ToLowerInvariant()}:{u.Port}";
     }

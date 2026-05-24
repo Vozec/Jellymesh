@@ -1,4 +1,4 @@
-# Introductions — delegated key issuance
+# Introductions - delegated key issuance
 
 > **Status:** v0.10 spec. See [protocol.md](./protocol.md) for endpoint signatures.
 
@@ -16,7 +16,7 @@ loops are blocked by canonical-URL dedup.
 
 When B introduces C to A: **A = issuer, B = introducer, C = receiver**.
 
-## Trust model — three per-key knobs
+## Trust model - three per-key knobs
 
 Per-key (`ShareKey`):
 
@@ -42,21 +42,21 @@ When A mints a key for C at B's request, the new key inherits B's scope
 adjusts post-mint via the standard share-key UI.
 
 Rationale: B can only introduce within their own access. Avoids
-accidentally over-sharing — if B can see Movies+Series on A but not
+accidentally over-sharing - if B can see Movies+Series on A but not
 Adult, the key B mints for C can't either.
 
 Exception: `CanRequestIntroductions` does NOT propagate. Introduced
 keys default to `false` so chains require explicit admin opt-in at
 each hop.
 
-## Dedup — concurrent introductions for the same `for_url`
+## Dedup - concurrent introductions for the same `for_url`
 
 ```mermaid
 sequenceDiagram
     participant B
     participant C as C (another peer of A)
     participant A
-    participant D as D (target — joins both B and C)
+    participant D as D (target - joins both B and C)
 
     par concurrent
         B->>A: Introduce { ForUrl: D, hop: 1 } (auth Bkey)
@@ -77,11 +77,11 @@ Both introducers are recorded (audit table joins on the active key id).
 
 ## Loop prevention (defense-in-depth)
 
-1. **Self-exclusion** — `ForUrl == config.PublicBaseUrl` canonical → 400
-2. **Already-peer** — `ForUrl ∈ config.RemoteServers.BaseUrl` canonical → 409 (idempotent)
-3. **Dedup** — see above
-4. **Per-introducer rate limit** — 5/h, 50/d default, configurable
-5. **Hop cap** — payload includes `hop_count`; receiver rejects if > cap
+1. **Self-exclusion** - `ForUrl == config.PublicBaseUrl` canonical → 400
+2. **Already-peer** - `ForUrl ∈ config.RemoteServers.BaseUrl` canonical → 409 (idempotent)
+3. **Dedup** - see above
+4. **Per-introducer rate limit** - 5/h, 50/d default, configurable
+5. **Hop cap** - payload includes `hop_count`; receiver rejects if > cap
 
 (1)+(2)+(3) make cycles structurally impossible: A→B→C→A would already
 have A as a peer of C at the time C tries to introduce A back to A.
@@ -97,7 +97,7 @@ sequenceDiagram
     Note over A: A.config.Reciprocity check:
 
     alt = Off
-        Note over A: stop — no auto-action
+        Note over A: stop - no auto-action
     else = AutoRequest
         A->>B: POST /Federation/RequestReciprocalKey<br/>{ FromBaseUrl: A's url } (auth: A's key on B if known, else 401)
         alt B.config.Reciprocity = AutoAcceptReciprocal
@@ -105,7 +105,7 @@ sequenceDiagram
             B-->>A: 200 { ApiKey, OurBaseUrl }
             Note over A: Add B to RemoteServers automatically
         else other
-            B-->>A: 403 — "manual exchange required"
+            B-->>A: 403 - "manual exchange required"
             Note over A: Queue admin reminder
         end
     end
@@ -137,9 +137,9 @@ Default = keep. Computed from `introductions.introducer_key_id`.
 
 Before B calls C's `/Federation/Introduced`, B does:
 ```
-GET https://c/Federation/Catalog/Digest (no auth — checking liveness)
+GET https://c/Federation/Catalog/Digest (no auth - checking liveness)
 ```
-- 401 → plugin present, key would be wrong — still safe to forward
+- 401 → plugin present, key would be wrong - still safe to forward
 - 404 / network err → C doesn't run the plugin. Surface to admin:
   *"Couldn't deliver to C. Hand them this manually: URL + key."*
 

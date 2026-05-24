@@ -25,7 +25,7 @@ public class StartupReportService : IHostedService
         var config = Plugin.Instance?.Configuration;
         if (config is null)
         {
-            _logger.LogInformation("Federation plugin loaded — configuration not yet available.");
+            _logger.LogInformation("Federation plugin loaded - configuration not yet available.");
             return Task.CompletedTask;
         }
 
@@ -38,16 +38,16 @@ public class StartupReportService : IHostedService
         var watchSync = config.EnableWatchStateSync;
 
         _logger.LogInformation(
-            "Federation {Version} loaded — peers: {Enabled} enabled, {Disabled} disabled · shares: {Issued} ({Bound} bound) · push: {Push} · dedup: {Dedup} · watch-sync: {WatchSync}",
+            "Federation {Version} loaded - peers: {Enabled} enabled, {Disabled} disabled · shares: {Issued} ({Bound} bound) · push: {Push} · dedup: {Dedup} · watch-sync: {WatchSync}",
             Plugin.Instance!.Version, enabledPeers, disabledPeers, keysIssued, keysBound,
             pushEnabled ? "on" : "off", dedupEnabled ? "on" : "off", watchSync ? "on" : "off");
 
-        // Surface common misconfigurations as a single WARN line at boot — admin sees one
+        // Surface common misconfigurations as a single WARN line at boot - admin sees one
         // log line in the dashboard instead of debugging silent no-ops later.
         if (enabledPeers > 0 && !pushEnabled)
-            _logger.LogWarning("Federation: peers configured but PublicBaseUrl is empty — push invalidation disabled, gossip-pull only");
+            _logger.LogWarning("Federation: peers configured but PublicBaseUrl is empty - push invalidation disabled, gossip-pull only");
         if (config.RemoteServers.Any(s => s.Enabled && !string.IsNullOrEmpty(s.LocalUserIdForSync) && string.IsNullOrEmpty(s.RemoteUserId)))
-            _logger.LogWarning("Federation: at least one peer has LocalUserIdForSync set without RemoteUserId — pull-direction watch sync will no-op for those peers");
+            _logger.LogWarning("Federation: at least one peer has LocalUserIdForSync set without RemoteUserId - pull-direction watch sync will no-op for those peers");
 
         return Task.CompletedTask;
     }

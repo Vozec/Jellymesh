@@ -72,7 +72,7 @@ public class FederationSyncTask : IScheduledTask
                 }
 
                 // Gossip step: ask peer for catalog digest. If it matches our cached one,
-                // skip the full pull (anti-spam — no point downloading 10k items every minute
+                // skip the full pull (anti-spam - no point downloading 10k items every minute
                 // when nothing changed). Peers without the plugin return null → fall back to full pull.
                 var digest = await _client.FetchDigestAsync(server, cancellationToken).ConfigureAwait(false);
                 if (digest is { } d)
@@ -156,11 +156,11 @@ public class FederationSyncTask : IScheduledTask
 
             var existing = _userDataManager.GetUserData(user, localItem);
             // Merge rules:
-            //   Played:   OR (never demote — peer reporting unplayed doesn't unwatch local)
+            //   Played:   OR (never demote - peer reporting unplayed doesn't unwatch local)
             //   Position: only when peer's LastPlayedDate is strictly newer than ours
             //   Favorite: OR
             //   PlayCount: max
-            // LastPlayedDate is updated to max(theirs, ours) — never moved backward.
+            // LastPlayedDate is updated to max(theirs, ours) - never moved backward.
             var incomingNewer = entry.LastPlayedDate.HasValue
                 && (!existing.LastPlayedDate.HasValue || entry.LastPlayedDate > existing.LastPlayedDate);
 

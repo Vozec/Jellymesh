@@ -14,7 +14,7 @@ namespace Jellyfin.Plugin.Federation.Services;
 /// Roles: 'issuer' (we minted), 'forwarder' (we relayed someone else's intro to a third
 /// party), 'receiver' (we got handed a new peer's key).
 ///
-/// Dedup: UNIQUE(our_role, for_url_canonical) WHERE status='active' — two concurrent
+/// Dedup: UNIQUE(our_role, for_url_canonical) WHERE status='active' - two concurrent
 /// introductions for the same target collapse to one mint. See docs/introductions.md.
 /// </summary>
 public class IntroductionStore
@@ -99,7 +99,7 @@ public class IntroductionStore
         var r = ins.ExecuteScalar();
         if (r is long newId) return (newId, true, null);
 
-        // Conflict — look up the existing active row.
+        // Conflict - look up the existing active row.
         using var sel = c.CreateCommand();
         sel.CommandText = "SELECT id, issued_key_id FROM introductions WHERE our_role = $r AND for_url_canonical = $f AND status = 'active';";
         sel.Parameters.AddWithValue("$r", ourRole);
@@ -108,7 +108,7 @@ public class IntroductionStore
         if (rdr.Read())
             return (rdr.GetInt64(0), false, rdr.IsDBNull(1) ? null : rdr.GetString(1));
 
-        // Shouldn't happen — INSERT failed AND no existing row. Treat as opaque error.
+        // Shouldn't happen - INSERT failed AND no existing row. Treat as opaque error.
         _logger.LogWarning("InsertActiveOrGet: conflict but no existing row for {Role} {Url}", ourRole, forUrlCanonical);
         return (0, false, null);
     }
@@ -204,7 +204,7 @@ public class IntroductionStore
         return rdr.Read() ? Read(rdr) : null;
     }
 
-    /// <summary>Keys issued by a given introducer key — used for cascade-revoke preview.</summary>
+    /// <summary>Keys issued by a given introducer key - used for cascade-revoke preview.</summary>
     public IReadOnlyList<Introduction> ListIssuedBy(Guid introducerKeyId)
     {
         var rows = new List<Introduction>();

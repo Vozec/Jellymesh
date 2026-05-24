@@ -277,7 +277,7 @@ public class RemoteItemStore
         return v is long l ? (int)l : (v is int i ? i : 0);
     }
 
-    /// <summary>Returns (rows_with_tmdb, distinct_tmdb_values) — used to compute dedup ratio
+    /// <summary>Returns (rows_with_tmdb, distinct_tmdb_values) - used to compute dedup ratio
     /// on the TMDB-bearing subset only, so items without TMDB don't inflate the denominator.</summary>
     public (int TmdbRows, int DistinctTmdb) CountTmdbRowsAndDistinct()
     {

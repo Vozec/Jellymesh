@@ -9,7 +9,7 @@
     <div data-role="content">
         <div class="content-primary">
             <form id="FederationConfigForm">
-                <h2>Jellyfin Federation</h2>
+                <h2>Jellymesh</h2>
                 <p>Configure peer Jellyfin servers to federate libraries with.</p>
 
                 <div class="inputContainer">
@@ -66,9 +66,9 @@
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="Reciprocity">Reciprocity</label>
                     <select is="emby-select" id="Reciprocity">
-                        <option value="Off">Off — no auto-action when we mint</option>
-                        <option value="AutoRequest">Auto-request — remind admin to ask peer for a key back</option>
-                        <option value="AutoAcceptReciprocal">Auto-accept reciprocal — auto-mint when a peer asks for a key back</option>
+                        <option value="Off">Off - no auto-action when we mint</option>
+                        <option value="AutoRequest">Auto-request - remind admin to ask peer for a key back</option>
+                        <option value="AutoAcceptReciprocal">Auto-accept reciprocal - auto-mint when a peer asks for a key back</option>
                     </select>
                 </div>
                 <div class="inputContainer">
@@ -93,7 +93,7 @@
                 </button>
                 <div id="DiagOutput" style="font-family:monospace;font-size:0.85em;white-space:pre-wrap;padding:0.5em;margin-top:0.5em;background:#0f0f0f;border:1px solid #333;display:none;"></div>
 
-                <h3>Peer servers (outbound — servers I read from)</h3>
+                <h3>Peer servers (outbound - servers I read from)</h3>
                 <div id="RemoteServersList"></div>
                 <button is="emby-button" type="button" id="AddRemoteServer" class="raised">
                     <span>Add peer server</span>
@@ -104,7 +104,7 @@
 
                 <h4 style="margin:0.5em 0 0.2em 0;">Send an introduction</h4>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:60em;">
-                    <select id="IntroPeerSelect"><option value="">— pick a peer (introducer) —</option></select>
+                    <select id="IntroPeerSelect"><option value="">- pick a peer (introducer) -</option></select>
                     <input type="url" id="IntroForUrl" placeholder="New peer URL (https://newpeer.example)" />
                 </div>
                 <input type="text" id="IntroNote" placeholder="Note (optional)" style="margin-top:0.4em;width:100%;max-width:60em;" />
@@ -114,13 +114,13 @@
                 </label>
                 <button is="emby-button" type="button" id="SendIntroduction" class="raised" style="margin-top:0.3em;"><span>Send</span></button>
 
-                <h4 style="margin:1em 0 0.2em 0;">Pending — peers want to add us as a contact</h4>
+                <h4 style="margin:1em 0 0.2em 0;">Pending - peers want to add us as a contact</h4>
                 <div id="IntroPendingReceiver"></div>
 
-                <h4 style="margin:1em 0 0.2em 0;">Issued — keys we minted via introduction</h4>
+                <h4 style="margin:1em 0 0.2em 0;">Issued - keys we minted via introduction</h4>
                 <div id="IntroIssued"></div>
 
-                <h4 style="margin:1em 0 0.2em 0;">Outbound — introductions we sent</h4>
+                <h4 style="margin:1em 0 0.2em 0;">Outbound - introductions we sent</h4>
                 <div id="IntroForwarder"></div>
 
                 <h3>Public video share links</h3>
@@ -139,7 +139,7 @@
                 <p>Ask peers to add a film, or triage what peers asked from you.</p>
                 <h4 style="margin:0.5em 0 0.2em 0;">Send a request</h4>
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.5em;max-width:60em;">
-                    <select id="ReqPeerSelect"><option value="">— pick a peer —</option></select>
+                    <select id="ReqPeerSelect"><option value="">- pick a peer -</option></select>
                     <input type="text" id="ReqTmdb" placeholder="TMDB id (or title below)" />
                     <input type="text" id="ReqTitle" placeholder="Title" />
                     <input type="number" id="ReqYear" placeholder="Year" min="1900" max="2100" />
@@ -152,7 +152,7 @@
                 <h4 style="margin:1em 0 0.2em 0;">Outbound (you asked peers)</h4>
                 <div id="ReqOutList"></div>
 
-                <h3>Share keys (inbound — what I expose to friends)</h3>
+                <h3>Share keys (inbound - what I expose to friends)</h3>
                 <p>Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
                 <div id="SharesList"></div>
                 <div style="margin-top:0.5em;display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:60em;">
@@ -164,20 +164,20 @@
                     <input type="text" id="NewShareBlockedTags" placeholder="Blocked tags (comma-sep, optional)" />
                     <input type="text" id="NewShareMaxRating" placeholder="Max rating (G/PG/PG-13/R/NC-17, optional)" />
                 </div>
-                <input type="text" id="NewShareBoundPeerUrl" placeholder="Bind to peer URL (optional, e.g. https://alice.example — anti-spoofing)" style="margin-top:0.4em;width:100%;max-width:60em;" />
+                <input type="text" id="NewShareBoundPeerUrl" placeholder="Bind to peer URL (optional, e.g. https://alice.example - anti-spoofing)" style="margin-top:0.4em;width:100%;max-width:60em;" />
                 <label style="margin-top:0.4em;display:block;">
                     <input type="checkbox" id="NewShareStrictUnknown" />
-                    Strict mode — also hide items with unrated or regional ratings (e.g. FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.
+                    Strict mode - also hide items with unrated or regional ratings (e.g. FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.
                 </label>
                 <label style="margin-top:0.4em;display:block;">
                     <input type="checkbox" id="NewShareCanIntro" />
-                    Allow this key to request introductions on me (route /Federation/Introduce calls)
+                    Allow this key to request introductions on me
                 </label>
                 <div class="inputContainer" style="max-width:30em;">
                     <label class="inputLabel inputLabelUnfocused" for="NewShareMintMode">Mint mode (what to do when this key asks me to introduce)</label>
                     <select is="emby-select" id="NewShareMintMode">
-                        <option value="Request">Request — queue for admin approval (safe default)</option>
-                        <option value="AutoAccept">Auto-accept — mint immediately</option>
+                        <option value="Request">Request - queue for admin approval (safe default)</option>
+                        <option value="AutoAccept">Auto-accept - mint immediately</option>
                         <option value="Reject">Reject</option>
                     </select>
                 </div>
@@ -227,7 +227,7 @@
             var when = r.RequestedUtc ? ' · ' + new Date(r.RequestedUtc).toLocaleString() : '';
             var note = r.Note ? '<div style="color:#aaa;font-size:0.85em;margin-top:0.2em;">' + esc(r.Note) + '</div>' : '';
             var html = '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #333;font-size:0.9em;">';
-            html += '<strong>' + who + '</strong>' + meta + peer + when + ' — ' + statusBadge(r.Status) + note;
+            html += '<strong>' + who + '</strong>' + meta + peer + when + ' - ' + statusBadge(r.Status) + note;
             if (showActions && r.Status === 'pending') {
                 html += '<div style="margin-top:0.3em;">';
                 ['accepted','declined','dismissed'].forEach(function (st) {
@@ -235,7 +235,7 @@
                 });
                 html += '</div>';
             } else if (r.Status === 'send-failed') {
-                // Outbound rows that the peer rejected — admin should at minimum be able to
+                // Outbound rows that the peer rejected - admin should at minimum be able to
                 // dismiss the row out of the active list.
                 html += '<div style="margin-top:0.3em;">';
                 html += '<button type="button" class="req-set" data-id="' + r.Id + '" data-status="dismissed">dismiss</button>';
@@ -259,7 +259,7 @@
         function populatePeerSelect() {
             ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
                 var sel = document.getElementById('ReqPeerSelect');
-                var html = '<option value="">— pick a peer —</option>';
+                var html = '<option value="">- pick a peer -</option>';
                 (config.RemoteServers || []).filter(function (s) { return s.Enabled; }).forEach(function (s) {
                     html += '<option value="' + esc(s.Id) + '">' + esc(s.Name || s.BaseUrl) + '</option>';
                 });
@@ -289,15 +289,15 @@
                 // 400 = our config is missing.
                 var status = err && err.status;
                 var msg;
-                if (status === 502) msg = 'Peer rejected the request — they may not have your share key, or their plugin is offline.';
-                else if (status === 404) msg = 'Unknown peer — refresh the peer list and try again.';
-                else if (status === 400) msg = 'Send failed — your FederationShareKey for this peer or your PublicBaseUrl is unset.';
+                if (status === 502) msg = 'Peer rejected the request - they may not have your share key, or their plugin is offline.';
+                else if (status === 404) msg = 'Unknown peer - refresh the peer list and try again.';
+                else if (status === 400) msg = 'Send failed - your FederationShareKey for this peer or your PublicBaseUrl is unset.';
                 else msg = 'Send failed (HTTP ' + (status || '?') + ').';
                 alert(msg);
             });
         });
 
-        // Bind on the page container, not document — when Jellyfin tears down the SPA view,
+        // Bind on the page container, not document - when Jellyfin tears down the SPA view,
         // the element is removed too and the listener goes with it. document-level binding
         // would accumulate one listener per navigation, multiplying POSTs per click.
         document.querySelector('#FederationConfigPage').addEventListener('click', function (e) {
@@ -322,7 +322,7 @@
                     var exp = s.ExpiresUtc ? new Date(s.ExpiresUtc).toLocaleString() : '∞';
                     var tokenSafe = esc(s.Token || '');
                     html += '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #333;font-size:0.9em;">';
-                    html += '<strong>' + esc(s.ItemName) + '</strong> ' + status + ' — ' + uses + ' use' + (s.MaxUses === 1 ? '' : 's') + ' · expires ' + esc(exp) + '<br>';
+                    html += '<strong>' + esc(s.ItemName) + '</strong> ' + status + ' - ' + uses + ' use' + (s.MaxUses === 1 ? '' : 's') + ' · expires ' + esc(exp) + '<br>';
                     html += '<a href="/Federation/Public/' + tokenSafe + '" target="_blank" style="font-family:monospace;font-size:0.8em;">/Federation/Public/' + tokenSafe + '</a> ';
                     html += '<button type="button" class="copy-public" data-token="' + tokenSafe + '">Copy URL</button> ';
                     html += '<button type="button" class="revoke-public" data-token="' + tokenSafe + '">Revoke</button>';
@@ -374,9 +374,9 @@
                 var html = '';
                 (shares || []).forEach(function (k) {
                     html += '<div style="padding:0.5em;margin:0.25em 0;border:1px solid #333;">';
-                    html += '<strong>' + esc(k.Label || '(no label)') + '</strong> — ';
+                    html += '<strong>' + esc(k.Label || '(no label)') + '</strong> - ';
                     html += 'libs: ' + esc(k.LibraryIds && k.LibraryIds.length ? k.LibraryIds.join(', ') : '(all)');
-                    html += ' — key: <code>' + esc(k.ApiKeyPreview) + '</code> ';
+                    html += ' - key: <code>' + esc(k.ApiKeyPreview) + '</code> ';
                     html += '<button type="button" class="copy-share" data-id="' + esc(k.Id) + '">Copy full key</button> ';
                     html += '<button type="button" class="delete-share" data-id="' + esc(k.Id) + '">Delete</button>';
                     html += '</div>';
@@ -386,7 +386,7 @@
         }
 
         // Escape any string before it's interpolated into innerHTML. ItemName comes from
-        // ILibraryManager (user-controlled media names), peer Name from admin input — both
+        // ILibraryManager (user-controlled media names), peer Name from admin input - both
         // can contain HTML metachars and trigger stored XSS in the admin UI.
         function esc(s) {
             return (s == null ? '' : String(s))
@@ -410,15 +410,15 @@
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Diagnostics'), type: 'GET', dataType: 'json' }).then(function (r) {
                 var lines = [];
                 lines.push('Generated: ' + r.GeneratedUtc);
-                lines.push('Our PublicBaseUrl: ' + (r.OurPublicBaseUrl || '(unset — push disabled)'));
+                lines.push('Our PublicBaseUrl: ' + (r.OurPublicBaseUrl || '(unset - push disabled)'));
                 lines.push('Push invalidation: ' + (r.PushInvalidationConfigured ? 'enabled' : 'disabled'));
                 lines.push('Peers: ' + r.EnabledPeerCount + ' enabled, ' + r.DisabledPeerCount + ' disabled');
                 lines.push('');
                 (r.Peers || []).forEach(function (p) {
-                    lines.push('— ' + (p.Name || '(unnamed)') + ' (' + p.BaseUrl + ')');
+                    lines.push('- ' + (p.Name || '(unnamed)') + ' (' + p.BaseUrl + ')');
                     lines.push('  cached health: ' + (p.CachedOnline ? 'online' : 'offline') + ', last RTT ' + p.CachedRttMs + ' ms');
                     (p.Checks || []).forEach(function (c) {
-                        lines.push('  ' + (c.Ok ? '✓' : '✗') + ' ' + c.Name + ' — ' + c.Detail);
+                        lines.push('  ' + (c.Ok ? '✓' : '✗') + ' ' + c.Name + ' - ' + c.Detail);
                     });
                     lines.push('');
                 });
@@ -452,7 +452,7 @@
                 if (s.TopStreamed && s.TopStreamed.length) {
                     html += '<br><strong>Top streamed items:</strong><br>';
                     s.TopStreamed.slice(0, 5).forEach(function (t) {
-                        html += '<div style="color:#aaa;">' + esc((t.ItemId || '').substring(0, 12)) + '… — ' + (t.PlayCount || 0) + '× / ' + humanBytes(t.Bytes) + '</div>';
+                        html += '<div style="color:#aaa;">' + esc((t.ItemId || '').substring(0, 12)) + '… - ' + (t.PlayCount || 0) + '× / ' + humanBytes(t.Bytes) + '</div>';
                     });
                 }
                 html += '<div style="color:#666;margin-top:0.5em;font-size:0.75em;">Updated ' + new Date().toLocaleTimeString() + '</div>';
@@ -574,9 +574,9 @@
                 renderRequests();
                 renderIntroductions();
                 populatePeerSelect();
-                // Also populate the introduction peer dropdown — reuses populatePeerSelect's logic.
+                // Also populate the introduction peer dropdown - reuses populatePeerSelect's logic.
                 var introSel = document.getElementById('IntroPeerSelect');
-                var html = '<option value="">— pick a peer (introducer) —</option>';
+                var html = '<option value="">- pick a peer (introducer) -</option>';
                 (config.RemoteServers || []).filter(function (s) { return s.Enabled && s.FederationShareKey; }).forEach(function (s) {
                     html += '<option value="' + esc(s.Id) + '">' + esc(s.Name || s.BaseUrl) + '</option>';
                 });

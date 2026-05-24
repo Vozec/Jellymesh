@@ -23,7 +23,7 @@ public class PublicShareStore
     }
 
     // Default Timeout (Microsoft.Data.Sqlite connection-string param) is the busy_timeout
-    // applied to each command — without it, concurrent UPDATEs to a single DB throw
+    // applied to each command - without it, concurrent UPDATEs to a single DB throw
     // SQLITE_BUSY immediately instead of waiting briefly for the writer lock.
     private string ConnString => $"Data Source={_dbPath};Default Timeout=10";
 
@@ -69,7 +69,7 @@ public class PublicShareStore
     /// <summary>Atomically validate + increment used_count. Returns the item id if allowed,
     /// null if denied (token unknown, expired, or capped). The cap check is folded INTO the
     /// UPDATE WHERE clause so two concurrent callers can't both pass a pre-check before
-    /// either commits — SQLite serialises the writes and the second one's predicate then
+    /// either commits - SQLite serialises the writes and the second one's predicate then
     /// sees the incremented row.</summary>
     public string? TryConsume(string token)
     {
@@ -150,7 +150,7 @@ public class PublicShareStore
         // WAL allows concurrent readers with a single writer instead of locking the whole DB
         // on every write. Combined with the 10s busy_timeout via Default Timeout in the conn
         // string, this lets the 50-thread TryConsume stress test serialize cleanly instead
-        // of throwing SQLITE_BUSY. Persistent setting — only needs to run once per DB file.
+        // of throwing SQLITE_BUSY. Persistent setting - only needs to run once per DB file.
         using var pragma = c.CreateCommand();
         pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=10000;";
         pragma.ExecuteNonQuery();

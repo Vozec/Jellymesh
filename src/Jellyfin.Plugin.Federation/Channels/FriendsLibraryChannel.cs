@@ -36,7 +36,7 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
 
     public string Description => "Media available on federated peer Jellyfin servers but not in your local library.";
 
-    // DataVersion only changes when peer health flips — _health.Signature() embeds a
+    // DataVersion only changes when peer health flips - _health.Signature() embeds a
     // counter that increments on every state transition. No date prefix → the channel
     // cache file isn't thrown away every hour for nothing.
     public string DataVersion => _health.Signature();
@@ -147,7 +147,7 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
                 var originalSourceId = ms.Id;
                 ms.Id = $"fed_{serverId:N}_{originalSourceId}";
                 ms.IsRemote = true;
-                // Pass the ORIGINAL source id in the proxy URL — the peer doesn't know
+                // Pass the ORIGINAL source id in the proxy URL - the peer doesn't know
                 // about the fed_<guid>_ prefix.
                 ms.Path = $"/Federation/Stream/{serverId:N}/{remote.RemoteItemId}?sourceId={Uri.EscapeDataString(originalSourceId ?? string.Empty)}";
                 list.Add(ms);

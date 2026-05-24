@@ -11,7 +11,7 @@ namespace Jellyfin.Plugin.Federation.Services;
 
 /// <summary>
 /// Live self-test against configured peers. Runs the same probes the background services
-/// would run (ping, digest fetch, share-key probe) and returns a per-peer report — saves
+/// would run (ping, digest fetch, share-key probe) and returns a per-peer report - saves
 /// admin from grepping logs when a 2-peer setup mis-behaves.
 /// </summary>
 public class DiagnosticsService
@@ -40,7 +40,7 @@ public class DiagnosticsService
 
         var peers = config.RemoteServers.Where(s => s.Enabled).ToArray();
 
-        // Per-peer probes in parallel — one slow peer doesn't stall the whole diagnostic.
+        // Per-peer probes in parallel - one slow peer doesn't stall the whole diagnostic.
         var probeTasks = peers.Select(p => ProbePeerAsync(p, config, ct)).ToArray();
         var probes = await Task.WhenAll(probeTasks).ConfigureAwait(false);
 
@@ -67,7 +67,7 @@ public class DiagnosticsService
             Checks = new List<DiagnosticCheck>()
         };
 
-        // 1. URL parseability — catches the bare-host bug class early.
+        // 1. URL parseability - catches the bare-host bug class early.
         probe.Checks.Add(Check("BaseUrl canonicalizes", () =>
         {
             var canon = PeerUrl.Canonicalize(peer.BaseUrl);
@@ -77,7 +77,7 @@ public class DiagnosticsService
 
         // 2. Has-key sanity.
         probe.Checks.Add(Check("Jellyfin API key set", () =>
-            string.IsNullOrEmpty(peer.ApiKey) ? throw new Exception("ApiKey empty — stream proxy will 401") : "yes"));
+            string.IsNullOrEmpty(peer.ApiKey) ? throw new Exception("ApiKey empty - stream proxy will 401") : "yes"));
 
         probe.Checks.Add(Check("Federation share key set", () =>
             string.IsNullOrEmpty(peer.FederationShareKey) ? "no (peer pull will fall through to legacy /Items)" : "yes"));
@@ -106,7 +106,7 @@ public class DiagnosticsService
             Detail = digest is { } d ? $"{d.Count} items, hash {d.Hash[..8]}…, {digestWatch.ElapsedMilliseconds} ms" : "no digest (peer plugin missing or share key wrong)"
         });
 
-        // 5. Stream-proxy reachability — HEAD on the upstream /Videos endpoint with auth.
+        // 5. Stream-proxy reachability - HEAD on the upstream /Videos endpoint with auth.
         var streamUrl = $"{peer.BaseUrl.TrimEnd('/')}/System/Info";
         try
         {
@@ -131,10 +131,10 @@ public class DiagnosticsService
         if (!string.IsNullOrEmpty(peer.LocalUserIdForSync))
         {
             probe.Checks.Add(Check("LocalUserIdForSync parses as Guid", () =>
-                Guid.TryParse(peer.LocalUserIdForSync, out _) ? "yes" : throw new Exception("not a UUID — pull watch sync will warn at runtime")));
+                Guid.TryParse(peer.LocalUserIdForSync, out _) ? "yes" : throw new Exception("not a UUID - pull watch sync will warn at runtime")));
 
             probe.Checks.Add(string.IsNullOrEmpty(peer.RemoteUserId)
-                ? new DiagnosticCheck { Name = "RemoteUserId set (required for pull sync)", Ok = false, Detail = "missing — pull watch sync will silently no-op" }
+                ? new DiagnosticCheck { Name = "RemoteUserId set (required for pull sync)", Ok = false, Detail = "missing - pull watch sync will silently no-op" }
                 : new DiagnosticCheck { Name = "RemoteUserId set", Ok = true, Detail = "yes" });
         }
 

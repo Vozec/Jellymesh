@@ -41,7 +41,7 @@ public class ScheduleWindowTests
     [Fact]
     public void Zero_length_window_is_never_allowed()
     {
-        // start == end is ambiguous (all day or never?). Pick "never" — admin who sets
+        // start == end is ambiguous (all day or never?). Pick "never" - admin who sets
         // 12:00–12:00 clearly didn't mean a 24h window (use null for that).
         Assert.False(ScheduleWindow.IsWithin("12:00", "12:00", TimeSpan.FromHours(12)));
         Assert.False(ScheduleWindow.IsWithin("12:00", "12:00", TimeSpan.FromHours(0)));

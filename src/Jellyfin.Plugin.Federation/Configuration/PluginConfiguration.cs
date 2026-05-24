@@ -86,7 +86,7 @@ public class ShareKey
     public string? AllowedHoursEnd { get; set; }
 
     /// <summary>IANA tz id ("Europe/Paris") interpreted as the wall-clock reference for
-    /// AllowedHoursStart/End. Empty = host local TZ (which is UTC in most Docker setups —
+    /// AllowedHoursStart/End. Empty = host local TZ (which is UTC in most Docker setups -
     /// admins who type "18:00" expecting local should set this explicitly).</summary>
     public string? ScheduleTimeZoneId { get; set; }
 
@@ -99,7 +99,7 @@ public class ShareKey
 
     /// <summary>When true and MaxOfficialRating is set, hide any item whose rating string
     /// can't be parsed (regional ratings like "16+", "FSK-12", "BBFC-18"). Default false
-    /// matches Jellyfin's own leniency — but for childproofing this should be true.</summary>
+    /// matches Jellyfin's own leniency - but for childproofing this should be true.</summary>
     public bool StrictUnknownRating { get; set; } = false;
 
     /// <summary>Optional. When set, peer push-invalidation / request callbacks that present
@@ -111,7 +111,7 @@ public class ShareKey
 
     // === Introductions (v0.10) ===
 
-    /// <summary>"This key may call /Federation/Introduce on me" — opt-in per key,
+    /// <summary>"This key may call /Federation/Introduce on me" - opt-in per key,
     /// can be toggled post-creation. Default false.</summary>
     public bool CanRequestIntroductions { get; set; } = false;
 

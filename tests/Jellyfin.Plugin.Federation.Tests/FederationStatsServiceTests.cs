@@ -29,7 +29,7 @@ public class FederationStatsServiceTests
     [Fact]
     public void Distinct_greater_than_rows_returns_zero()
     {
-        // SQL impossibility too — but if somehow distinct=200 over rows=100, treat as
+        // SQL impossibility too - but if somehow distinct=200 over rows=100, treat as
         // "ratio undefined" and clamp to 0 (no overlap detected).
         Assert.Equal(0.0, FederationStatsService.ComputeDedupRatio(100, 200));
     }

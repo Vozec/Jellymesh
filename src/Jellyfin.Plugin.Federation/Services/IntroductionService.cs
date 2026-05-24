@@ -11,7 +11,7 @@ namespace Jellyfin.Plugin.Federation.Services;
 /// loop-prevention checks (self, already-peer, hop-cap, rate-limit), dedup via the store,
 /// mint the new ShareKey with scope inherited from the introducer, persist.
 ///
-/// Pure logic — config is passed in as a snapshot so unit tests don't need Plugin.Instance.
+/// Pure logic - config is passed in as a snapshot so unit tests don't need Plugin.Instance.
 /// </summary>
 public class IntroductionService
 {
@@ -93,7 +93,7 @@ public class IntroductionService
 
     private MintResult MintAndPersist(PluginConfiguration config, ShareKey introducerKey, string forCanon, int hopCount, string? note, long? existingPendingId = null)
     {
-        // Mint FIRST (in-memory only — no DB writes) so the InsertActiveOrGet call below
+        // Mint FIRST (in-memory only - no DB writes) so the InsertActiveOrGet call below
         // can atomically claim the dedup slot WITH the issued_key_id already set. This
         // avoids the race where a concurrent second call sees issued_key_id=null and
         // re-mints.
@@ -142,7 +142,7 @@ public class IntroductionService
 
         if (!isNew)
         {
-            // Lost the race — another concurrent mint already claimed the slot. Discard
+            // Lost the race - another concurrent mint already claimed the slot. Discard
             // our freshly-minted key (it was in-memory only, never persisted), look up the
             // existing key, return it. Both introducers thus see the same ApiKey value.
             if (!string.IsNullOrEmpty(existingKeyIdStr) && Guid.TryParse(existingKeyIdStr, out var existingKeyId))
@@ -161,7 +161,7 @@ public class IntroductionService
                 }
             }
             // Existing intro row but the corresponding share key is gone (deleted between
-            // mint and read). Fall through to register our key — repairs the broken link.
+            // mint and read). Fall through to register our key - repairs the broken link.
         }
 
         // Persist the new key.

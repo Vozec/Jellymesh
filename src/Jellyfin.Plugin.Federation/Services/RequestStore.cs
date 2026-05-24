@@ -63,7 +63,7 @@ public class RequestStore
             CREATE INDEX IF NOT EXISTS idx_req_status ON federation_requests(status);
             -- prevent the same peer from spamming us with the same item twice while pending.
             -- COALESCE wraps nullable identity columns because SQLite treats NULLs as distinct
-            -- in UNIQUE indexes — without it, (peer=NULL, tmdb=NULL, imdb=NULL, title=NULL)
+            -- in UNIQUE indexes - without it, (peer=NULL, tmdb=NULL, imdb=NULL, title=NULL)
             -- is treated as distinct from itself and duplicates leak through. Title is in the
             -- key so title-only requests (no TMDB/IMDB ids) about different films don't all
             -- collapse to one slot per peer.
@@ -101,7 +101,7 @@ public class RequestStore
         cmd.Parameters.AddWithValue("$y", (object?)req.Year ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$n", (object?)req.Note ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$r", DateTime.UtcNow.ToString("O"));
-        // Honor req.Status — outbound rows can be inserted as 'send-failed' so admin sees
+        // Honor req.Status - outbound rows can be inserted as 'send-failed' so admin sees
         // delivery failures. Default 'pending' set in the FederationRequest record.
         cmd.Parameters.AddWithValue("$st", req.Status);
         var r = cmd.ExecuteScalar();
@@ -115,7 +115,7 @@ public class RequestStore
         c.Open();
         using var cmd = c.CreateCommand();
         // Secondary ORDER BY id ensures total order under same-tick timestamps (Windows
-        // DateTime.UtcNow resolution can be ~15 ms — multiple Inserts share the same string).
+        // DateTime.UtcNow resolution can be ~15 ms - multiple Inserts share the same string).
         cmd.CommandText = status is null
             ? "SELECT id, direction, peer_id, peer_url, tmdb_id, imdb_id, title, year, note, requested_utc, status, last_status_change_utc FROM federation_requests WHERE direction = $d ORDER BY requested_utc DESC, id DESC LIMIT $l;"
             : "SELECT id, direction, peer_id, peer_url, tmdb_id, imdb_id, title, year, note, requested_utc, status, last_status_change_utc FROM federation_requests WHERE direction = $d AND status = $s ORDER BY requested_utc DESC, id DESC LIMIT $l;";
@@ -149,7 +149,7 @@ public class RequestStore
 
     public bool UpdateStatus(long id, string newStatus)
     {
-        // Whitelist enforced at the store layer too — every caller routes through here, so any
+        // Whitelist enforced at the store layer too - every caller routes through here, so any
         // future internal caller (sync task, migration, test) can't poison the column.
         if (!ValidStatuses.Contains(newStatus))
             throw new ArgumentException($"Unknown status '{newStatus}'", nameof(newStatus));

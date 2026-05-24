@@ -62,7 +62,7 @@ public class FederationController : ControllerBase
         // matches what we'll write. Let Kestrel set Content-Length (or chunk) based on actual bytes.
         if (config.OutboundBitrateCapBps > 0) Response.Headers.Remove("content-length");
 
-        // Audit row is best-effort — if SQLite is locked we still serve the stream.
+        // Audit row is best-effort - if SQLite is locked we still serve the stream.
         var auditId = -1L;
         try { auditId = _store.BeginAudit(server.Id, itemId, User?.Identity?.Name); }
         catch (Exception ex) { _logger.LogWarning(ex, "BeginAudit failed for {Peer} {Item}; serving stream without audit row", server.Id, itemId); }
@@ -123,7 +123,7 @@ public class FederationController : ControllerBase
         if (key is null) return Unauthorized();
         if (payload is null) return BadRequest("missing body");
 
-        // Trim and reject whitespace-only — IsNullOrWhiteSpace catches "   " that IsNullOrEmpty
+        // Trim and reject whitespace-only - IsNullOrWhiteSpace catches "   " that IsNullOrEmpty
         // would let through, preventing a peer from consuming pending-uniq slots with garbage.
         var tmdb = string.IsNullOrWhiteSpace(payload.TmdbId) ? null : payload.TmdbId.Trim();
         var imdb = string.IsNullOrWhiteSpace(payload.ImdbId) ? null : payload.ImdbId.Trim();
@@ -179,7 +179,7 @@ public class FederationController : ControllerBase
         var peer = config?.RemoteServers.FirstOrDefault(s => s.Id == peerId);
         if (peer is null) return NotFound("Unknown peer");
         if (string.IsNullOrEmpty(peer.FederationShareKey)) return BadRequest("Peer has no FederationShareKey configured for us");
-        if (string.IsNullOrEmpty(config!.PublicBaseUrl)) return BadRequest("PublicBaseUrl not set — peer wouldn't be able to identify us");
+        if (string.IsNullOrEmpty(config!.PublicBaseUrl)) return BadRequest("PublicBaseUrl not set - peer wouldn't be able to identify us");
 
         var ok = await client.SendRequestAsync(peer, config.PublicBaseUrl, payload.TmdbId, payload.ImdbId, payload.Title, payload.Year, payload.Note, ct).ConfigureAwait(false);
 
@@ -270,12 +270,12 @@ public class FederationController : ControllerBase
         if (config.RemoteServers.Any(s => Services.PeerUrl.SameHost(s.BaseUrl, newCanon)))
             return Conflict("already a peer");
 
-        // Always queue for admin approval — adding a new RemoteServer is high-trust.
+        // Always queue for admin approval - adding a new RemoteServer is high-trust.
         // Per-key auto-accept on receiver could be added later but Request is the safe default.
         var introducerLabel = string.IsNullOrEmpty(payload.IntroducedBy) ? key.Label : payload.IntroducedBy;
-        var note = $"forwarded by '{introducerLabel}' — proposed key: {payload.NewPeerKey}";
+        var note = $"forwarded by '{introducerLabel}' - proposed key: {payload.NewPeerKey}";
         var id = store.InsertPending("receiver", newCanon, key.Id, Math.Max(1, payload.HopCount), note);
-        _logger.LogInformation("Received introduction for {Url} forwarded by {Introducer} — pending admin approval (id {Id})", newCanon, introducerLabel, id);
+        _logger.LogInformation("Received introduction for {Url} forwarded by {Introducer} - pending admin approval (id {Id})", newCanon, introducerLabel, id);
         return Accepted(new { introductionId = id, status = "pending-approval" });
     }
 
@@ -355,7 +355,7 @@ public class FederationController : ControllerBase
         // 2. Optionally forward to the receiver.
         if (payload.AlsoForward && !string.IsNullOrEmpty(mintResult.ApiKey) && !string.IsNullOrEmpty(mintResult.OurBaseUrl))
         {
-            // We need a key on the receiver to forward through them — typically the receiver
+            // We need a key on the receiver to forward through them - typically the receiver
             // wouldn't have us yet. Skip forwarding if no usable key; admin can paste manually.
             var receiverKey = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, payload.ForUrl))?.FederationShareKey;
             if (!string.IsNullOrEmpty(receiverKey))
@@ -364,7 +364,7 @@ public class FederationController : ControllerBase
                     mintResult.OurBaseUrl, mintResult.ApiKey, peer.BaseUrl, 1, ct).ConfigureAwait(false);
                 return Ok(new { peer = peer.Name, mintResult, forwarded = fwd });
             }
-            return Ok(new { peer = peer.Name, mintResult, forwardSkipped = "no share key for receiver — hand the key over manually" });
+            return Ok(new { peer = peer.Name, mintResult, forwardSkipped = "no share key for receiver - hand the key over manually" });
         }
         return Ok(new { peer = peer.Name, mintResult });
     }
@@ -397,23 +397,23 @@ public class FederationController : ControllerBase
         }
         if (pending.OurRole == "receiver")
         {
-            // The note holds "forwarded by ... — proposed key: <key>". Parse it back.
+            // The note holds "forwarded by ... - proposed key: <key>". Parse it back.
             var note = pending.Note ?? "";
             var keyIdx = note.IndexOf("proposed key: ", StringComparison.Ordinal);
             if (keyIdx < 0) return BadRequest("malformed pending receiver note");
             var keyValue = note[(keyIdx + "proposed key: ".Length)..].Trim();
 
-            // Add the new peer to RemoteServers (FederationShareKey only — ApiKey for stream
+            // Add the new peer to RemoteServers (FederationShareKey only - ApiKey for stream
             // proxy is a separate higher-trust grant the admin must paste manually later).
             config.RemoteServers.Add(new Configuration.RemoteServer
             {
-                Name = "Introduced — " + pending.ForUrlCanonical,
+                Name = "Introduced - " + pending.ForUrlCanonical,
                 BaseUrl = pending.ForUrlCanonical,
                 FederationShareKey = keyValue,
                 Enabled = true
             });
             Plugin.Instance?.SaveConfiguration();
-            store.Activate(id, Guid.Empty); // marker — no specific key id for receiver role
+            store.Activate(id, Guid.Empty); // marker - no specific key id for receiver role
             return Ok(new { status = "added-to-peers" });
         }
         return BadRequest("cannot approve forwarder-role rows (they're audit only)");
@@ -440,7 +440,7 @@ public class FederationController : ControllerBase
         if (cascade && intro.IssuedKeyId.HasValue)
         {
             // Find downstream intros that used the revoked key as their introducer, recursively.
-            // Bounded — total intros count is small.
+            // Bounded - total intros count is small.
             var toVisit = new System.Collections.Generic.Queue<Guid>();
             toVisit.Enqueue(intro.IssuedKeyId.Value);
             while (toVisit.Count > 0)
@@ -502,7 +502,7 @@ public class FederationController : ControllerBase
         if (key is null) return Unauthorized();
         if (payload is null) return BadRequest();
 
-        // If the share key is bound to a specific URL, the payload's claim is ignored —
+        // If the share key is bound to a specific URL, the payload's claim is ignored -
         // it can only invalidate the digest for that one peer.
         var senderUrl = string.IsNullOrEmpty(key.BoundPeerUrl) ? payload.FromBaseUrl : key.BoundPeerUrl;
         if (string.IsNullOrEmpty(senderUrl)) return BadRequest();
@@ -513,7 +513,7 @@ public class FederationController : ControllerBase
         var match = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, senderUrl));
         if (match is null)
         {
-            _logger.LogDebug("Invalidate from {Url} ignored — no matching RemoteServer", senderUrl);
+            _logger.LogDebug("Invalidate from {Url} ignored - no matching RemoteServer", senderUrl);
             return NoContent();
         }
 
@@ -579,11 +579,11 @@ public class FederationController : ControllerBase
     public IActionResult PublicViewer(string token, [FromServices] Services.PublicShareStore store,
         [FromServices] MediaBrowser.Controller.Library.ILibraryManager library)
     {
-        // Consume happens HERE — viewer-page load = one use. The /Stream endpoint below
+        // Consume happens HERE - viewer-page load = one use. The /Stream endpoint below
         // re-validates (token exists + not expired) but does NOT decrement, so the same
         // viewer can seek / re-request Range without exhausting the cap.
         // Trade-off: a viewer reloading the page = another consume. Considered acceptable
-        // — admin's mental model is "5 people can watch", not "5 byte ranges".
+        // - admin's mental model is "5 people can watch", not "5 byte ranges".
         var consumedItemId = store.TryConsume(token);
         if (consumedItemId is null)
         {
@@ -609,7 +609,7 @@ h1{{font-weight:400;font-size:1.2rem}}
 </style></head><body>
 <h1>{System.Net.WebUtility.HtmlEncode(name)}</h1>
 <video controls autoplay src=""/Federation/Public/{token}/Stream""></video>
-<div class=""meta"">Shared link — {info.UsedCount + 1}{(info.MaxUses.HasValue ? "/" + info.MaxUses : "")} use{(info.MaxUses == 1 ? "" : "s")}{(info.ExpiresUtc.HasValue ? $" · expires {info.ExpiresUtc:yyyy-MM-dd HH:mm} UTC" : "")}</div>
+<div class=""meta"">Shared link - {info.UsedCount + 1}{(info.MaxUses.HasValue ? "/" + info.MaxUses : "")} use{(info.MaxUses == 1 ? "" : "s")}{(info.ExpiresUtc.HasValue ? $" · expires {info.ExpiresUtc:yyyy-MM-dd HH:mm} UTC" : "")}</div>
 </body></html>";
         return Content(html, "text/html; charset=utf-8");
     }
@@ -620,7 +620,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         [FromServices] Services.PublicShareStore store,
         [FromServices] MediaBrowser.Controller.Library.ILibraryManager library)
     {
-        // Validate-only path — does NOT consume. Consumption already happened in the viewer
+        // Validate-only path - does NOT consume. Consumption already happened in the viewer
         // page load (PublicViewer above). Each browser Range request hits us once; we just
         // confirm the token still exists and hasn't expired, then serve bytes.
         var info = store.GetInfo(token);
@@ -790,7 +790,7 @@ h1{{font-weight:400;font-size:1.2rem}}
             BlockedTags = req.BlockedTags ?? new List<string>(),
             MaxOfficialRating = string.IsNullOrWhiteSpace(req.MaxOfficialRating) ? null : req.MaxOfficialRating,
             StrictUnknownRating = req.StrictUnknownRating,
-            // If admin supplied a BoundPeerUrl it MUST canonicalize — otherwise the share
+            // If admin supplied a BoundPeerUrl it MUST canonicalize - otherwise the share
             // key would silently never match any real peer. Validation happens before key
             // creation so admin sees an immediate error instead of discovering it later.
             BoundPeerUrl = string.IsNullOrWhiteSpace(req.BoundPeerUrl) ? null :
@@ -821,7 +821,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         if (string.IsNullOrEmpty(presented)) return null;
         var config = Plugin.Instance?.Configuration;
         if (config is null) return null;
-        // Constant-time comparison — same length is necessary; CryptographicOperations.FixedTimeEquals
+        // Constant-time comparison - same length is necessary; CryptographicOperations.FixedTimeEquals
         // throws on length mismatch, so equalize via byte spans of equal size.
         var presentedBytes = System.Text.Encoding.UTF8.GetBytes(presented);
         foreach (var s in config.Shares)

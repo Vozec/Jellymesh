@@ -63,7 +63,7 @@ public class RequestStoreTests : IDisposable
     public void Status_change_unblocks_next_pending_dup_from_same_peer()
     {
         var id = _store.Insert(new FederationRequest { Direction = "in", PeerUrl = "https://a", TmdbId = "9", Title = "Y" })!.Value;
-        // Now dismiss/accept the existing row — the uniq index is filtered on status='pending'
+        // Now dismiss/accept the existing row - the uniq index is filtered on status='pending'
         // so a fresh request for the same item is allowed back in.
         _store.UpdateStatus(id, "dismissed");
         var again = _store.Insert(new FederationRequest { Direction = "in", PeerUrl = "https://a", TmdbId = "9", Title = "Y" });

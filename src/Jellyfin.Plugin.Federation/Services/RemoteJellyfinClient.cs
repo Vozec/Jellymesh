@@ -140,7 +140,7 @@ public class RemoteJellyfinClient
         const int pageSize = 500;
         var http = BuildClient(server);
 
-        // Two passes — peer's API doesn't have an "IsPlayed OR IsResumable" filter, so we
+        // Two passes - peer's API doesn't have an "IsPlayed OR IsResumable" filter, so we
         // union the two queries client-side. Each is paginated against TotalRecordCount;
         // same defensive pagination as FetchItemsAsync to avoid silently truncating peers
         // with >pageSize watched items.
@@ -156,7 +156,7 @@ public class RemoteJellyfinClient
                 if (pageYielded == 0) break;
                 start += pageYielded;
 
-                // Yield happens by re-enumerating — done above via helper that puts entries
+                // Yield happens by re-enumerating - done above via helper that puts entries
                 // into a buffer, then we drain here. (yields are forbidden directly inside
                 // catch blocks; the helper avoids that constraint.)
                 foreach (var entry in _pendingBuffer) yield return entry;

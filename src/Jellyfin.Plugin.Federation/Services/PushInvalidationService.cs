@@ -50,7 +50,7 @@ public class PushInvalidationService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Only structural mutations (ItemAdded / ItemRemoved) change the catalog membership
-        // hash. ItemUpdated fires on every metadata refresh / image scan / NFO touch — DO NOT
+        // hash. ItemUpdated fires on every metadata refresh / image scan / NFO touch - DO NOT
         // re-subscribe to it or peers will be flooded with invalidations on routine background
         // work, defeating the gossip-digest anti-spam guarantee. (Restored design comment.)
         _libraryManager.ItemAdded += OnItemMutated;
@@ -68,7 +68,7 @@ public class PushInvalidationService : BackgroundService
                 var config = Plugin.Instance?.Configuration;
                 if (config is null || string.IsNullOrWhiteSpace(config.PublicBaseUrl))
                 {
-                    continue; // not configured for push — gossip-pull still runs
+                    continue; // not configured for push - gossip-pull still runs
                 }
 
                 // Two work paths per tick:
@@ -120,7 +120,7 @@ public class PushInvalidationService : BackgroundService
         if (elapsed < debounce) return;
 
         // Atomic clear. If a fresh event landed between read and CAS, the CAS no-ops and we
-        // skip this tick — the next tick handles the new mark with its own debounce.
+        // skip this tick - the next tick handles the new mark with its own debounce.
         if (Interlocked.CompareExchange(ref _dirtyTicks, 0, lastDirty) != lastDirty) return;
 
         // Fresh data → reset retry counters for everyone. A peer that was in backoff gets a
@@ -164,7 +164,7 @@ public class PushInvalidationService : BackgroundService
         var http = _httpClientFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(10);
 
-        // Parallelize per peer — one timing-out peer (10s) shouldn't block all others. The
+        // Parallelize per peer - one timing-out peer (10s) shouldn't block all others. The
         // tick loop only runs every 5s; N serial peers at full timeout = ~N*10s of stalled
         // pushes. Task.WhenAll bounds total wait to the slowest peer.
         var tasks = new List<Task>(peers.Length);
@@ -176,7 +176,7 @@ public class PushInvalidationService : BackgroundService
             // the debounce window misses the push entirely; gossip-pull is the only fallback.
             if (!_health.IsOnline(peer.Id))
             {
-                _logger.LogDebug("Push to {Peer} deferred — health=offline, queued for retry", peer.Name);
+                _logger.LogDebug("Push to {Peer} deferred - health=offline, queued for retry", peer.Name);
                 ScheduleRetry(peer);
                 continue;
             }
@@ -190,7 +190,7 @@ public class PushInvalidationService : BackgroundService
             }, ct));
         }
         try { await Task.WhenAll(tasks).ConfigureAwait(false); }
-        catch (OperationCanceledException) { /* shutdown — retry entries die with the dict */ }
+        catch (OperationCanceledException) { /* shutdown - retry entries die with the dict */ }
     }
 
     private async Task<bool> TrySendAsync(HttpClient http, Configuration.RemoteServer peer, InvalidatePayload payload, CancellationToken ct)
@@ -230,7 +230,7 @@ public class PushInvalidationService : BackgroundService
             {
                 var nextAttempt = prev.AttemptCount + 1;
                 var d = RetrySchedule.NextDelay(nextAttempt);
-                if (d is null) { hitMax = true; return prev; } // marker — we'll remove after
+                if (d is null) { hitMax = true; return prev; } // marker - we'll remove after
                 return new RetryState { AttemptCount = nextAttempt, NextAttemptUtc = DateTime.UtcNow.Add(d.Value) };
             });
         if (hitMax)
@@ -242,7 +242,7 @@ public class PushInvalidationService : BackgroundService
 
     private void OnItemMutated(object? sender, ItemChangeEventArgs e)
     {
-        // Defensive try/catch — this handler runs on Jellyfin's event dispatcher thread.
+        // Defensive try/catch - this handler runs on Jellyfin's event dispatcher thread.
         // An uncaught exception here would propagate up and break OTHER subscribers
         // downstream of us.
         try

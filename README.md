@@ -1,15 +1,16 @@
-# Jellyfin Federation Plugin
+# Jellymesh
 
 Federate multiple Jellyfin servers into a unified library. Share, dedupe,
-expose multi-version playback, watch-sync, and issue anonymous share
-links — all from one Jellyfin install.
+expose multi-version playback, watch-sync, issue anonymous share links,
+and delegate key issuance between trusted peers - all from one Jellyfin
+install.
 
 ## Status
 
-**Alpha — feature-complete, code-reviewed (×2), 60 passing tests, CI
-green.** Not yet validated against a live two-server federation in the
-wild; pre-1.0 changes may still tweak the wire protocol. See
-[CHANGELOG](CHANGELOG.md) for shipped detail.
+Pre-1.0 release candidate. Feature-complete, 5 code-review passes,
+127 tests passing, CI green. Not yet validated against a live multi-peer
+federation in the wild; the wire protocol may still tweak.
+See [CHANGELOG](CHANGELOG.md) for shipped detail.
 
 ## Target
 
@@ -42,29 +43,29 @@ wild; pre-1.0 changes may still tweak the wire protocol. See
 - **Stream reverse-proxy** keeps the peer's API token server-side and
   exposes a local `/Federation/Stream/...` URL with optional bandwidth
   cap (`ThrottledStream`).
-- **Gossip sync** — periodic digest exchange skips full pull when peer
+- **Gossip sync** - periodic digest exchange skips full pull when peer
   hash unchanged; push-based invalidation (`PushInvalidationService`)
   notifies peers on local add/remove (debounced).
-- **Deletion detection** — diff of cached vs fetched id-set per round.
-- **Health monitor** — 30 s ping, signature-keyed cache invalidation
+- **Deletion detection** - diff of cached vs fetched id-set per round.
+- **Health monitor** - 30 s ping, signature-keyed cache invalidation
   hides offline-peer items from UI immediately.
-- **Watch-state federation** — push (on `UserDataSaved`) + pull (per
+- **Watch-state federation** - push (on `UserDataSaved`) + pull (per
   sync round, merge into a configured local user). Loop-break via
   `UserDataSaveReason.Import`.
-- **Per-library share keys** — issue a random key per friend × library
+- **Per-library share keys** - issue a random key per friend × library
   set; revocable. Schedule windows (IANA-TZ, cross-midnight) + content
   filters (blocked tags + max parental rating with strict-unknown mode).
-- **Anonymous share links** — per-video URLs, optional expiry +
+- **Anonymous share links** - per-video URLs, optional expiry +
   use-cap. `PublicShareStore.TryConsume` is a single atomic SQL
   statement (UPDATE…WHERE…RETURNING) under WAL + busy_timeout, so
   concurrent callers respect the cap exactly.
-- **Federated search** — fan-out across peers with per-peer 10 s
+- **Federated search** - fan-out across peers with per-peer 10 s
   timeout, results tagged with origin.
-- **Stats dashboard** — peers online/enabled/total, TMDB-only dedup
+- **Stats dashboard** - peers online/enabled/total, TMDB-only dedup
   ratio, total streams + bytes, per-peer table, top-streamed items,
   polls every 30 s from config page.
-- **Audit log** — every served byte recorded per peer / item / user.
-- **Admin endpoints require `Policies.RequiresElevation`** — regular
+- **Audit log** - every served byte recorded per peer / item / user.
+- **Admin endpoints require `Policies.RequiresElevation`** - regular
   users can't mint share URLs, list peer keys, or trigger sync.
 
 See [docs/architecture.md](docs/architecture.md),

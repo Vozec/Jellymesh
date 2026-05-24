@@ -73,7 +73,7 @@ public class WatchStateSyncService : IHostedService, IDisposable
 
                     if (position > 0)
                         await _client.UpdateProgressAsync(server, remoteId, position, CancellationToken.None).ConfigureAwait(false);
-                    // Propagate played=false as well — un-marking watched should federate.
+                    // Propagate played=false as well - un-marking watched should federate.
                     await _client.MarkPlayedAsync(server, remoteId, played, CancellationToken.None).ConfigureAwait(false);
                 }
                 catch (Exception ex)

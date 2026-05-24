@@ -37,7 +37,7 @@ public class PeerHealthRegistry
 
     /// <summary>
     /// True when the peer's last probe succeeded, OR when we've never probed it yet
-    /// (optimistic — first probe failure flips this). Avoids hiding federated sources
+    /// (optimistic - first probe failure flips this). Avoids hiding federated sources
     /// during the 0-to-30-second window after server start before HealthMonitorService's
     /// first round completes.
     /// </summary>
