@@ -61,6 +61,18 @@
                     <span>Add peer server</span>
                 </button>
 
+                <h3>Public video share links</h3>
+                <p>Generate a single-video URL anyone can open without a Jellyfin account. Optional expiry and use cap.</p>
+                <div id="PublicSharesList"></div>
+                <div style="margin-top:0.5em;display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5em;max-width:60em;">
+                    <input type="text" id="NewPublicItemId" placeholder="Jellyfin item id (uuid)" />
+                    <input type="datetime-local" id="NewPublicExpiry" placeholder="Expires (optional)" />
+                    <input type="number" id="NewPublicMaxUses" placeholder="Max uses (optional)" min="1" />
+                </div>
+                <button is="emby-button" type="button" id="CreatePublicShare" class="raised" style="margin-top:0.5em;">
+                    <span>Generate public link</span>
+                </button>
+
                 <h3>Share keys (inbound — what I expose to friends)</h3>
                 <p>Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
                 <div id="SharesList"></div>
@@ -102,6 +114,63 @@
             });
             document.getElementById('RemoteServersList').innerHTML = html;
         }
+
+        function renderPublicShares() {
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/PublicShares'), type: 'GET', dataType: 'json' }).then(function (shares) {
+                var html = '';
+                (shares || []).forEach(function (s) {
+                    var status = s.Expired ? '<span style="color:#e44;">expired</span>'
+                        : s.Exhausted ? '<span style="color:#e44;">exhausted</span>'
+                        : '<span style="color:#4e4;">live</span>';
+                    var uses = s.UsedCount + (s.MaxUses ? '/' + s.MaxUses : '');
+                    var exp = s.ExpiresUtc ? new Date(s.ExpiresUtc).toLocaleString() : '∞';
+                    html += '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #333;font-size:0.9em;">';
+                    html += '<strong>' + s.ItemName + '</strong> ' + status + ' — ' + uses + ' use' + (s.MaxUses === 1 ? '' : 's') + ' · expires ' + exp + '<br>';
+                    html += '<a href="/Federation/Public/' + s.Token + '" target="_blank" style="font-family:monospace;font-size:0.8em;">/Federation/Public/' + s.Token + '</a> ';
+                    html += '<button type="button" class="copy-public" data-token="' + s.Token + '">Copy URL</button> ';
+                    html += '<button type="button" class="revoke-public" data-token="' + s.Token + '">Revoke</button>';
+                    html += '</div>';
+                });
+                document.getElementById('PublicSharesList').innerHTML = html || '<em>No public share links yet.</em>';
+            });
+        }
+
+        document.getElementById('CreatePublicShare').addEventListener('click', function () {
+            var itemId = document.getElementById('NewPublicItemId').value.trim();
+            if (!itemId) { alert('Item id required'); return; }
+            var expiryLocal = document.getElementById('NewPublicExpiry').value;
+            var expiryIso = expiryLocal ? new Date(expiryLocal).toISOString() : null;
+            var maxUses = parseInt(document.getElementById('NewPublicMaxUses').value, 10);
+            ApiClient.fetch({
+                url: ApiClient.getUrl('Federation/PublicShares'),
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    ItemId: itemId,
+                    ExpiresUtc: expiryIso,
+                    MaxUses: isNaN(maxUses) ? null : maxUses
+                })
+            }).then(function (resp) {
+                alert('Public share created for "' + resp.itemName + '"\n\nURL:\n' + resp.url);
+                ['NewPublicItemId','NewPublicExpiry','NewPublicMaxUses'].forEach(function (id) { document.getElementById(id).value = ''; });
+                renderPublicShares();
+            });
+        });
+
+        document.getElementById('PublicSharesList').addEventListener('click', function (e) {
+            if (e.target.classList.contains('revoke-public')) {
+                if (!confirm('Revoke this public share?')) return;
+                var token = e.target.dataset.token;
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/PublicShares/' + token), type: 'DELETE' }).then(renderPublicShares);
+            }
+            if (e.target.classList.contains('copy-public')) {
+                var token = e.target.dataset.token;
+                var url = window.location.origin + '/Federation/Public/' + token;
+                navigator.clipboard.writeText(url);
+                e.target.textContent = 'Copied!';
+                setTimeout(function () { e.target.textContent = 'Copy URL'; }, 1200);
+            }
+        });
 
         function renderShares() {
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Shares'), type: 'GET', dataType: 'json' }).then(function (shares) {
@@ -166,6 +235,7 @@
                 document.getElementById('OutboundBitrateCapBps').value = config.OutboundBitrateCapBps;
                 renderServers(config.RemoteServers);
                 renderShares();
+                renderPublicShares();
             });
             renderStats();
             if (statsTimer) clearInterval(statsTimer);

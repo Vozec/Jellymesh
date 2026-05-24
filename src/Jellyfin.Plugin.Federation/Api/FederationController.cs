@@ -165,6 +165,29 @@ public class FederationController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("PublicShares")]
+    public IActionResult ListPublicShares([FromServices] Services.PublicShareStore store,
+        [FromServices] MediaBrowser.Controller.Library.ILibraryManager library)
+    {
+        var rows = store.ListAll(limit: 500).Select(s =>
+        {
+            var name = Guid.TryParse(s.ItemId, out var g) ? library.GetItemById(g)?.Name : null;
+            return new
+            {
+                s.Token,
+                s.ItemId,
+                ItemName = name ?? "(deleted)",
+                s.ExpiresUtc,
+                s.MaxUses,
+                s.UsedCount,
+                s.CreatedUtc,
+                Expired = s.ExpiresUtc.HasValue && s.ExpiresUtc < DateTime.UtcNow,
+                Exhausted = s.MaxUses.HasValue && s.UsedCount >= s.MaxUses.Value
+            };
+        });
+        return Ok(rows);
+    }
+
     [AllowAnonymous]
     [HttpGet("Public/{token}")]
     public IActionResult PublicViewer(string token, [FromServices] Services.PublicShareStore store,

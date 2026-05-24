@@ -118,6 +118,29 @@ public class PublicShareStore
         };
     }
 
+    public System.Collections.Generic.IEnumerable<ShareInfo> ListAll(int limit = 200)
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = @"SELECT token, item_id, expires_utc, max_uses, used_count, created_utc
+            FROM public_shares ORDER BY created_utc DESC LIMIT $l;";
+        cmd.Parameters.AddWithValue("$l", limit);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            yield return new ShareInfo
+            {
+                Token = r.GetString(0),
+                ItemId = r.GetString(1),
+                ExpiresUtc = r.IsDBNull(2) ? null : DateTime.Parse(r.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                MaxUses = r.IsDBNull(3) ? (int?)null : r.GetInt32(3),
+                UsedCount = r.GetInt32(4),
+                CreatedUtc = DateTime.Parse(r.GetString(5), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+            };
+        }
+    }
+
     public void Revoke(string token)
     {
         using var c = new SqliteConnection(ConnString);
