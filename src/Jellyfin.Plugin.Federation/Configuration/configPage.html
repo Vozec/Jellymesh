@@ -471,7 +471,10 @@
                 config.MatchPriority = document.getElementById('MatchPriority').value;
                 config.OutboundBitrateCapBps = parseInt(document.getElementById('OutboundBitrateCapBps').value);
                 config.PublicBaseUrl = document.getElementById('PublicBaseUrl').value.trim();
-                config.PushDebounceSeconds = parseInt(document.getElementById('PushDebounceSeconds').value) || 30;
+                // Don't use `|| 30` — that overrides legitimate 0 with 30. parseInt + isNaN
+                // distinguishes empty from explicit-zero; server-side Math.Max(5, …) clamps.
+                var debounce = parseInt(document.getElementById('PushDebounceSeconds').value, 10);
+                config.PushDebounceSeconds = isNaN(debounce) ? 30 : debounce;
                 config.RemoteServers = collectServers();
                 ApiClient.updatePluginConfiguration(FederationPluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
             });

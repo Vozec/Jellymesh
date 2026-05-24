@@ -163,7 +163,7 @@ public class FederationController : ControllerBase
         });
         // Null id = uniq_inbound_pending kicked in. Log for debugging but still respond 204
         // (idempotent semantics: "we got your request, already on our list").
-        if (id is null) _logger.LogDebug("ReceiveRequest deduped from peer {Url} tmdb={Tmdb} imdb={Imdb} title={Title}", payload.FromBaseUrl, tmdb, imdb, title);
+        if (id is null) _logger.LogDebug("ReceiveRequest deduped from peer {Url} tmdb={Tmdb} imdb={Imdb} title={Title}", attributedUrl, tmdb, imdb, title);
         return NoContent();
     }
 
@@ -493,6 +493,22 @@ h1{{font-weight:400;font-size:1.2rem}}
         var config = Plugin.Instance?.Configuration;
         if (config is null) return StatusCode(500);
 
+        Configuration.ShareKey key;
+        try
+        {
+            key = BuildShareKey(req);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        config.Shares.Add(key);
+        Plugin.Instance!.SaveConfiguration();
+        return Ok(new { key.Id, key.Label, key.ApiKey, key.LibraryIds });
+    }
+
+    private static Configuration.ShareKey BuildShareKey(CreateShareRequest req)
+    {
         var key = new Configuration.ShareKey
         {
             Label = req.Label ?? "Unnamed share",
@@ -503,13 +519,16 @@ h1{{font-weight:400;font-size:1.2rem}}
             BlockedTags = req.BlockedTags ?? new List<string>(),
             MaxOfficialRating = string.IsNullOrWhiteSpace(req.MaxOfficialRating) ? null : req.MaxOfficialRating,
             StrictUnknownRating = req.StrictUnknownRating,
-            BoundPeerUrl = string.IsNullOrWhiteSpace(req.BoundPeerUrl) ? null : Services.PeerUrl.Canonicalize(req.BoundPeerUrl) ?? req.BoundPeerUrl.Trim(),
+            // If admin supplied a BoundPeerUrl it MUST canonicalize — otherwise the share
+            // key would silently never match any real peer. Validation happens before key
+            // creation so admin sees an immediate error instead of discovering it later.
+            BoundPeerUrl = string.IsNullOrWhiteSpace(req.BoundPeerUrl) ? null :
+                (Services.PeerUrl.Canonicalize(req.BoundPeerUrl) ?? throw new ArgumentException(
+                    "BoundPeerUrl must include http:// or https:// scheme (and a parseable host)", nameof(req))),
             ApiKey = GenerateApiKey(),
             Enabled = true
         };
-        config.Shares.Add(key);
-        Plugin.Instance!.SaveConfiguration();
-        return Ok(new { key.Id, key.Label, key.ApiKey, key.LibraryIds });
+        return key;
     }
 
     [Authorize(Policy = Policies.RequiresElevation)]

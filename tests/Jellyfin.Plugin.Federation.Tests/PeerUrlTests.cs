@@ -11,6 +11,8 @@ public class PeerUrlTests
     [InlineData("   ")]
     [InlineData("ftp://nope.example")]    // wrong scheme
     [InlineData("https://")]              // no host
+    [InlineData("peer.example.com")]      // bare host: scheme required (review #4 fix)
+    [InlineData("peer.example.com:8096")] // bare host:port: still rejected
     public void Canonicalize_returns_null_for_invalid(string? input)
     {
         Assert.Null(PeerUrl.Canonicalize(input));
@@ -23,7 +25,6 @@ public class PeerUrlTests
     [InlineData("https://peer.example.com:443",        "https://peer.example.com:443")]
     [InlineData("https://peer.example.com/jellyfin",   "https://peer.example.com:443")]
     [InlineData("https://peer.example.com/jellyfin/",  "https://peer.example.com:443")]
-    [InlineData("peer.example.com",                    "https://peer.example.com:443")] // bare host → assume https
     [InlineData("http://peer.example.com:8096",        "http://peer.example.com:8096")]
     [InlineData("http://peer.example.com",             "http://peer.example.com:80")]
     public void Canonicalize_normalizes_to_scheme_host_port(string input, string expected)

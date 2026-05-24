@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -48,6 +49,10 @@ public class PushInvalidationService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Only structural mutations (ItemAdded / ItemRemoved) change the catalog membership
+        // hash. ItemUpdated fires on every metadata refresh / image scan / NFO touch — DO NOT
+        // re-subscribe to it or peers will be flooded with invalidations on routine background
+        // work, defeating the gossip-digest anti-spam guarantee. (Restored design comment.)
         _libraryManager.ItemAdded += OnItemMutated;
         _libraryManager.ItemRemoved += OnItemMutated;
         _logger.LogInformation("Federation push-invalidation hook armed.");
@@ -57,7 +62,7 @@ public class PushInvalidationService : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 try { await Task.Delay(TickInterval, stoppingToken).ConfigureAwait(false); }
-                catch (TaskCanceledException) { break; }
+                catch (OperationCanceledException) { break; } // catches TaskCanceledException + base
 
                 var config = Plugin.Instance?.Configuration;
                 if (config is null || string.IsNullOrWhiteSpace(config.PublicBaseUrl))
@@ -133,26 +138,33 @@ public class PushInvalidationService : BackgroundService
         var http = _httpClientFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(10);
 
+        // Parallelize per peer — one timing-out peer (10s) shouldn't block all others. The
+        // tick loop only runs every 5s; N serial peers at full timeout = ~N*10s of stalled
+        // pushes. Task.WhenAll bounds total wait to the slowest peer.
+        var tasks = new List<Task>(peers.Length);
         foreach (var peer in peers)
         {
-            // Don't waste retry attempts on a peer we already know is offline — wait until
-            // the health monitor flips it back, then a new event will reset and we'll retry.
+            // Re-enqueue offline peers as a retry (short backoff) so the push pipeline keeps
+            // trying once health flips back, instead of silently dropping the invalidation
+            // until the NEXT local mutation. Without this, a peer that goes offline during
+            // the debounce window misses the push entirely; gossip-pull is the only fallback.
             if (!_health.IsOnline(peer.Id))
             {
-                _logger.LogDebug("Push to {Peer} deferred — health=offline", peer.Name);
+                _logger.LogDebug("Push to {Peer} deferred — health=offline, queued for retry", peer.Name);
+                ScheduleRetry(peer);
                 continue;
             }
 
-            var ok = await TrySendAsync(http, peer, payload, ct).ConfigureAwait(false);
-            if (ok)
+            var p = peer;
+            tasks.Add(Task.Run(async () =>
             {
-                _retries.TryRemove(peer.Id, out _);
-            }
-            else
-            {
-                ScheduleRetry(peer);
-            }
+                var ok = await TrySendAsync(http, p, payload, ct).ConfigureAwait(false);
+                if (ok) _retries.TryRemove(p.Id, out _);
+                else ScheduleRetry(p);
+            }, ct));
         }
+        try { await Task.WhenAll(tasks).ConfigureAwait(false); }
+        catch (OperationCanceledException) { /* shutdown — retry entries die with the dict */ }
     }
 
     private async Task<bool> TrySendAsync(HttpClient http, Configuration.RemoteServer peer, InvalidatePayload payload, CancellationToken ct)
@@ -175,29 +187,49 @@ public class PushInvalidationService : BackgroundService
         }
     }
 
+    /// <summary>Atomic read-modify-write of the per-peer retry counter. Now safe under parallel
+    /// callers (FireToPeersAsync uses Task.WhenAll). Returns the new attempt count or 0 if
+    /// the entry was removed due to give-up.</summary>
     private void ScheduleRetry(Configuration.RemoteServer peer)
     {
-        var prev = _retries.TryGetValue(peer.Id, out var existing) ? existing.AttemptCount : 0;
-        var delay = RetrySchedule.NextDelay(prev + 1);
-        if (delay is null)
+        var hitMax = false;
+        _retries.AddOrUpdate(
+            peer.Id,
+            _ =>
+            {
+                var d = RetrySchedule.NextDelay(1)!.Value;
+                return new RetryState { AttemptCount = 1, NextAttemptUtc = DateTime.UtcNow.Add(d) };
+            },
+            (_, prev) =>
+            {
+                var nextAttempt = prev.AttemptCount + 1;
+                var d = RetrySchedule.NextDelay(nextAttempt);
+                if (d is null) { hitMax = true; return prev; } // marker — we'll remove after
+                return new RetryState { AttemptCount = nextAttempt, NextAttemptUtc = DateTime.UtcNow.Add(d.Value) };
+            });
+        if (hitMax)
         {
             _logger.LogWarning("Push to {Peer} gave up after {Max} attempts; gossip-pull will catch up on next sync", peer.Name, RetrySchedule.MaxAttempts);
             _retries.TryRemove(peer.Id, out _);
-            return;
         }
-        _retries[peer.Id] = new RetryState
-        {
-            AttemptCount = prev + 1,
-            NextAttemptUtc = DateTime.UtcNow.Add(delay.Value)
-        };
     }
 
     private void OnItemMutated(object? sender, ItemChangeEventArgs e)
     {
-        if (e.Item is null) return;
-        var kind = e.Item.GetType().Name;
-        if (kind != "Movie" && kind != "Series" && kind != "Episode") return;
-        Interlocked.Exchange(ref _dirtyTicks, DateTime.UtcNow.Ticks);
+        // Defensive try/catch — this handler runs on Jellyfin's event dispatcher thread.
+        // An uncaught exception here would propagate up and break OTHER subscribers
+        // downstream of us.
+        try
+        {
+            if (e.Item is null) return;
+            var kind = e.Item.GetType().Name;
+            if (kind != "Movie" && kind != "Series" && kind != "Episode") return;
+            Interlocked.Exchange(ref _dirtyTicks, DateTime.UtcNow.Ticks);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "OnItemMutated swallowed exception");
+        }
     }
 
     private class RetryState

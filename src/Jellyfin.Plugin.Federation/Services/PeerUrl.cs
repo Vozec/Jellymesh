@@ -16,11 +16,14 @@ public static class PeerUrl
     public static string? Canonicalize(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
-        // Accept bare hostnames too (no scheme) by prepending https:// before parsing —
-        // peers configured by admins commonly omit the scheme.
         var input = raw.Trim();
-        if (!input.Contains("://", StringComparison.Ordinal))
-            input = "https://" + input;
+
+        // Bare hostnames (no scheme) are REJECTED. The previous behaviour silently prepended
+        // https:// which broke matching for plain-HTTP LAN deployments (peer.local:8096 was
+        // canonicalized to https:// but the real server is http:// on 8096 — SameHost returned
+        // false on every legitimate call). Admin must supply an explicit scheme so we don't
+        // guess wrong.
+        if (!input.Contains("://", StringComparison.Ordinal)) return null;
 
         if (!Uri.TryCreate(input, UriKind.Absolute, out var u)) return null;
         if (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps) return null;
