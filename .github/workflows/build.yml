@@ -37,15 +37,24 @@ jobs:
       - name: Coverage summary
         if: always()
         run: |
+          # Coverlet emits coverage.cobertura.xml under a random GUID directory.
+          # Use find rather than a shell glob (bash globs don't expand ** without globstar).
+          shopt -s globstar nullglob
+          coverage_files=(tests/**/coverage.cobertura.xml)
+          if [ ${#coverage_files[@]} -eq 0 ]; then
+            echo "::warning::No coverage files found - skipping report"
+            exit 0
+          fi
           dotnet tool install -g dotnet-reportgenerator-globaltool
           reportgenerator \
-            -reports:tests/**/coverage.cobertura.xml \
+            "-reports:$(IFS=';'; echo "${coverage_files[*]}")" \
             -targetdir:coverage-report \
             -reporttypes:"MarkdownSummaryGithub;TextSummary"
           cat coverage-report/Summary.txt
           if [ -f "coverage-report/SummaryGithub.md" ]; then
-            cat coverage-report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+            cat coverage-report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
           fi
+        shell: bash
 
       - name: Upload test results
         if: always()
@@ -95,11 +104,12 @@ jobs:
       - name: Verify all source diagrams rendered
         run: |
           set -e
-          expected=$(grep -c '^```mermaid$' docs/*.md)
-          actual=$(ls docs/diagrams/*.png 2>/dev/null | wc -l)
-          echo "expected $expected PNGs, got $actual"
+          # grep -c '^```mermaid$' outputs `path:count` per file; sum the counts.
+          expected=$(grep -c '^```mermaid$' docs/*.md | awk -F: '{ s += $2 } END { print s }')
+          actual=$(ls docs/diagrams/*.svg 2>/dev/null | wc -l)
+          echo "expected $expected SVGs, got $actual"
           [ "$expected" = "$actual" ]
       - uses: actions/upload-artifact@v4
         with:
           name: diagrams
-          path: docs/diagrams/*.png
+          path: docs/diagrams/*.svg

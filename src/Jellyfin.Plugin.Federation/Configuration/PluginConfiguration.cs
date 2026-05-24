@@ -143,6 +143,14 @@ public class RemoteServer
     /// <summary>Jellyfin user-level API key for streaming. Used as X-Emby-Token on /Items, /Videos, /Users/*.</summary>
     public string ApiKey { get; set; } = string.Empty;
 
+    /// <summary>Optional HTTP Basic auth credentials, when the peer's Jellyfin is behind a
+    /// reverse proxy that requires Basic auth (common LAN setup). Sent as
+    /// Authorization: Basic base64(user:pass) on every outbound call to this peer, in
+    /// addition to X-Emby-Token or X-Federation-Share. Leave empty if the peer is
+    /// reachable without Basic auth.</summary>
+    public string BasicAuthUser { get; set; } = string.Empty;
+    public string BasicAuthPass { get; set; } = string.Empty;
+
     /// <summary>Share key the peer issued for us. Sent as X-Federation-Share on /Federation/Share/* calls.</summary>
     public string FederationShareKey { get; set; } = string.Empty;
 

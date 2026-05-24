@@ -225,22 +225,23 @@ public class RemoteJellyfinClient
         return entry;
     }
 
-    /// <summary>Ask a peer to mint a federation share key on behalf of a third party (introducer flow).</summary>
-    public async Task<IntroduceCallResult?> CallIntroduceAsync(string peerBaseUrl, string peerFederationKey,
+    /// <summary>Ask a peer to mint a federation share key on behalf of a third party.</summary>
+    public async Task<IntroduceCallResult?> CallIntroduceAsync(RemoteServer peer,
         string forUrl, int hopCount, string? note, CancellationToken ct)
     {
         try
         {
             var http = _httpClientFactory.CreateClient();
+            AddBasicAuth(http, peer);
             http.Timeout = TimeSpan.FromSeconds(15);
-            var url = $"{peerBaseUrl.TrimEnd('/')}/Federation/Introduce";
+            var url = $"{peer.BaseUrl.TrimEnd('/')}/Federation/Introduce";
             var body = JsonContent.Create(new { ForUrl = forUrl, HopCount = hopCount, Note = note });
             using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = body };
-            req.Headers.Add("X-Federation-Share", peerFederationKey);
+            req.Headers.Add("X-Federation-Share", peer.FederationShareKey);
             using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode && resp.StatusCode != System.Net.HttpStatusCode.Accepted)
             {
-                _logger.LogWarning("CallIntroduce to {Peer} returned {Status}", peerBaseUrl, (int)resp.StatusCode);
+                _logger.LogWarning("CallIntroduce to {Peer} returned {Status}", peer.BaseUrl, (int)resp.StatusCode);
                 return new IntroduceCallResult { Status = ((int)resp.StatusCode).ToString(), HttpStatus = (int)resp.StatusCode };
             }
             using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
@@ -256,27 +257,29 @@ public class RemoteJellyfinClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "CallIntroduce to {Peer} threw", peerBaseUrl);
+            _logger.LogWarning(ex, "CallIntroduce to {Peer} threw", peer.BaseUrl);
             return null;
         }
     }
 
-    /// <summary>Forward a freshly-issued key to its target (the receiver), after probing they run the plugin.</summary>
-    public async Task<ForwardResult> CallIntroducedAsync(string targetBaseUrl, string ourKeyOnTarget, string newPeerUrl,
-        string newPeerKey, string introducedBy, int hopCount, CancellationToken ct)
+    /// <summary>Forward a freshly-issued key to its target. Includes the introducer's
+    /// HTTP Basic credentials for reaching the new peer, since the receiver will need the
+    /// same credentials to talk to that peer.</summary>
+    public async Task<ForwardResult> CallIntroducedAsync(RemoteServer receiver, string newPeerUrl,
+        string newPeerKey, string introducedBy, int hopCount,
+        string? newPeerBasicAuthUser, string? newPeerBasicAuthPass, CancellationToken ct)
     {
         try
         {
             var http = _httpClientFactory.CreateClient();
+            AddBasicAuth(http, receiver);
             http.Timeout = TimeSpan.FromSeconds(10);
 
-            // Probe: GET /Federation/Catalog/Digest. Anything that isn't network-failure
-            // means the plugin is present (401 = wrong key, 200 = OK, 403 = schedule blocked, etc.)
-            using var probeReq = new HttpRequestMessage(HttpMethod.Get, $"{targetBaseUrl.TrimEnd('/')}/Federation/Catalog/Digest");
+            // Probe for plugin presence. Any HTTP response counts; network failure rejects.
+            using var probeReq = new HttpRequestMessage(HttpMethod.Get, $"{receiver.BaseUrl.TrimEnd('/')}/Federation/Catalog/Digest");
             try
             {
                 using var probeResp = await http.SendAsync(probeReq, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-                // Any HTTP response = plugin alive (or a proxy in front). Proceed with forward.
             }
             catch (Exception)
             {
@@ -284,21 +287,23 @@ public class RemoteJellyfinClient
             }
 
             using var req = new HttpRequestMessage(HttpMethod.Post,
-                $"{targetBaseUrl.TrimEnd('/')}/Federation/Introduced");
-            req.Headers.Add("X-Federation-Share", ourKeyOnTarget);
+                $"{receiver.BaseUrl.TrimEnd('/')}/Federation/Introduced");
+            req.Headers.Add("X-Federation-Share", receiver.FederationShareKey);
             req.Content = JsonContent.Create(new
             {
                 NewPeerUrl = newPeerUrl,
                 NewPeerKey = newPeerKey,
                 IntroducedBy = introducedBy,
-                HopCount = hopCount
+                HopCount = hopCount,
+                BasicAuthUser = newPeerBasicAuthUser,
+                BasicAuthPass = newPeerBasicAuthPass
             });
             using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
             return new ForwardResult { Reachable = true, HttpStatus = (int)resp.StatusCode, Accepted = resp.IsSuccessStatusCode };
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "CallIntroduced to {Target} threw", targetBaseUrl);
+            _logger.LogWarning(ex, "CallIntroduced to {Target} threw", receiver.BaseUrl);
             return new ForwardResult { Reachable = false };
         }
     }
@@ -406,7 +411,17 @@ public class RemoteJellyfinClient
         var http = _httpClientFactory.CreateClient();
         http.BaseAddress = new Uri(server.BaseUrl.TrimEnd('/'));
         http.DefaultRequestHeaders.Add("X-Emby-Token", server.ApiKey);
+        AddBasicAuth(http, server);
         http.Timeout = TimeSpan.FromSeconds(30);
         return http;
+    }
+
+    /// <summary>Adds Authorization: Basic header when the peer is behind a reverse proxy
+    /// requiring HTTP Basic auth. Skipped when credentials are unset.</summary>
+    internal static void AddBasicAuth(HttpClient http, RemoteServer server)
+    {
+        if (string.IsNullOrEmpty(server.BasicAuthUser) && string.IsNullOrEmpty(server.BasicAuthPass)) return;
+        var token = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{server.BasicAuthUser}:{server.BasicAuthPass}"));
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", token);
     }
 }

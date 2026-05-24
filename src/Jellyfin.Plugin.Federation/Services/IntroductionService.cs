@@ -26,36 +26,29 @@ public class IntroductionService
 
     public MintResult TryMint(PluginConfiguration config, ShareKey introducerKey, string forUrl, int hopCount, string? note)
     {
-        // 0. Key must have intro permission.
         if (!introducerKey.CanRequestIntroductions)
             return MintResult.Denied("no-permission", "this key is not allowed to request introductions");
 
-        // 1. Canonicalize target URL.
         var forCanon = PeerUrl.Canonicalize(forUrl);
         if (forCanon is null)
             return MintResult.Denied("bad-url", "ForUrl must include http:// or https:// scheme");
 
-        // 2. Self-exclusion.
         var ourCanon = PeerUrl.Canonicalize(config.PublicBaseUrl);
         if (ourCanon is not null && string.Equals(forCanon, ourCanon, StringComparison.Ordinal))
             return MintResult.Denied("self", "cannot introduce ourselves");
 
-        // 3. Already-peer (canonical match against any configured RemoteServer).
         if (config.RemoteServers.Any(s => PeerUrl.SameHost(s.BaseUrl, forCanon)))
             return MintResult.Denied("already-peer", "target is already a configured peer");
 
-        // 4. Hop-cap.
         if (config.IntroductionHopCap.HasValue && hopCount > config.IntroductionHopCap.Value)
             return MintResult.Denied("hop-cap", $"hop_count {hopCount} exceeds cap {config.IntroductionHopCap.Value}");
 
-        // 5. Rate-limit per introducer key.
         var (hourCount, dayCount) = _store.CountRecentByIntroducer(introducerKey.Id);
         if (hourCount >= config.IntroductionRatePerHour)
             return MintResult.Denied("rate-limit-hour", $"introducer hit {config.IntroductionRatePerHour}/hour limit");
         if (dayCount >= config.IntroductionRatePerDay)
             return MintResult.Denied("rate-limit-day", $"introducer hit {config.IntroductionRatePerDay}/day limit");
 
-        // 6. Mint mode decision.
         switch (introducerKey.MintMode)
         {
             case IntroductionMintMode.Reject:
@@ -97,10 +90,9 @@ public class IntroductionService
 
     private MintResult MintAndPersist(PluginConfiguration config, ShareKey introducerKey, string forCanon, int hopCount, string? note, long? existingPendingId = null)
     {
-        // Mint FIRST (in-memory only - no DB writes) so the InsertActiveOrGet call below
-        // can atomically claim the dedup slot WITH the issued_key_id already set. This
-        // avoids the race where a concurrent second call sees issued_key_id=null and
-        // re-mints.
+        // Mint in-memory first so the dedup row below carries the issued_key_id at insert
+        // time. A concurrent second mint that loses the InsertActiveOrGet race immediately
+        // sees the populated id and returns it, instead of racing on a null-id row.
         var newKey = new ShareKey
         {
             ApiKey = GenerateApiKey(),
@@ -115,13 +107,14 @@ public class IntroductionService
             BoundPeerUrl = forCanon,
             IssuedForUrl = forCanon,
             IntroducedByKeyId = introducerKey.Id,
-            CanRequestIntroductions = false,                   // no auto-chain
-            MintMode = IntroductionMintMode.Reject,             // no auto-chain
+            // No auto-chain: minted keys can't themselves request further introductions.
+            CanRequestIntroductions = false,
+            MintMode = IntroductionMintMode.Reject,
             Enabled = true
         };
 
-        // Approval path: the pending row already exists; activating it claims the unique
-        // slot. Skip the InsertActiveOrGet (which would conflict with the now-activated row).
+        // Approval path activates the pre-existing pending row. Skip InsertActiveOrGet,
+        // which would conflict with the now-activated row on UNIQUE(role, for_url).
         if (existingPendingId.HasValue)
         {
             lock (Plugin.ConfigWriteLock)
@@ -142,16 +135,14 @@ public class IntroductionService
             };
         }
 
-        // Fresh-mint path: atomic claim or detect existing.
         var (introId, isNew, existingKeyIdStr) = _store.InsertActiveOrGet(
             "issuer", forCanon, introducerKey.Id,
             issuedKeyId: newKey.Id, hopCount, note);
 
         if (!isNew)
         {
-            // Lost the race - another concurrent mint already claimed the slot. Discard
-            // our freshly-minted key (it was in-memory only, never persisted), look up the
-            // existing key, return it. Both introducers thus see the same ApiKey value.
+            // Concurrent mint claimed the slot first. Return its key so both introducers
+            // see the same ApiKey value. Our freshly-minted key is in-memory only, discard.
             if (!string.IsNullOrEmpty(existingKeyIdStr) && Guid.TryParse(existingKeyIdStr, out var existingKeyId))
             {
                 var existingKey = config.Shares.FirstOrDefault(k => k.Id == existingKeyId);
@@ -167,8 +158,8 @@ public class IntroductionService
                     };
                 }
             }
-            // Existing intro row but the corresponding share key is gone (deleted between
-            // mint and read). Fall through to register our key - repairs the broken link.
+            // Audit row points to a deleted key. Fall through and register the new key to
+            // repair the link.
         }
 
         lock (Plugin.ConfigWriteLock)
@@ -200,7 +191,10 @@ public class IntroductionService
 
 public class MintResult
 {
-    public string Status { get; set; } = "denied"; // minted|existing|pending|rejected|denied|...
+    /// <summary>One of: minted, existing, minted-after-pending, pending, rejected, denied,
+    /// no-permission, bad-url, self, already-peer, hop-cap, rate-limit-hour, rate-limit-day,
+    /// unknown-mode, not-pending, wrong-role, no-introducer.</summary>
+    public string Status { get; set; } = "denied";
     public string? ApiKey { get; set; }
     public string? OurBaseUrl { get; set; }
     public long? IntroductionId { get; set; }

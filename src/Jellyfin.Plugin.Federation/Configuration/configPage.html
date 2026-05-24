@@ -66,9 +66,9 @@
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="Reciprocity">Reciprocity</label>
                     <select is="emby-select" id="Reciprocity">
-                        <option value="Off">Off - no auto-action when we mint</option>
-                        <option value="AutoRequest">Auto-request - remind admin to ask peer for a key back</option>
-                        <option value="AutoAcceptReciprocal">Auto-accept reciprocal - auto-mint when a peer asks for a key back</option>
+                        <option value="Off">Off</option>
+                        <option value="AutoRequest">Auto-request a key back</option>
+                        <option value="AutoAcceptReciprocal">Auto-accept reciprocal</option>
                     </select>
                 </div>
                 <div class="inputContainer">
@@ -93,7 +93,7 @@
                 </button>
                 <div id="DiagOutput" style="font-family:monospace;font-size:0.85em;white-space:pre-wrap;padding:0.5em;margin-top:0.5em;background:#0f0f0f;border:1px solid #333;display:none;"></div>
 
-                <h3>Peer servers (outbound - servers I read from)</h3>
+                <h3>Peer servers</h3>
                 <div id="RemoteServersList"></div>
                 <button is="emby-button" type="button" id="AddRemoteServer" class="raised">
                     <span>Add peer server</span>
@@ -114,13 +114,13 @@
                 </label>
                 <button is="emby-button" type="button" id="SendIntroduction" class="raised" style="margin-top:0.3em;"><span>Send</span></button>
 
-                <h4 style="margin:1em 0 0.2em 0;">Pending - peers want to add us as a contact</h4>
+                <h4 style="margin:1em 0 0.2em 0;">Pending peers (want to add us)</h4>
                 <div id="IntroPendingReceiver"></div>
 
-                <h4 style="margin:1em 0 0.2em 0;">Issued - keys we minted via introduction</h4>
+                <h4 style="margin:1em 0 0.2em 0;">Issued keys</h4>
                 <div id="IntroIssued"></div>
 
-                <h4 style="margin:1em 0 0.2em 0;">Outbound - introductions we sent</h4>
+                <h4 style="margin:1em 0 0.2em 0;">Outbound</h4>
                 <div id="IntroForwarder"></div>
 
                 <h3>Public video share links</h3>
@@ -152,7 +152,7 @@
                 <h4 style="margin:1em 0 0.2em 0;">Outbound (you asked peers)</h4>
                 <div id="ReqOutList"></div>
 
-                <h3>Share keys (inbound - what I expose to friends)</h3>
+                <h3>Share keys</h3>
                 <p>Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
                 <div id="SharesList"></div>
                 <div style="margin-top:0.5em;display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:60em;">
@@ -164,10 +164,10 @@
                     <input type="text" id="NewShareBlockedTags" placeholder="Blocked tags (comma-sep, optional)" />
                     <input type="text" id="NewShareMaxRating" placeholder="Max rating (G/PG/PG-13/R/NC-17, optional)" />
                 </div>
-                <input type="text" id="NewShareBoundPeerUrl" placeholder="Bind to peer URL (optional, e.g. https://alice.example - anti-spoofing)" style="margin-top:0.4em;width:100%;max-width:60em;" />
+                <input type="text" id="NewShareBoundPeerUrl" placeholder="Bind to peer URL (optional, e.g. https://alice.example, anti-spoofing)" style="margin-top:0.4em;width:100%;max-width:60em;" />
                 <label style="margin-top:0.4em;display:block;">
                     <input type="checkbox" id="NewShareStrictUnknown" />
-                    Strict mode - also hide items with unrated or regional ratings (e.g. FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.
+                    Strict mode: also hide items with unrated or regional ratings (e.g. FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.
                 </label>
                 <label style="margin-top:0.4em;display:block;">
                     <input type="checkbox" id="NewShareCanIntro" />
@@ -176,8 +176,8 @@
                 <div class="inputContainer" style="max-width:30em;">
                     <label class="inputLabel inputLabelUnfocused" for="NewShareMintMode">Mint mode (what to do when this key asks me to introduce)</label>
                     <select is="emby-select" id="NewShareMintMode">
-                        <option value="Request">Request - queue for admin approval (safe default)</option>
-                        <option value="AutoAccept">Auto-accept - mint immediately</option>
+                        <option value="Request">Request (queue for admin approval, safe default)</option>
+                        <option value="AutoAccept">Auto-accept (mint immediately)</option>
                         <option value="Reject">Reject</option>
                     </select>
                 </div>
@@ -206,6 +206,8 @@
                 html += '<input type="text" placeholder="Federation share key (from peer)" value="' + esc(s.FederationShareKey || '') + '" data-field="FederationShareKey" />';
                 html += '<input type="text" placeholder="Remote user id on peer (for watch sync)" value="' + esc(s.RemoteUserId || '') + '" data-field="RemoteUserId" />';
                 html += '<input type="text" placeholder="Local user id receiving peer watch state (optional)" value="' + esc(s.LocalUserIdForSync || '') + '" data-field="LocalUserIdForSync" />';
+                html += '<input type="text" placeholder="HTTP Basic auth username (optional)" value="' + esc(s.BasicAuthUser || '') + '" data-field="BasicAuthUser" />';
+                html += '<input type="password" placeholder="HTTP Basic auth password (optional)" value="' + esc(s.BasicAuthPass || '') + '" data-field="BasicAuthPass" />';
                 html += '<label style="grid-column:span 2;"><input type="checkbox" data-field="Enabled" ' + (s.Enabled ? 'checked' : '') + ' /> Enabled <button type="button" class="remove-server" style="float:right;">Remove</button></label>';
                 html += '</div>';
             });

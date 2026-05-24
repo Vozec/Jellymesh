@@ -202,6 +202,11 @@ public class PushInvalidationService : BackgroundService
                 Content = JsonContent.Create(payload)
             };
             req.Headers.Add("X-Federation-Share", peer.FederationShareKey);
+            if (!string.IsNullOrEmpty(peer.BasicAuthUser) || !string.IsNullOrEmpty(peer.BasicAuthPass))
+            {
+                var token = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{peer.BasicAuthUser}:{peer.BasicAuthPass}"));
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", token);
+            }
             using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
             _logger.LogDebug("Push to {Peer}: {Status}", peer.Name, (int)resp.StatusCode);
             return resp.IsSuccessStatusCode;

@@ -43,6 +43,7 @@ public class FederationController : ControllerBase
         if (server is null || !server.Enabled) return NotFound();
 
         var http = _httpClientFactory.CreateClient();
+        Services.RemoteJellyfinClient.AddBasicAuth(http, server);
         var upstream = $"{server.BaseUrl.TrimEnd('/')}/Videos/{Uri.EscapeDataString(itemId)}/stream?static=true";
         if (!string.IsNullOrEmpty(sourceId))
             upstream += $"&MediaSourceId={Uri.EscapeDataString(sourceId)}";
@@ -277,7 +278,15 @@ public class FederationController : ControllerBase
         // Always queue for admin approval - adding a new RemoteServer is high-trust.
         // Per-key auto-accept on receiver could be added later but Request is the safe default.
         var introducerLabel = string.IsNullOrEmpty(payload.IntroducedBy) ? key.Label : payload.IntroducedBy;
-        var note = $"forwarded by '{introducerLabel}' - proposed key: {payload.NewPeerKey}";
+        // Encode the proposed key + optional Basic creds in the note. ApproveIntroduction
+        // parses them back. Format: "forwarded by 'X' :: KEY=k :: BASIC=user:pass".
+        var noteSb = new System.Text.StringBuilder();
+        noteSb.Append("forwarded by '").Append(introducerLabel).Append("' :: KEY=").Append(payload.NewPeerKey);
+        if (!string.IsNullOrEmpty(payload.BasicAuthUser) || !string.IsNullOrEmpty(payload.BasicAuthPass))
+        {
+            noteSb.Append(" :: BASIC=").Append(payload.BasicAuthUser).Append(':').Append(payload.BasicAuthPass);
+        }
+        var note = noteSb.ToString();
         var id = store.InsertPending("receiver", newCanon, key.Id, Math.Max(1, payload.HopCount), note);
         _logger.LogInformation("Received introduction for {Url} forwarded by {Introducer} - pending admin approval (id {Id})", newCanon, introducerLabel, id);
         return Accepted(new { introductionId = id, status = "pending-approval" });
@@ -357,8 +366,7 @@ public class FederationController : ControllerBase
         if (string.IsNullOrEmpty(peer.FederationShareKey)) return BadRequest("Peer has no FederationShareKey configured for us");
 
         // 1. Ask peer to mint.
-        var mintResult = await client.CallIntroduceAsync(peer.BaseUrl, peer.FederationShareKey,
-            payload.ForUrl, 1, payload.Note, ct).ConfigureAwait(false);
+        var mintResult = await client.CallIntroduceAsync(peer, payload.ForUrl, 1, payload.Note, ct).ConfigureAwait(false);
         if (mintResult is null)
             return StatusCode(502, "peer unreachable for /Introduce call");
 
@@ -372,16 +380,18 @@ public class FederationController : ControllerBase
         // 2. Optionally forward to the receiver.
         if (payload.AlsoForward && !string.IsNullOrEmpty(mintResult.ApiKey) && !string.IsNullOrEmpty(mintResult.OurBaseUrl))
         {
-            // We need a key on the receiver to forward through them - typically the receiver
-            // wouldn't have us yet. Skip forwarding if no usable key; admin can paste manually.
-            var receiverKey = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, payload.ForUrl))?.FederationShareKey;
-            if (!string.IsNullOrEmpty(receiverKey))
+            // We need a key on the receiver to forward through them. If we don't have one,
+            // the admin must hand the key over manually.
+            var receiver = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, payload.ForUrl));
+            if (receiver is not null && !string.IsNullOrEmpty(receiver.FederationShareKey))
             {
-                var fwd = await client.CallIntroducedAsync(payload.ForUrl, receiverKey,
-                    mintResult.OurBaseUrl, mintResult.ApiKey, peer.BaseUrl, 1, ct).ConfigureAwait(false);
+                // Forward the issuer's HTTP Basic creds along: if WE need them to reach A,
+                // C will need them too.
+                var fwd = await client.CallIntroducedAsync(receiver, mintResult.OurBaseUrl, mintResult.ApiKey,
+                    peer.BaseUrl, 1, peer.BasicAuthUser, peer.BasicAuthPass, ct).ConfigureAwait(false);
                 return Ok(new { peer = peer.Name, mintResult, forwarded = fwd });
             }
-            return Ok(new { peer = peer.Name, mintResult, forwardSkipped = "no share key for receiver - hand the key over manually" });
+            return Ok(new { peer = peer.Name, mintResult, forwardSkipped = "no share key for receiver, hand the key over manually" });
         }
         return Ok(new { peer = peer.Name, mintResult });
     }
@@ -424,9 +434,20 @@ public class FederationController : ControllerBase
             }
 
             var note = pending.Note ?? "";
-            var keyIdx = note.IndexOf("proposed key: ", StringComparison.Ordinal);
-            if (keyIdx < 0) return BadRequest("malformed pending receiver note");
-            var keyValue = note[(keyIdx + "proposed key: ".Length)..].Trim();
+            // Note format: "forwarded by 'X' :: KEY=k [:: BASIC=user:pass]"
+            string? proposedKey = null, basicUser = null, basicPass = null;
+            foreach (var part in note.Split(" :: ", StringSplitOptions.None))
+            {
+                if (part.StartsWith("KEY=", StringComparison.Ordinal))
+                    proposedKey = part[4..].Trim();
+                else if (part.StartsWith("BASIC=", StringComparison.Ordinal))
+                {
+                    var creds = part[6..];
+                    var colon = creds.IndexOf(':');
+                    if (colon >= 0) { basicUser = creds[..colon]; basicPass = creds[(colon + 1)..]; }
+                }
+            }
+            if (string.IsNullOrEmpty(proposedKey)) return BadRequest("malformed pending receiver note");
 
             lock (Plugin.ConfigWriteLock)
             {
@@ -434,7 +455,9 @@ public class FederationController : ControllerBase
                 {
                     Name = "Introduced - " + pending.ForUrlCanonical,
                     BaseUrl = pending.ForUrlCanonical,
-                    FederationShareKey = keyValue,
+                    FederationShareKey = proposedKey,
+                    BasicAuthUser = basicUser ?? string.Empty,
+                    BasicAuthPass = basicPass ?? string.Empty,
                     Enabled = true
                 });
                 Plugin.Instance?.SaveConfiguration();
@@ -706,6 +729,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         if (server is null || !server.Enabled) return NotFound();
 
         var http = _httpClientFactory.CreateClient();
+        Services.RemoteJellyfinClient.AddBasicAuth(http, server);
         var url = $"{server.BaseUrl.TrimEnd('/')}/Items/{Uri.EscapeDataString(itemId)}/Images/{Uri.EscapeDataString(imageType)}";
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.Add("X-Emby-Token", server.ApiKey);
@@ -944,6 +968,7 @@ h1{{font-weight:400;font-size:1.2rem}}
             var http = _httpClientFactory.CreateClient();
             http.BaseAddress = new Uri(server.BaseUrl.TrimEnd('/'));
             http.DefaultRequestHeaders.Add("X-Emby-Token", server.ApiKey);
+            Services.RemoteJellyfinClient.AddBasicAuth(http, server);
             http.Timeout = TimeSpan.FromSeconds(10);
 
             var url = $"/Search/Hints?searchTerm={Uri.EscapeDataString(searchTerm)}&limit={limit}";
@@ -1022,6 +1047,10 @@ public class IntroducedPayload
     public string? NewPeerKey { get; set; }
     public string? IntroducedBy { get; set; }
     public int HopCount { get; set; } = 1;
+    // When the introducer reaches the new peer through HTTP Basic auth (peer is behind a
+    // reverse proxy), they forward the same credentials so the receiver can also reach it.
+    public string? BasicAuthUser { get; set; }
+    public string? BasicAuthPass { get; set; }
 }
 
 public class ReciprocityRequestPayload

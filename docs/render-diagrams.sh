@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 mkdir -p diagrams
 
-for md in architecture.md protocol.md sync-flow.md; do
+for md in architecture.md protocol.md sync-flow.md introductions.md; do
     base="${md%.md}"
     awk -v base="$base" '
         /^```mermaid$/ { capture=1; idx++; out=sprintf("diagrams/%s-%d.mmd", base, idx); next }
@@ -30,9 +30,9 @@ cat > "$PUPPETEER_CFG" <<JSON
 JSON
 
 for mmd in diagrams/*.mmd; do
-    png="${mmd%.mmd}.png"
-    npx -y -p @mermaid-js/mermaid-cli mmdc -i "$mmd" -o "$png" -p "$PUPPETEER_CFG" -b transparent -t dark 2>&1 | tail -3
+    svg="${mmd%.mmd}.svg"
+    npx -y -p @mermaid-js/mermaid-cli mmdc -i "$mmd" -o "$svg" -p "$PUPPETEER_CFG" -b transparent -t dark 2>&1 | tail -3
 done
 
 rm "$PUPPETEER_CFG"
-echo "Done. PNGs in docs/diagrams/"
+echo "Done. SVGs in docs/diagrams/"

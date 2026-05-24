@@ -111,6 +111,7 @@ public class DiagnosticsService
         try
         {
             var http = _httpClientFactory.CreateClient();
+            RemoteJellyfinClient.AddBasicAuth(http, peer);
             http.Timeout = TimeSpan.FromSeconds(5);
             using var req = new HttpRequestMessage(HttpMethod.Get, streamUrl);
             req.Headers.Add("X-Emby-Token", peer.ApiKey);
