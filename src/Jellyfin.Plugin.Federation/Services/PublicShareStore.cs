@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using MediaBrowser.Common.Configuration;
@@ -81,7 +82,10 @@ public class PublicShareStore
         var usedCount = r.GetInt32(3);
         r.Close();
 
-        if (!string.IsNullOrEmpty(expiresStr) && DateTime.Parse(expiresStr) < DateTime.UtcNow) { tx.Commit(); return null; }
+        // Use RoundtripKind so the stored "O"-formatted timestamp keeps Kind=Utc on parse,
+        // otherwise it round-trips through Local and the comparison to UtcNow drifts by the
+        // host's TZ offset (off-by-hours expiry bugs).
+        if (!string.IsNullOrEmpty(expiresStr) && DateTime.Parse(expiresStr, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind) < DateTime.UtcNow) { tx.Commit(); return null; }
         if (maxUses.HasValue && usedCount >= maxUses.Value) { tx.Commit(); return null; }
 
         using var upd = c.CreateCommand();
@@ -107,10 +111,10 @@ public class PublicShareStore
         {
             Token = token,
             ItemId = r.GetString(0),
-            ExpiresUtc = r.IsDBNull(1) ? null : DateTime.Parse(r.GetString(1)),
+            ExpiresUtc = r.IsDBNull(1) ? null : DateTime.Parse(r.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
             MaxUses = r.IsDBNull(2) ? (int?)null : r.GetInt32(2),
             UsedCount = r.GetInt32(3),
-            CreatedUtc = DateTime.Parse(r.GetString(4))
+            CreatedUtc = DateTime.Parse(r.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
         };
     }
 
