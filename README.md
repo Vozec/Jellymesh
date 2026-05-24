@@ -1,180 +1,177 @@
 # Jellyfin Federation Plugin
 
-Federate multiple Jellyfin servers into a unified library. Share, dedupe, and offer multiple versions of the same media across friends' servers.
+Federate multiple Jellyfin servers into a unified library. Share, dedupe,
+expose multi-version playback, watch-sync, and issue anonymous share
+links — all from one Jellyfin install.
 
 ## Status
 
-Alpha. All MVP milestones (M1–M7) implemented; bandwidth cap, audit log,
-gossip-based delta sync with deletion detection, peer health monitor with
-auto-hide, per-library share keys, and CI in place. Not yet validated
-against a live two-server federation — see [Roadmap](#roadmap).
+**Alpha — feature-complete, code-reviewed (×2), 60 passing tests, CI
+green.** Not yet validated against a live two-server federation in the
+wild; pre-1.0 changes may still tweak the wire protocol. See
+[CHANGELOG](CHANGELOG.md) for shipped detail.
 
 ## Target
 
 - Jellyfin 10.10+ (ABI `10.10.0.0`)
 - .NET 8.0
 
-## Core features (MVP)
+## What it does
 
-1. **Remote server registry** — register N peer Jellyfin servers with URL + API key + user mapping.
-2. **Library sync** — scheduled task pulls remote item catalog via `/Items?Recursive=true&Fields=ProviderIds,MediaSources,MediaStreams,Path,Width,Height,Container,Bitrate,RunTimeTicks`.
-3. **Local cache** — SQLite store: `RemoteItems(ServerId, RemoteItemId, TmdbId, ImdbId, TvdbId, Title, Year, Type, MediaSourceJson, LastSeen)`.
-4. **Dedup matcher** — fuzzy match local↔remote via `ProviderIds` (TMDB > IMDB > TVDB > title+year fallback).
-5. **MediaSource injection** — `IMediaSourceProvider` adds remote sources to local items. Jellyfin's built-in version picker handles UI ("Play 1080p / 4K HDR / Remux").
-6. **Remote-only virtual library** — items present on peers but not locally appear in a dedicated `Friends Library` virtual folder (via `ILibraryPostScanTask` injecting placeholder `BaseItem`s).
-7. **Streaming proxy** — local API endpoint `/Federation/Stream/{server}/{itemId}` that proxies remote HLS/transcode requests, injecting the remote `X-Emby-Token` server-side so API keys never leak to clients.
+```
+┌─────────────── My Jellyfin ────────────────┐    ┌─── Alice's Jellyfin ───┐
+│                                            │    │                        │
+│  My local library                          │    │  Alice's library       │
+│  ┌──────────────────────────┐              │    │  ┌──────────────────┐  │
+│  │  + federated rows:       │  gossip      │◀──▶│  │ Federation       │  │
+│  │  • peer 4K versions      │  digest      │    │  │ plugin (peer)    │  │
+│  │  • Alice's films I lack  │              │    │  └──────────────────┘  │
+│  │  • Bob's anime           │  watch-sync  │    │                        │
+│  └──────────────────────────┘              │    └────────────────────────┘
+│                                            │
+│  Public anon-share URLs                    │    ┌─── Bob's Jellyfin ─────┐
+│  → /Federation/Public/{token}              │◀──▶│  …                     │
+└────────────────────────────────────────────┘    └────────────────────────┘
+```
 
-## Extended features (proposed)
+- **Dedup matching** by TMDB / IMDB / TVDB id with title+year fallback.
+  Same film on multiple peers = one item with multiple `MediaSource`
+  entries (Jellyfin's built-in version picker handles the UI).
+- **Friends Library** virtual channel (`IChannel`) surfaces items peers
+  have that you don't, deduped against your local TMDB ids.
+- **Stream reverse-proxy** keeps the peer's API token server-side and
+  exposes a local `/Federation/Stream/...` URL with optional bandwidth
+  cap (`ThrottledStream`).
+- **Gossip sync** — periodic digest exchange skips full pull when peer
+  hash unchanged; push-based invalidation (`PushInvalidationService`)
+  notifies peers on local add/remove (debounced).
+- **Deletion detection** — diff of cached vs fetched id-set per round.
+- **Health monitor** — 30 s ping, signature-keyed cache invalidation
+  hides offline-peer items from UI immediately.
+- **Watch-state federation** — push (on `UserDataSaved`) + pull (per
+  sync round, merge into a configured local user). Loop-break via
+  `UserDataSaveReason.Import`.
+- **Per-library share keys** — issue a random key per friend × library
+  set; revocable. Schedule windows (IANA-TZ, cross-midnight) + content
+  filters (blocked tags + max parental rating with strict-unknown mode).
+- **Anonymous share links** — per-video URLs, optional expiry +
+  use-cap. `PublicShareStore.TryConsume` is a single atomic SQL
+  statement (UPDATE…WHERE…RETURNING) under WAL + busy_timeout, so
+  concurrent callers respect the cap exactly.
+- **Federated search** — fan-out across peers with per-peer 10 s
+  timeout, results tagged with origin.
+- **Stats dashboard** — peers online/enabled/total, TMDB-only dedup
+  ratio, total streams + bytes, per-peer table, top-streamed items,
+  polls every 30 s from config page.
+- **Audit log** — every served byte recorded per peer / item / user.
+- **Admin endpoints require `Policies.RequiresElevation`** — regular
+  users can't mint share URLs, list peer keys, or trigger sync.
 
-### Quality of life
+See [docs/architecture.md](docs/architecture.md),
+[docs/protocol.md](docs/protocol.md), and
+[docs/sync-flow.md](docs/sync-flow.md) for wire detail.
 
-8. **Federated search** — single search bar searches local + all peers, results tagged with origin server badge.
-9. **Watch state sync** — bidirectional `PlaybackPositionTicks` and `Played` flag sync per matched item (via `IUserDataManager` hooks + reverse API push).
-10. **Unified watchlist / favorites** — favoriting an item on the federation marks it across peers if the same TMDB id exists.
-11. **Continue watching merge** — `Resume` row aggregates progress from all peers, deduped by matched id (latest timestamp wins).
-12. **Cross-peer recommendations** — "Your friend just added X" + "Trending on the federation this week" rows on home screen (via custom `IHomeScreenSection` if Jellyfin exposes it, otherwise REST endpoint consumed by custom web layer).
+## Quick install
 
-### Library management
+```sh
+git clone https://github.com/vozec/JellyfinFederation
+cd JellyfinFederation
+bash build/package.sh
+unzip build/output/Federation_*.zip -d <jellyfin-config>/plugins/
+sudo systemctl restart jellyfin
+```
 
-13. **Quality-aware version sort** — when same movie has 4K HDR Remux + 1080p WEB-DL across peers, show in resolution-desc order; auto-select highest quality client can play.
-14. **Per-peer library scoping** — choose which libraries to share with which peer (e.g., share Movies but not personal home videos). Maps to user-level Jellyfin library access on the remote side.
-15. **Request system** — "I don't have this, ask peer to add" button → posts notification to peer's plugin UI / pushes to *arr stack if integrated.
-16. **Conflict resolver** — when same `TmdbId` has mismatched metadata between peers (different posters, descriptions), pick canonical source by priority rule (newest scrape / specific peer / TMDB direct refresh).
-
-### Subtitles & audio
-
-17. **Subtitle federation** — even if streaming local version, pull subtitle tracks from peers' versions of the same item (handy when a peer has French subs you lack).
-18. **Audio track federation** — same idea, expose remote audio tracks as selectable.
-
-### Trust & control
-
-19. **Bandwidth ceiling per peer** — cap upstream serving to peer (e.g., 10 Mbps so your own viewing isn't starved). Enforced via transcoding bitrate cap on outbound `/Federation/Stream`.
-20. **Schedule windows** — peer allowed to stream only during defined hours (e.g., 18:00–02:00).
-21. **Content filters** — block specific tags/genres/ratings per peer (e.g., hide R-rated from a peer with kid accounts).
-22. **Audit log** — what each peer streamed from you, when, bytes transferred. Stored in plugin SQLite, exportable.
-
-### Resilience
-
-23. **Health monitor** — periodic ping each peer, dashboard shows online/offline/degraded; auto-disable remote sources when peer offline so playback doesn't fail mid-pick.
-24. **Source fallback chain** — if peer A's 4K source fails to start within N seconds, auto-fallback to peer B's 1080p.
-25. **Stream pre-warming** — when a user picks a remote source, pre-roll a small range request to wake the remote transcoder before client connects fully.
-
-### Discovery
-
-26. **Federation stats dashboard** — total federated library size, dedup ratio, top contributors, watch hours per peer.
-27. **"What does my friend have that I don't"** — diff view per peer.
-28. **Cross-instance Trakt/AniList sync** — single Trakt account aggregates scrobbles from federated playback regardless of which peer served the bytes.
-
-### Advanced
-
-29. **Mesh topology** — peer can transitively share peer's peers (A↔B, B↔C → A sees C's catalog through B as relay). Optional, off by default (trust model implications).
-30. **End-to-end encrypted peer link** — WireGuard/Tailscale-style identity instead of bearer token, peer trust via pubkey rotation.
-31. **WebRTC P2P streaming** — bypass server-to-server proxy, browser fetches directly from peer's Jellyfin via authenticated WebRTC data channel (lower latency, less load on local server). Future, requires client-side companion.
+Then Dashboard → Plugins → Federation:
+1. Add a peer (URL + Jellyfin API key for stream reverse-proxy +
+   optional FederationShareKey for catalog access).
+2. Issue a share key to give your friend, scoped to the libraries +
+   hours + ratings you want them to see.
+3. (Optional) Set `PublicBaseUrl` to enable push-invalidation.
 
 ## Architecture
 
 ![Architecture](docs/diagrams/architecture-1.png)
 
-See [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md), and [docs/sync-flow.md](docs/sync-flow.md) for full details. Regenerate diagrams with `bash docs/render-diagrams.sh`.
-
-<details><summary>ASCII fallback</summary>
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│ Local Jellyfin                                               │
-│                                                              │
-│  ┌────────────────────────┐    ┌───────────────────────────┐ │
-│  │ Federation Plugin      │    │ Jellyfin core             │ │
-│  │                        │    │                           │ │
-│  │  ┌──────────────────┐  │    │  ┌────────────────────┐   │ │
-│  │  │ ScheduledTask    │──┼────┼─▶│ Library / Items DB │   │ │
-│  │  │ (periodic sync)  │  │    │  └────────────────────┘   │ │
-│  │  └──────────────────┘  │    │                           │ │
-│  │           │            │    │  ┌────────────────────┐   │ │
-│  │           ▼            │    │  │ MediaSourceManager │◀──┼─┼─┐
-│  │  ┌──────────────────┐  │    │  └────────────────────┘   │ │ │
-│  │  │ Remote cache     │  │    │                           │ │ │
-│  │  │ (SQLite)         │  │    └───────────────────────────┘ │ │
-│  │  └──────────────────┘  │                                  │ │
-│  │           │            │                                  │ │
-│  │           ▼            │                                  │ │
-│  │  ┌──────────────────┐  │                                  │ │
-│  │  │ Matcher          │  │                                  │ │
-│  │  │ (TMDB/IMDB)      │  │                                  │ │
-│  │  └──────────────────┘  │                                  │ │
-│  │           │            │                                  │ │
-│  │           ▼            │                                  │ │
-│  │  ┌──────────────────┐  │                                  │ │
-│  │  │IMediaSourceProvi.│──┼──────────────────────────────────┘ │
-│  │  └──────────────────┘  │                                    │
-│  │                        │                                    │
-│  │  ┌──────────────────┐  │                                    │
-│  │  │ Stream proxy API │◀─┼──── client HLS request             │
-│  │  └──────────────────┘  │                                    │
-│  │           │            │                                    │
-│  └───────────┼────────────┘                                    │
-└──────────────┼─────────────────────────────────────────────────┘
-               │ HTTPS + X-Emby-Token
-               ▼
-        ┌─────────────────┐
-        │ Peer Jellyfin   │
-        └─────────────────┘
-```
-
-</details>
-
-## Build
+## Build & test
 
 ```sh
+# build the plugin DLL (Release)
 dotnet build src/Jellyfin.Plugin.Federation/Jellyfin.Plugin.Federation.csproj -c Release
-```
 
-Or package + install:
-
-```sh
+# package as drop-in zip
 bash build/package.sh
-unzip build/output/Federation_0.1.0.0.zip -d <jellyfin-config>/plugins/
-sudo systemctl restart jellyfin
-```
 
-Then in Jellyfin: Dashboard → Plugins → Federation → configure.
-
-## Test
-
-```sh
+# run unit tests (60 currently)
 bash build/test.sh
 ```
 
-The wrapper picks up a user-local .NET 8 runtime (`~/.dotnet`) if the
-system only ships .NET 10 (Arch / CachyOS case). On Ubuntu / Debian
-where ASP.NET 8 is installed system-wide, just `dotnet test` works.
+The test wrapper picks up a user-local .NET 8 runtime (`~/.dotnet`) if
+the host only ships .NET 10 (Arch / CachyOS case). On Ubuntu / Debian
+with ASP.NET 8 system-wide, just `dotnet test` works. CI runs against
+.NET 8.
+
+## API surface
+
+Admin (requires elevation):
+```
+GET    /Federation/Peers/Status
+GET    /Federation/Stats
+GET    /Federation/Audit/Recent?limit=N
+GET    /Federation/Catalog/Digest
+GET    /Federation/Catalog/Items
+POST   /Federation/Sync/Trigger
+GET    /Federation/Shares
+POST   /Federation/Shares                  (returns key once)
+DELETE /Federation/Shares/{id}
+GET    /Federation/PublicShares
+POST   /Federation/PublicShares            (per-video link)
+DELETE /Federation/PublicShares/{token}
+```
+
+User (authenticated):
+```
+GET    /Federation/Search?searchTerm=X&limit=N
+GET    /Federation/Stream/{server}/{item}?sourceId=X
+GET    /Federation/Image/{server}/{item}/{type}
+```
+
+Peer / anonymous (token-auth):
+```
+GET    /Federation/Share/Catalog/Digest    (X-Federation-Share header)
+GET    /Federation/Share/Catalog/Items     (X-Federation-Share header)
+POST   /Federation/Invalidate              (X-Federation-Share header)
+GET    /Federation/Public/{token}          (HTML viewer)
+GET    /Federation/Public/{token}/Stream   (raw + Range support)
+```
 
 ## Roadmap
 
-Done:
-- [x] M1: scaffold + config UI + remote server CRUD
-- [x] M2: API client + scheduled sync + SQLite cache
-- [x] M3: matcher + `IMediaSourceProvider` injection
-- [x] M4: streaming proxy endpoint
-- [x] M5: remote-only virtual library (`IChannel`)
-- [x] M6: watch state sync (push direction)
-- [x] M7: federated search
-- [x] Health monitor + auto-hide offline peers (#23)
-- [x] Bandwidth cap (#19) + audit log (#22)
-- [x] Gossip digest + deletion detection (anti-spam sync)
-- [x] Per-library share keys
-- [x] Manual sync trigger
-- [x] Mermaid-rendered docs + CI
+Shipped (see [CHANGELOG](CHANGELOG.md) for detail):
 
-Next:
-- [ ] Push-based catalog invalidation (peer notifies on add/remove)
-- [ ] Watch state pull direction
-- [ ] Conflict-aware metadata merge (#16)
-- [ ] Federation stats dashboard panel (#26)
-- [ ] Schedule windows + content filters (#20, #21)
-- [ ] Trakt cross-instance sync (#28)
+- M1–M4: scaffold, sync, dedup, stream proxy
+- M5: remote-only Friends Library (`IChannel`)
+- M6: watch state sync (push + pull, loop-broken via `Import` reason)
+- M7: federated search
+- Bandwidth cap (`ThrottledStream`) + per-stream audit log
+- Gossip digest with deletion detection (anti-spam pull)
+- Push-based catalog invalidation (debounced)
+- Peer health monitor with signature-keyed UI invalidation
+- Per-library share keys with schedule windows + content filters
+- Anonymous video share links (expiring + use-capped, atomic SQL)
+- Federation stats dashboard panel
+- Mermaid-rendered docs + GitHub Actions CI
 
-See [CHANGELOG](CHANGELOG.md) for shipped-feature detail.
+Backlog:
+
+- [ ] Conflict-aware metadata merge (canonical poster/description per
+      matched TMDB across peers)
+- [ ] Request system ("ask peer to add this") with optional *arr push
+- [ ] Push retry / backoff on transient failure
+- [ ] Trakt / AniList cross-instance scrobble aggregation
+- [ ] Subtitle + audio track federation (pull peer's tracks for items
+      we have locally)
+- [ ] Source fallback chain when one peer's high-quality version stalls
+- [ ] Mesh topology (peer-of-peer transitive sharing)
 
 ## License
 
