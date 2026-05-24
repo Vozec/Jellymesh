@@ -122,13 +122,14 @@
                     var status = s.Expired ? '<span style="color:#e44;">expired</span>'
                         : s.Exhausted ? '<span style="color:#e44;">exhausted</span>'
                         : '<span style="color:#4e4;">live</span>';
-                    var uses = s.UsedCount + (s.MaxUses ? '/' + s.MaxUses : '');
+                    var uses = (s.UsedCount || 0) + (s.MaxUses ? '/' + s.MaxUses : '');
                     var exp = s.ExpiresUtc ? new Date(s.ExpiresUtc).toLocaleString() : '∞';
+                    var tokenSafe = esc(s.Token || '');
                     html += '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #333;font-size:0.9em;">';
-                    html += '<strong>' + s.ItemName + '</strong> ' + status + ' — ' + uses + ' use' + (s.MaxUses === 1 ? '' : 's') + ' · expires ' + exp + '<br>';
-                    html += '<a href="/Federation/Public/' + s.Token + '" target="_blank" style="font-family:monospace;font-size:0.8em;">/Federation/Public/' + s.Token + '</a> ';
-                    html += '<button type="button" class="copy-public" data-token="' + s.Token + '">Copy URL</button> ';
-                    html += '<button type="button" class="revoke-public" data-token="' + s.Token + '">Revoke</button>';
+                    html += '<strong>' + esc(s.ItemName) + '</strong> ' + status + ' — ' + uses + ' use' + (s.MaxUses === 1 ? '' : 's') + ' · expires ' + esc(exp) + '<br>';
+                    html += '<a href="/Federation/Public/' + tokenSafe + '" target="_blank" style="font-family:monospace;font-size:0.8em;">/Federation/Public/' + tokenSafe + '</a> ';
+                    html += '<button type="button" class="copy-public" data-token="' + tokenSafe + '">Copy URL</button> ';
+                    html += '<button type="button" class="revoke-public" data-token="' + tokenSafe + '">Revoke</button>';
                     html += '</div>';
                 });
                 document.getElementById('PublicSharesList').innerHTML = html || '<em>No public share links yet.</em>';
@@ -177,15 +178,24 @@
                 var html = '';
                 (shares || []).forEach(function (k) {
                     html += '<div style="padding:0.5em;margin:0.25em 0;border:1px solid #333;">';
-                    html += '<strong>' + (k.Label || '(no label)') + '</strong> — ';
-                    html += 'libs: ' + (k.LibraryIds && k.LibraryIds.length ? k.LibraryIds.join(', ') : '(all)');
-                    html += ' — key: <code>' + k.ApiKeyPreview + '</code> ';
-                    html += '<button type="button" class="copy-share" data-id="' + k.Id + '">Copy full key</button> ';
-                    html += '<button type="button" class="delete-share" data-id="' + k.Id + '">Delete</button>';
+                    html += '<strong>' + esc(k.Label || '(no label)') + '</strong> — ';
+                    html += 'libs: ' + esc(k.LibraryIds && k.LibraryIds.length ? k.LibraryIds.join(', ') : '(all)');
+                    html += ' — key: <code>' + esc(k.ApiKeyPreview) + '</code> ';
+                    html += '<button type="button" class="copy-share" data-id="' + esc(k.Id) + '">Copy full key</button> ';
+                    html += '<button type="button" class="delete-share" data-id="' + esc(k.Id) + '">Delete</button>';
                     html += '</div>';
                 });
                 document.getElementById('SharesList').innerHTML = html || '<em>No share keys yet.</em>';
             });
+        }
+
+        // Escape any string before it's interpolated into innerHTML. ItemName comes from
+        // ILibraryManager (user-controlled media names), peer Name from admin input — both
+        // can contain HTML metachars and trigger stored XSS in the admin UI.
+        function esc(s) {
+            return (s == null ? '' : String(s))
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         function humanBytes(n) {
@@ -205,19 +215,19 @@
                 html += '<table style="width:100%;border-collapse:collapse;font-size:0.85em;">';
                 html += '<tr style="border-bottom:1px solid #444;"><th align="left">Peer</th><th>Online</th><th>RTT</th><th>Items</th><th>Streams</th><th>Bytes</th><th>Last check</th></tr>';
                 (s.Peers || []).forEach(function (p) {
-                    html += '<tr><td>' + (p.Name || '(unnamed)') + '</td>';
+                    html += '<tr><td>' + esc(p.Name || '(unnamed)') + '</td>';
                     html += '<td align="center">' + (p.Online ? '✓' : '✗') + '</td>';
                     html += '<td align="right">' + (p.LastRttMs || 0) + ' ms</td>';
-                    html += '<td align="right">' + p.CachedItemCount + '</td>';
-                    html += '<td align="right">' + p.StreamCount + '</td>';
+                    html += '<td align="right">' + (p.CachedItemCount || 0) + '</td>';
+                    html += '<td align="right">' + (p.StreamCount || 0) + '</td>';
                     html += '<td align="right">' + humanBytes(p.BytesServed) + '</td>';
-                    html += '<td align="right" style="color:#888;">' + (p.LastCheckUtc ? p.LastCheckUtc.substring(11, 19) : '–') + '</td></tr>';
+                    html += '<td align="right" style="color:#888;">' + (p.LastCheckUtc ? esc(p.LastCheckUtc.substring(11, 19)) : '–') + '</td></tr>';
                 });
                 html += '</table>';
                 if (s.TopStreamed && s.TopStreamed.length) {
                     html += '<br><strong>Top streamed items:</strong><br>';
                     s.TopStreamed.slice(0, 5).forEach(function (t) {
-                        html += '<div style="color:#aaa;">' + t.ItemId.substring(0, 12) + '… — ' + t.PlayCount + '× / ' + humanBytes(t.Bytes) + '</div>';
+                        html += '<div style="color:#aaa;">' + esc((t.ItemId || '').substring(0, 12)) + '… — ' + (t.PlayCount || 0) + '× / ' + humanBytes(t.Bytes) + '</div>';
                     });
                 }
                 html += '<div style="color:#666;margin-top:0.5em;font-size:0.75em;">Updated ' + new Date().toLocaleTimeString() + '</div>';

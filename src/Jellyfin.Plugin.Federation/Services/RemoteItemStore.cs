@@ -23,7 +23,7 @@ public class RemoteItemStore
         InitSchema();
     }
 
-    private string ConnString => $"Data Source={_dbPath}";
+    private string ConnString => $"Data Source={_dbPath};Default Timeout=10";
 
     private void InitSchema()
     {
@@ -270,6 +270,19 @@ public class RemoteItemStore
         cmd.CommandText = "SELECT COUNT(DISTINCT tmdb) FROM remote_items WHERE tmdb IS NOT NULL AND tmdb <> '';";
         var v = cmd.ExecuteScalar();
         return v is long l ? (int)l : (v is int i ? i : 0);
+    }
+
+    /// <summary>Returns (rows_with_tmdb, distinct_tmdb_values) — used to compute dedup ratio
+    /// on the TMDB-bearing subset only, so items without TMDB don't inflate the denominator.</summary>
+    public (int TmdbRows, int DistinctTmdb) CountTmdbRowsAndDistinct()
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = @"SELECT COUNT(*), COUNT(DISTINCT tmdb)
+            FROM remote_items WHERE tmdb IS NOT NULL AND tmdb <> '';";
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? (r.GetInt32(0), r.GetInt32(1)) : (0, 0);
     }
 
     public IEnumerable<(Guid PeerId, string ItemId, DateTime Started, DateTime? Ended, long Bytes)> RecentAudits(int limit = 100)

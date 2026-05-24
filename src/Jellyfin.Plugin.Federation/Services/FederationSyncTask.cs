@@ -155,20 +155,30 @@ public class FederationSyncTask : IScheduledTask
             if (localItem is null) continue;
 
             var existing = _userDataManager.GetUserData(user, localItem);
-            // Merge rule: latest LastPlayedDate wins for position/played; favorite is OR.
+            // Merge rules:
+            //   Played:   OR (never demote — peer reporting unplayed doesn't unwatch local)
+            //   Position: only when peer's LastPlayedDate is strictly newer than ours
+            //   Favorite: OR
+            //   PlayCount: max
+            // LastPlayedDate is updated to max(theirs, ours) — never moved backward.
             var incomingNewer = entry.LastPlayedDate.HasValue
                 && (!existing.LastPlayedDate.HasValue || entry.LastPlayedDate > existing.LastPlayedDate);
 
             var changed = false;
-            if (incomingNewer || (!existing.Played && entry.Played))
+            if (entry.Played && !existing.Played)
             {
-                existing.Played = entry.Played;
-                if (entry.LastPlayedDate.HasValue) existing.LastPlayedDate = entry.LastPlayedDate;
+                existing.Played = true;
+                // Promote a played-flag carry-over with a timestamp so future merges can order.
+                if (entry.LastPlayedDate.HasValue && (!existing.LastPlayedDate.HasValue || entry.LastPlayedDate > existing.LastPlayedDate))
+                    existing.LastPlayedDate = entry.LastPlayedDate;
+                else if (!existing.LastPlayedDate.HasValue)
+                    existing.LastPlayedDate = DateTime.UtcNow;
                 changed = true;
             }
             if (incomingNewer && entry.PlaybackPositionTicks != existing.PlaybackPositionTicks)
             {
                 existing.PlaybackPositionTicks = entry.PlaybackPositionTicks;
+                existing.LastPlayedDate = entry.LastPlayedDate; // already known non-null + newer
                 changed = true;
             }
             if (entry.IsFavorite && !existing.IsFavorite)

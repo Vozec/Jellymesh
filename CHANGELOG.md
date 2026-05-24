@@ -93,10 +93,70 @@ Semantic versioning.
   support. Token is 24-byte base64url. `PublicShareStore.TryConsume`
   atomically validates and increments use count in one transaction.
 
+### Added (round 3)
+- Push-based catalog invalidation (`PushInvalidationService`): debounced
+  fire-and-forget POST to peers' `/Federation/Invalidate` on ItemAdded /
+  ItemRemoved. Receiver matches sender by URL → drops cached digest →
+  next sync round re-pulls.
+- Pull-direction watch state sync: each round merges peer's played /
+  in-progress / favorite / play-count into a configured local user, with
+  loop-break via `UserDataSaveReason.Import`.
+- Federation stats endpoint + dashboard UI block (peers online/enabled/
+  total, cache + dedup ratio, total streams + bytes, per-peer table,
+  top-5 streamed items, polls every 30s).
+- ShareKey schedule windows (HH:mm in admin-chosen IANA TZ, cross-
+  midnight supported, zero-length = never) + content filters
+  (blocked tags + max official rating with optional strict-unknown mode).
+- Public-share-links UI in config page: list with status badges,
+  create form, copy URL, revoke.
+
+### Fixed (code-review #2)
+- Admin endpoints now require `Policies.RequiresElevation` — any user
+  could mint public-share URLs / list other admins' tokens / mint peer
+  keys with the old class-level `[Authorize]` only.
+- `PublicShareStore.TryConsume` is now a single `UPDATE … WHERE
+  used_count < max_uses … RETURNING item_id` atomic statement +
+  busy_timeout 10s on the connection — fixes the DEFERRED-tx race
+  where concurrent callers each passed the cap check before either
+  committed, and the `database is locked` throws under contention.
+- `PublicStream` no longer consumes a use per HTTP Range request —
+  consumption moved to viewer-page load (`PublicViewer`), stream
+  endpoint validates token existence + expiry only. Seeking no longer
+  exhausts MaxUses.
+- `PushInvalidationService` dropped ItemUpdated subscription — metadata
+  refreshes no longer flood peers with invalidations.
+- `PushInvalidationService` CAS now checks return value — no more
+  double-fire when an event lands between read and clear.
+- `ScheduleWindow` honours an admin-configured IANA TZ
+  (`ShareKey.ScheduleTimeZoneId`) — was silently UTC inside Docker.
+- `MaxOfficialRating` filter has `StrictUnknownRating` option for
+  childproofing — unknown / regional ratings no longer fall open
+  silently when this is true.
+- `LocalCatalogDigest` content-filter signatures honour the strict flag
+  in both Compute() and List().
+- `PullWatchStateAsync` merge no longer rewrites `LastPlayedDate`
+  backward when peer reports Played=true with an older timestamp.
+  Played carries OR semantics (never demotes); LastPlayedDate is
+  monotonic max.
+- `Stream` and `ProxyImage` validate `itemId` as a Guid + URL-escape
+  before substituting into upstream URL — prevents `..` / `/`
+  traversal in the proxied path.
+- `FetchUserDataAsync` paginated against TotalRecordCount + buffer-based
+  yield to keep dispose in finally — fixes the truncation bug
+  re-introduced from the original FetchItemsAsync (which was already
+  fixed in pass #1) and the resp/doc leak on consumer abort.
+- `FederationStatsService.DedupRatio` math fixed — denominator now uses
+  TMDB-bearing rows only via `CountTmdbRowsAndDistinct`. Previously
+  inflated by items lacking TMDB ids.
+- `FederationStatsService.Build` snapshots `config.RemoteServers` via
+  `ToArray()` before iteration — prevents `InvalidOperationException`
+  on concurrent admin config-save.
+- Stored XSS holes in admin UI closed: `esc()` helper applied to
+  `ItemName`, `Label`, peer `Name`, share token interpolations.
+
 ### Notes
 - Plugin DLL targets `net8.0` (Jellyfin 10.10 ABI `10.10.0.0`).
-- Push-based catalog invalidation deferred — needs a stable peer identity
-  scheme first.
-- Pull-direction watch state sync deferred — would piggyback gossip round.
 - Public share viewer only supports direct-play codecs from the browser
   (`<video>` tag). Transcoding-on-anonymous-link deferred.
+- Push retry on transient failure deferred — gossip-pull is the
+  fallback path and runs on the scheduled interval.

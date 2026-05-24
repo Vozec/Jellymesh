@@ -38,9 +38,12 @@ public class PushInvalidationService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Only structural mutations affect the catalog membership digest. ItemUpdated fires
+        // for every metadata refresh / image scan / NFO touch — subscribing to it floods peers
+        // with invalidations on routine background work and was the whole anti-pattern the
+        // gossip digest was supposed to avoid.
         _libraryManager.ItemAdded += OnItemMutated;
         _libraryManager.ItemRemoved += OnItemMutated;
-        _libraryManager.ItemUpdated += OnItemMutated;
         _logger.LogInformation("Federation push-invalidation hook armed.");
 
         try
@@ -57,9 +60,12 @@ public class PushInvalidationService : BackgroundService
                 var elapsed = DateTime.UtcNow - new DateTime(lastDirty, DateTimeKind.Utc);
                 if (elapsed < debounce) continue;
 
-                // Atomically clear; if another event fires between read and clear we'll
-                // catch it on the next tick.
-                Interlocked.CompareExchange(ref _dirtyTicks, 0, lastDirty);
+                // Atomically clear. If a fresh event landed between read and CAS, the CAS
+                // no-ops (returns the new value) and we skip this tick — the next tick will
+                // pick up the new mark with its own debounce window. Without this check we'd
+                // fire a redundant POST AND re-fire on the next tick.
+                if (Interlocked.CompareExchange(ref _dirtyTicks, 0, lastDirty) != lastDirty)
+                    continue;
 
                 if (config is null || string.IsNullOrWhiteSpace(config.PublicBaseUrl))
                 {
@@ -74,7 +80,6 @@ public class PushInvalidationService : BackgroundService
         {
             _libraryManager.ItemAdded -= OnItemMutated;
             _libraryManager.ItemRemoved -= OnItemMutated;
-            _libraryManager.ItemUpdated -= OnItemMutated;
         }
     }
 

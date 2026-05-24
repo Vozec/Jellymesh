@@ -22,7 +22,10 @@ public class PublicShareStore
         InitSchema();
     }
 
-    private string ConnString => $"Data Source={_dbPath}";
+    // Default Timeout (Microsoft.Data.Sqlite connection-string param) is the busy_timeout
+    // applied to each command — without it, concurrent UPDATEs to a single DB throw
+    // SQLITE_BUSY immediately instead of waiting briefly for the writer lock.
+    private string ConnString => $"Data Source={_dbPath};Default Timeout=10";
 
     private void InitSchema()
     {
@@ -62,40 +65,30 @@ public class PublicShareStore
         return token;
     }
 
-    /// <summary>Atomically validate + increment used_count. Returns the item id if allowed, null if denied.</summary>
+    /// <summary>Atomically validate + increment used_count. Returns the item id if allowed,
+    /// null if denied (token unknown, expired, or capped). The cap check is folded INTO the
+    /// UPDATE WHERE clause so two concurrent callers can't both pass a pre-check before
+    /// either commits — SQLite serialises the writes and the second one's predicate then
+    /// sees the incremented row.</summary>
     public string? TryConsume(string token)
     {
         using var c = new SqliteConnection(ConnString);
         c.Open();
-        using var tx = c.BeginTransaction();
 
-        using var sel = c.CreateCommand();
-        sel.Transaction = tx;
-        sel.CommandText = "SELECT item_id, expires_utc, max_uses, used_count FROM public_shares WHERE token = $t;";
-        sel.Parameters.AddWithValue("$t", token);
-        using var r = sel.ExecuteReader();
-        if (!r.Read()) { tx.Commit(); return null; }
+        // Single statement: increment-iff-allowed, returning the item id if the row was
+        // touched. SQLite 3.35+ supports RETURNING (shipped with Microsoft.Data.Sqlite 8).
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = @"UPDATE public_shares
+            SET used_count = used_count + 1
+            WHERE token = $t
+              AND (max_uses IS NULL OR used_count < max_uses)
+              AND (expires_utc IS NULL OR expires_utc > $now)
+            RETURNING item_id;";
+        cmd.Parameters.AddWithValue("$t", token);
+        cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("O"));
 
-        var itemId = r.GetString(0);
-        var expiresStr = r.IsDBNull(1) ? null : r.GetString(1);
-        var maxUses = r.IsDBNull(2) ? (int?)null : r.GetInt32(2);
-        var usedCount = r.GetInt32(3);
-        r.Close();
-
-        // Use RoundtripKind so the stored "O"-formatted timestamp keeps Kind=Utc on parse,
-        // otherwise it round-trips through Local and the comparison to UtcNow drifts by the
-        // host's TZ offset (off-by-hours expiry bugs).
-        if (!string.IsNullOrEmpty(expiresStr) && DateTime.Parse(expiresStr, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind) < DateTime.UtcNow) { tx.Commit(); return null; }
-        if (maxUses.HasValue && usedCount >= maxUses.Value) { tx.Commit(); return null; }
-
-        using var upd = c.CreateCommand();
-        upd.Transaction = tx;
-        upd.CommandText = "UPDATE public_shares SET used_count = used_count + 1 WHERE token = $t;";
-        upd.Parameters.AddWithValue("$t", token);
-        upd.ExecuteNonQuery();
-
-        tx.Commit();
-        return itemId;
+        var result = cmd.ExecuteScalar();
+        return result is null or DBNull ? null : (string)result;
     }
 
     public ShareInfo? GetInfo(string token)

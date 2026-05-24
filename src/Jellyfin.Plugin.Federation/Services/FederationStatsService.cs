@@ -26,7 +26,9 @@ public class FederationStatsService
         long totalBytes = 0;
         int totalStreams = 0;
 
-        foreach (var server in config.RemoteServers)
+        // Snapshot the live list once — concurrent admin saves can mutate RemoteServers via
+        // /System/Configuration/Plugins endpoint while we iterate, otherwise.
+        foreach (var server in config.RemoteServers.ToArray())
         {
             var h = _health.Get(server.Id);
             var totals = _store.PeerStreamTotals(server.Id);
@@ -48,19 +50,22 @@ public class FederationStatsService
         }
 
         var totalCachedItems = perPeerCount.Values.Sum();
-        var distinctTmdb = _store.CountDistinctTmdbAcrossPeers();
-        // Dedup ratio: of all cached entries, what fraction is duplicate (same TMDB on multiple peers).
-        // 0 = every item unique, 1 = pure duplication. Useful to see how much your peers overlap.
-        var dedupRatio = totalCachedItems > 0
-            ? 1.0 - ((double)distinctTmdb / totalCachedItems)
+        // Only TMDB-bearing rows can contribute to dedup detection at all. Comparing distinct
+        // TMDB to all rows (including items lacking a TMDB id — episodes, anime, home media,
+        // not-yet-matched items) wildly inflates the ratio. Use TMDB-bearing rows on both sides.
+        var (tmdbRowCount, distinctTmdb) = _store.CountTmdbRowsAndDistinct();
+        var dedupRatio = tmdbRowCount > 0
+            ? 1.0 - ((double)distinctTmdb / tmdbRowCount)
             : 0.0;
+
+        var serversSnapshot = config.RemoteServers.ToArray();
 
         return new FederationStats
         {
             GeneratedUtc = DateTime.UtcNow,
-            PeerCount = config.RemoteServers.Count,
-            EnabledPeerCount = config.RemoteServers.Count(s => s.Enabled),
-            OnlinePeerCount = config.RemoteServers.Count(s => _health.Get(s.Id).Online),
+            PeerCount = serversSnapshot.Length,
+            EnabledPeerCount = serversSnapshot.Count(s => s.Enabled),
+            OnlinePeerCount = serversSnapshot.Count(s => _health.Get(s.Id).Online),
             TotalCachedItems = totalCachedItems,
             DistinctItems = distinctTmdb,
             DedupRatio = Math.Round(dedupRatio, 4),

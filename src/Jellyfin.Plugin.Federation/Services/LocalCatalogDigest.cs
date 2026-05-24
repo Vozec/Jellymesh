@@ -21,10 +21,11 @@ public class LocalCatalogDigest
 
     public DigestSnapshot Compute(IReadOnlyCollection<string>? libraryIdFilter = null,
         IReadOnlyCollection<string>? blockedTags = null,
-        string? maxOfficialRating = null)
+        string? maxOfficialRating = null,
+        bool strictUnknownRating = false)
     {
         var query = BuildQuery(libraryIdFilter);
-        var items = _libraryManager.GetItemList(query).Where(i => PassesContentFilter(i, blockedTags, maxOfficialRating));
+        var items = _libraryManager.GetItemList(query).Where(i => PassesContentFilter(i, blockedTags, maxOfficialRating, strictUnknownRating));
 
         var ids = new List<(string Id, DateTime Modified)>();
         foreach (var item in items)
@@ -48,11 +49,12 @@ public class LocalCatalogDigest
 
     public IReadOnlyList<CatalogItemRef> List(IReadOnlyCollection<string>? libraryIdFilter = null,
         IReadOnlyCollection<string>? blockedTags = null,
-        string? maxOfficialRating = null)
+        string? maxOfficialRating = null,
+        bool strictUnknownRating = false)
     {
         var query = BuildQuery(libraryIdFilter);
         return _libraryManager.GetItemList(query)
-            .Where(i => PassesContentFilter(i, blockedTags, maxOfficialRating))
+            .Where(i => PassesContentFilter(i, blockedTags, maxOfficialRating, strictUnknownRating))
             .Select(i => new CatalogItemRef(i.Id.ToString("N"), i.Name, i.GetType().Name, i.DateLastSaved))
             .ToList();
     }
@@ -74,21 +76,35 @@ public class LocalCatalogDigest
         return query;
     }
 
-    private static bool PassesContentFilter(BaseItem item, IReadOnlyCollection<string>? blockedTags, string? maxRating)
+    private static bool PassesContentFilter(BaseItem item, IReadOnlyCollection<string>? blockedTags, string? maxRating, bool strictUnknown)
     {
         if (blockedTags is { Count: > 0 } && item.Tags is { Length: > 0 })
         {
             foreach (var t in item.Tags)
                 if (blockedTags.Contains(t, StringComparer.OrdinalIgnoreCase)) return false;
         }
-        if (!string.IsNullOrEmpty(maxRating) && !string.IsNullOrEmpty(item.OfficialRating))
+        if (!string.IsNullOrEmpty(maxRating))
         {
-            // Use Jellyfin's parental-rating numeric scale: higher = stricter. We allow items
-            // whose rating numeric ≤ max's numeric. If we can't resolve a number, fall open
-            // (don't hide), matching Jellyfin's own user-content-rating leniency.
-            var itemScore = ParentalScore(item.OfficialRating);
             var maxScore = ParentalScore(maxRating);
-            if (itemScore.HasValue && maxScore.HasValue && itemScore.Value > maxScore.Value) return false;
+            if (string.IsNullOrEmpty(item.OfficialRating))
+            {
+                // Unrated item + max set: fall open by default (matches Jellyfin's leniency).
+                // strictUnknown forces hide — required for genuine kid-safe scoping where
+                // "untagged" must not bypass the filter.
+                if (strictUnknown) return false;
+            }
+            else
+            {
+                var itemScore = ParentalScore(item.OfficialRating);
+                if (itemScore is null)
+                {
+                    if (strictUnknown) return false; // unrecognised rating + strict = hide
+                }
+                else if (maxScore.HasValue && itemScore.Value > maxScore.Value)
+                {
+                    return false;
+                }
+            }
         }
         return true;
     }

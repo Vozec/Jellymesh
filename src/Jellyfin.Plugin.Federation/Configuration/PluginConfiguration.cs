@@ -57,12 +57,22 @@ public class ShareKey
 
     public string? AllowedHoursEnd { get; set; }
 
+    /// <summary>IANA tz id ("Europe/Paris") interpreted as the wall-clock reference for
+    /// AllowedHoursStart/End. Empty = host local TZ (which is UTC in most Docker setups —
+    /// admins who type "18:00" expecting local should set this explicitly).</summary>
+    public string? ScheduleTimeZoneId { get; set; }
+
     /// <summary>Items carrying any of these tags are hidden from the share.</summary>
     public List<string> BlockedTags { get; set; } = new();
 
-    /// <summary>Max official rating shown. Items strictly above (or unrated when set strict)
+    /// <summary>Max official rating shown. Items with a recognised rating strictly above
     /// are hidden. Format: Jellyfin rating string (e.g. "PG-13", "TV-MA"). Null = no filter.</summary>
     public string? MaxOfficialRating { get; set; }
+
+    /// <summary>When true and MaxOfficialRating is set, hide any item whose rating string
+    /// can't be parsed (regional ratings like "16+", "FSK-12", "BBFC-18"). Default false
+    /// matches Jellyfin's own leniency — but for childproofing this should be true.</summary>
+    public bool StrictUnknownRating { get; set; } = false;
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 

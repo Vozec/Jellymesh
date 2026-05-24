@@ -137,37 +137,71 @@ public class RemoteJellyfinClient
     {
         if (string.IsNullOrEmpty(server.RemoteUserId)) yield break;
 
+        const int pageSize = 500;
+        var http = BuildClient(server);
+
         // Two passes — peer's API doesn't have an "IsPlayed OR IsResumable" filter, so we
-        // union the two queries client-side. Played alone is usually the big set;
-        // in-progress adds the resume positions.
+        // union the two queries client-side. Each is paginated against TotalRecordCount;
+        // same defensive pagination as FetchItemsAsync to avoid silently truncating peers
+        // with >pageSize watched items.
         foreach (var filter in new[] { "IsPlayed=true", "IsResumable=true" })
         {
-            var url = $"/Users/{server.RemoteUserId}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=UserData,ProviderIds&{filter}&Limit=2000";
-            HttpResponseMessage? resp = null;
-            JsonDocument? doc = null;
-            try
+            var start = 0;
+            int total;
+            do
             {
-                var http = BuildClient(server);
-                resp = await http.GetAsync(url, ct).ConfigureAwait(false);
-                if (!resp.IsSuccessStatusCode) continue;
-                var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "FetchUserData[{Filter}] failed for {Peer}", filter, server.Name);
-                resp?.Dispose(); doc?.Dispose();
-                continue;
-            }
+                var url = $"/Users/{server.RemoteUserId}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=UserData,ProviderIds&{filter}&StartIndex={start}&Limit={pageSize}";
+                int pageYielded;
+                (total, pageYielded) = await EnumerateUserDataPageAsync(http, url, ct, this).ConfigureAwait(false);
+                if (pageYielded == 0) break;
+                start += pageYielded;
 
-            if (!doc.RootElement.TryGetProperty("Items", out var items)) { resp.Dispose(); doc.Dispose(); continue; }
+                // Yield happens by re-enumerating — done above via helper that puts entries
+                // into a buffer, then we drain here. (yields are forbidden directly inside
+                // catch blocks; the helper avoids that constraint.)
+                foreach (var entry in _pendingBuffer) yield return entry;
+                _pendingBuffer.Clear();
+            } while (start < total);
+        }
+    }
 
+    // Re-used scratch buffer per call. Safe because FetchUserDataAsync is invoked sequentially
+    // by FederationSyncTask (one sync round at a time).
+    private readonly List<RemoteUserDataEntry> _pendingBuffer = new();
+
+    private static async Task<(int Total, int Yielded)> EnumerateUserDataPageAsync(
+        HttpClient http, string url, CancellationToken ct, RemoteJellyfinClient self)
+    {
+        HttpResponseMessage? resp = null;
+        JsonDocument? doc = null;
+        try
+        {
+            resp = await http.GetAsync(url, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (0, 0);
+            var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+
+            var total = doc.RootElement.TryGetProperty("TotalRecordCount", out var t) && t.ValueKind == JsonValueKind.Number
+                ? t.GetInt32() : 0;
+            if (!doc.RootElement.TryGetProperty("Items", out var items)) return (total, 0);
+
+            var yielded = 0;
             foreach (var el in items.EnumerateArray())
             {
                 var entry = MapUserData(el);
-                if (entry is not null) yield return entry;
+                if (entry is not null) { self._pendingBuffer.Add(entry); yielded++; }
             }
-            resp.Dispose(); doc.Dispose();
+            return (total, yielded);
+        }
+        catch (Exception ex)
+        {
+            self._logger.LogDebug(ex, "FetchUserData page failed for {Url}", url);
+            return (0, 0);
+        }
+        finally
+        {
+            doc?.Dispose();
+            resp?.Dispose();
         }
     }
 

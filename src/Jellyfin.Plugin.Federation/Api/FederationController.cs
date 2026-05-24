@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Common.Api;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -34,12 +35,15 @@ public class FederationController : ControllerBase
     {
         var config = Plugin.Instance?.Configuration;
         if (config is null) return NotFound();
+        // Item ids on Jellyfin are GUIDs. Reject anything else so `..` or `/` can't traverse
+        // the peer's URL space under our auth context.
+        if (!Guid.TryParseExact(itemId, "N", out _) && !Guid.TryParse(itemId, out _)) return BadRequest();
 
         var server = config.RemoteServers.FirstOrDefault(s => s.Id.ToString("N") == serverId);
         if (server is null || !server.Enabled) return NotFound();
 
         var http = _httpClientFactory.CreateClient();
-        var upstream = $"{server.BaseUrl.TrimEnd('/')}/Videos/{itemId}/stream?static=true";
+        var upstream = $"{server.BaseUrl.TrimEnd('/')}/Videos/{Uri.EscapeDataString(itemId)}/stream?static=true";
         if (!string.IsNullOrEmpty(sourceId))
             upstream += $"&MediaSourceId={Uri.EscapeDataString(sourceId)}";
 
@@ -142,6 +146,7 @@ public class FederationController : ControllerBase
     // === Anonymous, expiring, use-capped video share links ===
     // Admin generates one per video; hands the URL to anyone. No Jellyfin auth required to view.
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpPost("PublicShares")]
     public IActionResult CreatePublicShare([FromBody] CreatePublicShareRequest req,
         [FromServices] Services.PublicShareStore store,
@@ -158,6 +163,7 @@ public class FederationController : ControllerBase
         return Ok(new { token, url, expiresUtc = req.ExpiresUtc, maxUses = req.MaxUses, itemName = item.Name });
     }
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpDelete("PublicShares/{token}")]
     public IActionResult RevokePublicShare(string token, [FromServices] Services.PublicShareStore store)
     {
@@ -165,6 +171,7 @@ public class FederationController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("PublicShares")]
     public IActionResult ListPublicShares([FromServices] Services.PublicShareStore store,
         [FromServices] MediaBrowser.Controller.Library.ILibraryManager library)
@@ -193,11 +200,22 @@ public class FederationController : ControllerBase
     public IActionResult PublicViewer(string token, [FromServices] Services.PublicShareStore store,
         [FromServices] MediaBrowser.Controller.Library.ILibraryManager library)
     {
-        var info = store.GetInfo(token);
-        if (info is null) return NotFound();
-        if (info.ExpiresUtc.HasValue && info.ExpiresUtc < DateTime.UtcNow) return StatusCode(410, "Link expired");
-        if (info.MaxUses.HasValue && info.UsedCount >= info.MaxUses.Value) return StatusCode(410, "Link exhausted");
+        // Consume happens HERE — viewer-page load = one use. The /Stream endpoint below
+        // re-validates (token exists + not expired) but does NOT decrement, so the same
+        // viewer can seek / re-request Range without exhausting the cap.
+        // Trade-off: a viewer reloading the page = another consume. Considered acceptable
+        // — admin's mental model is "5 people can watch", not "5 byte ranges".
+        var consumedItemId = store.TryConsume(token);
+        if (consumedItemId is null)
+        {
+            // Distinguish 'unknown' from 'denied' via GetInfo for a friendlier 410 message.
+            var probe = store.GetInfo(token);
+            if (probe is null) return NotFound();
+            if (probe.ExpiresUtc.HasValue && probe.ExpiresUtc < DateTime.UtcNow) return StatusCode(410, "Link expired");
+            return StatusCode(410, "Link exhausted");
+        }
 
+        var info = store.GetInfo(token)!;
         if (!Guid.TryParse(info.ItemId, out var g)) return NotFound();
         var item = library.GetItemById(g);
         var name = item?.Name ?? "(unknown)";
@@ -219,20 +237,21 @@ h1{{font-weight:400;font-size:1.2rem}}
 
     [AllowAnonymous]
     [HttpGet("Public/{token}/Stream")]
-    public async Task<IActionResult> PublicStream(string token,
+    public IActionResult PublicStream(string token,
         [FromServices] Services.PublicShareStore store,
-        [FromServices] MediaBrowser.Controller.Library.ILibraryManager library,
-        CancellationToken ct)
+        [FromServices] MediaBrowser.Controller.Library.ILibraryManager library)
     {
-        var itemId = store.TryConsume(token);
-        if (itemId is null) return StatusCode(410, "Link invalid, expired, or exhausted");
+        // Validate-only path — does NOT consume. Consumption already happened in the viewer
+        // page load (PublicViewer above). Each browser Range request hits us once; we just
+        // confirm the token still exists and hasn't expired, then serve bytes.
+        var info = store.GetInfo(token);
+        if (info is null) return NotFound();
+        if (info.ExpiresUtc.HasValue && info.ExpiresUtc < DateTime.UtcNow) return StatusCode(410, "Link expired");
 
-        if (!Guid.TryParse(itemId, out var g)) return NotFound();
+        if (!Guid.TryParse(info.ItemId, out var g)) return NotFound();
         var item = library.GetItemById(g);
         if (item is null || string.IsNullOrEmpty(item.Path) || !System.IO.File.Exists(item.Path)) return NotFound();
 
-        // Stream the raw file with Range support so the browser <video> tag can seek.
-        // Direct-play codecs only — no transcoding from this endpoint.
         var contentType = GuessContentType(item.Path);
         return PhysicalFile(item.Path, contentType, enableRangeProcessing: true);
     }
@@ -256,11 +275,12 @@ h1{{font-weight:400;font-size:1.2rem}}
     {
         var config = Plugin.Instance?.Configuration;
         if (config is null) return NotFound();
+        if (!Guid.TryParseExact(itemId, "N", out _) && !Guid.TryParse(itemId, out _)) return BadRequest();
         var server = config.RemoteServers.FirstOrDefault(s => s.Id.ToString("N") == serverId);
         if (server is null || !server.Enabled) return NotFound();
 
         var http = _httpClientFactory.CreateClient();
-        var url = $"{server.BaseUrl.TrimEnd('/')}/Items/{itemId}/Images/{Uri.EscapeDataString(imageType)}";
+        var url = $"{server.BaseUrl.TrimEnd('/')}/Items/{Uri.EscapeDataString(itemId)}/Images/{Uri.EscapeDataString(imageType)}";
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.Add("X-Emby-Token", server.ApiKey);
 
@@ -273,18 +293,22 @@ h1{{font-weight:400;font-size:1.2rem}}
         return new EmptyResult();
     }
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Audit/Recent")]
     public IActionResult RecentAudit([FromQuery] int limit = 100)
         => Ok(_store.RecentAudits(Math.Clamp(limit, 1, 1000)));
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Stats")]
     public IActionResult Stats([FromServices] Services.FederationStatsService stats)
         => Ok(stats.Build());
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Catalog/Digest")]
     public IActionResult CatalogDigest([FromServices] Services.LocalCatalogDigest digest)
         => Ok(digest.Compute());
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Catalog/Items")]
     public IActionResult CatalogItems([FromServices] Services.LocalCatalogDigest digest)
         => Ok(digest.List());
@@ -317,8 +341,22 @@ h1{{font-weight:400;font-size:1.2rem}}
     }
 
     private static bool IsWithinSchedule(Configuration.ShareKey key)
-        => Services.ScheduleWindow.IsWithin(key.AllowedHoursStart, key.AllowedHoursEnd, DateTime.Now.TimeOfDay);
+    {
+        var tzId = key.ScheduleTimeZoneId;
+        TimeZoneInfo tz;
+        try
+        {
+            tz = string.IsNullOrEmpty(tzId) ? TimeZoneInfo.Local : TimeZoneInfo.FindSystemTimeZoneById(tzId);
+        }
+        catch
+        {
+            tz = TimeZoneInfo.Local; // unknown id → fall back, don't lock peers out
+        }
+        var nowInTz = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz).TimeOfDay;
+        return Services.ScheduleWindow.IsWithin(key.AllowedHoursStart, key.AllowedHoursEnd, nowInTz);
+    }
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Shares")]
     public IActionResult ListShares()
     {
@@ -335,6 +373,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         }));
     }
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpPost("Shares")]
     public IActionResult CreateShare([FromBody] CreateShareRequest req)
     {
@@ -357,6 +396,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         return Ok(new { key.Id, key.Label, key.ApiKey, key.LibraryIds });
     }
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpDelete("Shares/{id}")]
     public IActionResult DeleteShare(Guid id)
     {
@@ -394,6 +434,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         return Convert.ToHexString(bytes);
     }
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpPost("Sync/Trigger")]
     public IActionResult TriggerSync([FromServices] MediaBrowser.Model.Tasks.ITaskManager taskManager)
     {
@@ -401,6 +442,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         return Ok(new { triggered = true });
     }
 
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Peers/Status")]
     public IActionResult PeersStatus([FromServices] Services.PeerHealthRegistry health)
     {
