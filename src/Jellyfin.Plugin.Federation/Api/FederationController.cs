@@ -221,6 +221,272 @@ public class FederationController : ControllerBase
         return requests.UpdateStatus(id, status) ? NoContent() : NotFound();
     }
 
+    // === Introductions (delegated key issuance) ===
+    // See docs/introductions.md for the trust model.
+
+    [AllowAnonymous]
+    [HttpPost("Introduce")]
+    public IActionResult ReceiveIntroduce([FromHeader(Name = "X-Federation-Share")] string? shareKey,
+        [FromBody] IntroducePayload payload,
+        [FromServices] Services.IntroductionService intro)
+    {
+        if (payload is null || string.IsNullOrWhiteSpace(payload.ForUrl)) return BadRequest("ForUrl required");
+        var key = ResolveShareKey(shareKey);
+        if (key is null) return Unauthorized();
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        var result = intro.TryMint(config, key, payload.ForUrl.Trim(), Math.Max(1, payload.HopCount), payload.Note);
+        return result.Status switch
+        {
+            "minted" or "minted-after-pending" or "existing" => Ok(new { result.Status, result.ApiKey, result.OurBaseUrl, result.IntroductionId }),
+            "pending" => Accepted(new { result.Status, result.IntroductionId, result.Reason }),
+            "self" or "bad-url" or "hop-cap" => BadRequest(new { result.Status, result.Reason }),
+            "already-peer" => Conflict(new { result.Status, result.Reason }),
+            "rate-limit-hour" or "rate-limit-day" => StatusCode(429, new { result.Status, result.Reason }),
+            _ => StatusCode(403, new { result.Status, result.Reason })
+        };
+    }
+
+    [AllowAnonymous]
+    [HttpPost("Introduced")]
+    public IActionResult ReceiveIntroduced([FromHeader(Name = "X-Federation-Share")] string? shareKey,
+        [FromBody] IntroducedPayload payload,
+        [FromServices] Services.IntroductionStore store)
+    {
+        if (payload is null || string.IsNullOrWhiteSpace(payload.NewPeerUrl) || string.IsNullOrWhiteSpace(payload.NewPeerKey))
+            return BadRequest("NewPeerUrl and NewPeerKey required");
+        var key = ResolveShareKey(shareKey);
+        if (key is null) return Unauthorized();
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        var newCanon = Services.PeerUrl.Canonicalize(payload.NewPeerUrl);
+        if (newCanon is null) return BadRequest("NewPeerUrl must include http:// or https:// scheme");
+        if (string.Equals(newCanon, Services.PeerUrl.Canonicalize(config.PublicBaseUrl), StringComparison.Ordinal))
+            return BadRequest("would introduce ourselves");
+        if (config.RemoteServers.Any(s => Services.PeerUrl.SameHost(s.BaseUrl, newCanon)))
+            return Conflict("already a peer");
+
+        // Always queue for admin approval — adding a new RemoteServer is high-trust.
+        // Per-key auto-accept on receiver could be added later but Request is the safe default.
+        var introducerLabel = string.IsNullOrEmpty(payload.IntroducedBy) ? key.Label : payload.IntroducedBy;
+        var note = $"forwarded by '{introducerLabel}' — proposed key: {payload.NewPeerKey}";
+        var id = store.InsertPending("receiver", newCanon, key.Id, Math.Max(1, payload.HopCount), note);
+        _logger.LogInformation("Received introduction for {Url} forwarded by {Introducer} — pending admin approval (id {Id})", newCanon, introducerLabel, id);
+        return Accepted(new { introductionId = id, status = "pending-approval" });
+    }
+
+    [AllowAnonymous]
+    [HttpPost("RequestReciprocalKey")]
+    public IActionResult ReceiveReciprocityRequest([FromHeader(Name = "X-Federation-Share")] string? shareKey,
+        [FromBody] ReciprocityRequestPayload payload)
+    {
+        if (payload is null || string.IsNullOrWhiteSpace(payload.FromBaseUrl)) return BadRequest("FromBaseUrl required");
+        var key = ResolveShareKey(shareKey);
+        if (key is null) return Unauthorized();
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        if (config.Reciprocity != Configuration.ReciprocityMode.AutoAcceptReciprocal)
+            return StatusCode(403, new { reason = "this node does not auto-accept reciprocal keys; manual exchange required" });
+
+        // Anti-spoof: when the calling key is bound, the request URL must match the bind.
+        // Without a bound key, we'd be open to "give me a free key" from any share-key holder.
+        if (!string.IsNullOrEmpty(key.BoundPeerUrl) && !Services.PeerUrl.SameHost(key.BoundPeerUrl, payload.FromBaseUrl))
+            return StatusCode(403, "FromBaseUrl does not match bound peer URL of the presenting key");
+
+        var fromCanon = Services.PeerUrl.Canonicalize(payload.FromBaseUrl);
+        if (fromCanon is null) return BadRequest("FromBaseUrl must include http:// or https:// scheme");
+
+        var tpl = config.ReciprocityTemplate;
+        var newKey = new Configuration.ShareKey
+        {
+            ApiKey = GenerateApiKey(),
+            Label = $"Reciprocal → {fromCanon}",
+            BoundPeerUrl = fromCanon,
+            IssuedForUrl = fromCanon,
+            LibraryIds = tpl.LibraryIds.ToList(),
+            BlockedTags = tpl.BlockedTags.ToList(),
+            MaxOfficialRating = tpl.MaxOfficialRating,
+            StrictUnknownRating = tpl.StrictUnknownRating,
+            CanRequestIntroductions = false,
+            MintMode = Configuration.IntroductionMintMode.Reject,
+            Enabled = true
+        };
+        config.Shares.Add(newKey);
+        Plugin.Instance?.SaveConfiguration();
+        _logger.LogInformation("Auto-minted reciprocal key for {Url}", fromCanon);
+        return Ok(new { newKey.ApiKey, OurBaseUrl = Services.PeerUrl.Canonicalize(config.PublicBaseUrl) });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("IntroducePeer")]
+    public async Task<IActionResult> IntroducePeer([FromBody] AdminIntroducePayload payload,
+        [FromServices] Services.RemoteJellyfinClient client,
+        [FromServices] Services.IntroductionStore store,
+        CancellationToken ct)
+    {
+        if (payload is null || !Guid.TryParse(payload.PeerId, out var peerId) || string.IsNullOrWhiteSpace(payload.ForUrl))
+            return BadRequest("PeerId and ForUrl required");
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        var peer = config.RemoteServers.FirstOrDefault(s => s.Id == peerId);
+        if (peer is null) return NotFound("Unknown peer");
+        if (string.IsNullOrEmpty(peer.FederationShareKey)) return BadRequest("Peer has no FederationShareKey configured for us");
+
+        // 1. Ask peer to mint.
+        var mintResult = await client.CallIntroduceAsync(peer.BaseUrl, peer.FederationShareKey,
+            payload.ForUrl, 1, payload.Note, ct).ConfigureAwait(false);
+        if (mintResult is null)
+            return StatusCode(502, "peer unreachable for /Introduce call");
+
+        // Audit our outbound action.
+        store.InsertActiveOrGet("forwarder", Services.PeerUrl.Canonicalize(payload.ForUrl) ?? payload.ForUrl,
+            introducerKeyId: null, issuedKeyId: null, hopCount: 1, note: $"sent to {peer.Name}");
+
+        if (!mintResult.Status.StartsWith("minted") && mintResult.Status != "existing")
+            return Ok(new { peer = peer.Name, mintResult });
+
+        // 2. Optionally forward to the receiver.
+        if (payload.AlsoForward && !string.IsNullOrEmpty(mintResult.ApiKey) && !string.IsNullOrEmpty(mintResult.OurBaseUrl))
+        {
+            // We need a key on the receiver to forward through them — typically the receiver
+            // wouldn't have us yet. Skip forwarding if no usable key; admin can paste manually.
+            var receiverKey = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, payload.ForUrl))?.FederationShareKey;
+            if (!string.IsNullOrEmpty(receiverKey))
+            {
+                var fwd = await client.CallIntroducedAsync(payload.ForUrl, receiverKey,
+                    mintResult.OurBaseUrl, mintResult.ApiKey, peer.BaseUrl, 1, ct).ConfigureAwait(false);
+                return Ok(new { peer = peer.Name, mintResult, forwarded = fwd });
+            }
+            return Ok(new { peer = peer.Name, mintResult, forwardSkipped = "no share key for receiver — hand the key over manually" });
+        }
+        return Ok(new { peer = peer.Name, mintResult });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Introductions/{role}")]
+    public IActionResult ListIntroductions(string role, [FromQuery] string? status,
+        [FromServices] Services.IntroductionStore store)
+    {
+        if (role is not ("issuer" or "forwarder" or "receiver")) return BadRequest("role must be issuer|forwarder|receiver");
+        return Ok(store.ListByRole(role, status));
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("Introductions/{id}/Approve")]
+    public IActionResult ApproveIntroduction(long id,
+        [FromServices] Services.IntroductionService intro,
+        [FromServices] Services.IntroductionStore store)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        var pending = store.Get(id);
+        if (pending is null) return NotFound();
+
+        if (pending.OurRole == "issuer")
+        {
+            var result = intro.ApprovePending(config, id);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+        if (pending.OurRole == "receiver")
+        {
+            // The note holds "forwarded by ... — proposed key: <key>". Parse it back.
+            var note = pending.Note ?? "";
+            var keyIdx = note.IndexOf("proposed key: ", StringComparison.Ordinal);
+            if (keyIdx < 0) return BadRequest("malformed pending receiver note");
+            var keyValue = note[(keyIdx + "proposed key: ".Length)..].Trim();
+
+            // Add the new peer to RemoteServers (FederationShareKey only — ApiKey for stream
+            // proxy is a separate higher-trust grant the admin must paste manually later).
+            config.RemoteServers.Add(new Configuration.RemoteServer
+            {
+                Name = "Introduced — " + pending.ForUrlCanonical,
+                BaseUrl = pending.ForUrlCanonical,
+                FederationShareKey = keyValue,
+                Enabled = true
+            });
+            Plugin.Instance?.SaveConfiguration();
+            store.Activate(id, Guid.Empty); // marker — no specific key id for receiver role
+            return Ok(new { status = "added-to-peers" });
+        }
+        return BadRequest("cannot approve forwarder-role rows (they're audit only)");
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("Introductions/{id}/Revoke")]
+    public IActionResult RevokeIntroduction(long id, [FromQuery] bool cascade,
+        [FromServices] Services.IntroductionStore store)
+    {
+        var intro = store.Get(id);
+        if (intro is null) return NotFound();
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        // Revoke the underlying issued key, if any.
+        if (intro.IssuedKeyId.HasValue && intro.IssuedKeyId.Value != Guid.Empty)
+        {
+            config.Shares.RemoveAll(k => k.Id == intro.IssuedKeyId.Value);
+        }
+        store.UpdateStatus(id, "revoked");
+
+        var cascaded = 0;
+        if (cascade && intro.IssuedKeyId.HasValue)
+        {
+            // Find downstream intros that used the revoked key as their introducer, recursively.
+            // Bounded — total intros count is small.
+            var toVisit = new System.Collections.Generic.Queue<Guid>();
+            toVisit.Enqueue(intro.IssuedKeyId.Value);
+            while (toVisit.Count > 0)
+            {
+                var keyId = toVisit.Dequeue();
+                foreach (var child in store.ListIssuedBy(keyId))
+                {
+                    if (child.IssuedKeyId.HasValue && child.IssuedKeyId.Value != Guid.Empty)
+                    {
+                        config.Shares.RemoveAll(k => k.Id == child.IssuedKeyId.Value);
+                        toVisit.Enqueue(child.IssuedKeyId.Value);
+                    }
+                    store.UpdateStatus(child.Id, "revoked");
+                    cascaded++;
+                }
+            }
+        }
+
+        Plugin.Instance?.SaveConfiguration();
+        return Ok(new { status = "revoked", cascaded });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Introductions/{id}/CascadePreview")]
+    public IActionResult CascadePreview(long id, [FromServices] Services.IntroductionStore store)
+    {
+        var intro = store.Get(id);
+        if (intro is null) return NotFound();
+        if (!intro.IssuedKeyId.HasValue) return Ok(new { cascade = Array.Empty<object>() });
+
+        var collected = new System.Collections.Generic.List<object>();
+        var toVisit = new System.Collections.Generic.Queue<Guid>();
+        toVisit.Enqueue(intro.IssuedKeyId.Value);
+        while (toVisit.Count > 0)
+        {
+            var keyId = toVisit.Dequeue();
+            foreach (var child in store.ListIssuedBy(keyId))
+            {
+                collected.Add(new { child.Id, child.ForUrlCanonical, child.IssuedKeyId });
+                if (child.IssuedKeyId.HasValue && child.IssuedKeyId.Value != Guid.Empty)
+                    toVisit.Enqueue(child.IssuedKeyId.Value);
+            }
+        }
+        return Ok(new { cascade = collected });
+    }
+
     // === Push-invalidation receiver ===
     // A peer ran the local PushInvalidationService and is telling us their catalog changed.
     // They identify themselves via X-Federation-Share (a key WE issued) + their public URL.
@@ -690,6 +956,34 @@ public class IncomingRequestPayload
     public string? Title { get; set; }
     public int? Year { get; set; }
     public string? Note { get; set; }
+}
+
+public class IntroducePayload
+{
+    public string? ForUrl { get; set; }
+    public int HopCount { get; set; } = 1;
+    public string? Note { get; set; }
+}
+
+public class IntroducedPayload
+{
+    public string? NewPeerUrl { get; set; }
+    public string? NewPeerKey { get; set; }
+    public string? IntroducedBy { get; set; }
+    public int HopCount { get; set; } = 1;
+}
+
+public class ReciprocityRequestPayload
+{
+    public string? FromBaseUrl { get; set; }
+}
+
+public class AdminIntroducePayload
+{
+    public string? PeerId { get; set; }
+    public string? ForUrl { get; set; }
+    public string? Note { get; set; }
+    public bool AlsoForward { get; set; } = true;
 }
 
 public class SendRequestPayload

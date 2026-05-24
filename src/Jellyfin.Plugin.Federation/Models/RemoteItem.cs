@@ -3,6 +3,21 @@ using System.Collections.Generic;
 
 namespace Jellyfin.Plugin.Federation.Models;
 
+public class IntroduceCallResult
+{
+    public int HttpStatus { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? ApiKey { get; set; }
+    public string? OurBaseUrl { get; set; }
+}
+
+public class ForwardResult
+{
+    public bool Reachable { get; set; }
+    public bool Accepted { get; set; }
+    public int HttpStatus { get; set; }
+}
+
 public class RemoteUserDataEntry
 {
     public Dictionary<string, string> ProviderIds { get; set; } = new();

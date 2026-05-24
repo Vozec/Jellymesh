@@ -225,6 +225,84 @@ public class RemoteJellyfinClient
         return entry;
     }
 
+    /// <summary>Ask a peer to mint a federation share key on behalf of a third party (introducer flow).</summary>
+    public async Task<IntroduceCallResult?> CallIntroduceAsync(string peerBaseUrl, string peerFederationKey,
+        string forUrl, int hopCount, string? note, CancellationToken ct)
+    {
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(15);
+            var url = $"{peerBaseUrl.TrimEnd('/')}/Federation/Introduce";
+            var body = JsonContent.Create(new { ForUrl = forUrl, HopCount = hopCount, Note = note });
+            using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = body };
+            req.Headers.Add("X-Federation-Share", peerFederationKey);
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode && resp.StatusCode != System.Net.HttpStatusCode.Accepted)
+            {
+                _logger.LogWarning("CallIntroduce to {Peer} returned {Status}", peerBaseUrl, (int)resp.StatusCode);
+                return new IntroduceCallResult { Status = ((int)resp.StatusCode).ToString(), HttpStatus = (int)resp.StatusCode };
+            }
+            using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            var root = doc.RootElement;
+            return new IntroduceCallResult
+            {
+                HttpStatus = (int)resp.StatusCode,
+                Status = root.TryGetProperty("Status", out var st) ? st.GetString() ?? "" : "",
+                ApiKey = root.TryGetProperty("ApiKey", out var k) ? k.GetString() : null,
+                OurBaseUrl = root.TryGetProperty("OurBaseUrl", out var b) ? b.GetString() : null
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CallIntroduce to {Peer} threw", peerBaseUrl);
+            return null;
+        }
+    }
+
+    /// <summary>Forward a freshly-issued key to its target (the receiver), after probing they run the plugin.</summary>
+    public async Task<ForwardResult> CallIntroducedAsync(string targetBaseUrl, string ourKeyOnTarget, string newPeerUrl,
+        string newPeerKey, string introducedBy, int hopCount, CancellationToken ct)
+    {
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(10);
+
+            // Probe: GET /Federation/Catalog/Digest. Anything that isn't network-failure
+            // means the plugin is present (401 = wrong key, 200 = OK, 403 = schedule blocked, etc.)
+            using var probeReq = new HttpRequestMessage(HttpMethod.Get, $"{targetBaseUrl.TrimEnd('/')}/Federation/Catalog/Digest");
+            try
+            {
+                using var probeResp = await http.SendAsync(probeReq, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                // Any HTTP response = plugin alive (or a proxy in front). Proceed with forward.
+            }
+            catch (Exception)
+            {
+                return new ForwardResult { Reachable = false };
+            }
+
+            using var req = new HttpRequestMessage(HttpMethod.Post,
+                $"{targetBaseUrl.TrimEnd('/')}/Federation/Introduced");
+            req.Headers.Add("X-Federation-Share", ourKeyOnTarget);
+            req.Content = JsonContent.Create(new
+            {
+                NewPeerUrl = newPeerUrl,
+                NewPeerKey = newPeerKey,
+                IntroducedBy = introducedBy,
+                HopCount = hopCount
+            });
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            return new ForwardResult { Reachable = true, HttpStatus = (int)resp.StatusCode, Accepted = resp.IsSuccessStatusCode };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CallIntroduced to {Target} threw", targetBaseUrl);
+            return new ForwardResult { Reachable = false };
+        }
+    }
+
     /// <summary>Send a "please add this" request to a peer using their FederationShareKey.</summary>
     public async Task<bool> SendRequestAsync(RemoteServer server, string ourPublicBaseUrl,
         string? tmdbId, string? imdbId, string? title, int? year, string? note, CancellationToken ct)
