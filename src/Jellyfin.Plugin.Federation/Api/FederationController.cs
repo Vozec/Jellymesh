@@ -254,6 +254,10 @@ h1{{font-weight:400;font-size:1.2rem}}
     public IActionResult RecentAudit([FromQuery] int limit = 100)
         => Ok(_store.RecentAudits(Math.Clamp(limit, 1, 1000)));
 
+    [HttpGet("Stats")]
+    public IActionResult Stats([FromServices] Services.FederationStatsService stats)
+        => Ok(stats.Build());
+
     [HttpGet("Catalog/Digest")]
     public IActionResult CatalogDigest([FromServices] Services.LocalCatalogDigest digest)
         => Ok(digest.Compute());

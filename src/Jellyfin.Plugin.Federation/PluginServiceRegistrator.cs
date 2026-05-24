@@ -16,6 +16,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<RemoteJellyfinClient>();
         serviceCollection.AddSingleton<LocalCatalogDigest>();
         serviceCollection.AddSingleton<PublicShareStore>();
+        serviceCollection.AddSingleton<FederationStatsService>();
         serviceCollection.AddSingleton<IMediaSourceProvider, FederatedMediaSourceProvider>();
         serviceCollection.AddHostedService<WatchStateSyncService>();
         serviceCollection.AddSingleton<PeerHealthRegistry>();

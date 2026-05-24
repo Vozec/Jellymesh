@@ -52,6 +52,9 @@
                     <input is="emby-input" type="number" id="OutboundBitrateCapBps" min="0" />
                 </div>
 
+                <h3>Federation status</h3>
+                <div id="FedStats" style="font-family:monospace;font-size:0.9em;padding:0.5em;background:#1a1a1a;border:1px solid #333;">Loading…</div>
+
                 <h3>Peer servers (outbound — servers I read from)</h3>
                 <div id="RemoteServersList"></div>
                 <button is="emby-button" type="button" id="AddRemoteServer" class="raised">
@@ -112,6 +115,43 @@
             });
         }
 
+        function humanBytes(n) {
+            if (!n) return '0 B';
+            var u = ['B','KB','MB','GB','TB']; var i = 0;
+            while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+            return n.toFixed(i === 0 ? 0 : 1) + ' ' + u[i];
+        }
+
+        var statsTimer = null;
+        function renderStats() {
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Stats'), type: 'GET', dataType: 'json' }).then(function (s) {
+                var html = '';
+                html += '<strong>Peers:</strong> ' + s.OnlinePeerCount + ' online / ' + s.EnabledPeerCount + ' enabled / ' + s.PeerCount + ' total<br>';
+                html += '<strong>Cache:</strong> ' + s.TotalCachedItems + ' rows · ' + s.DistinctItems + ' distinct items · dedup ratio ' + (s.DedupRatio * 100).toFixed(1) + '%<br>';
+                html += '<strong>Streams:</strong> ' + s.TotalStreamCount + ' served · ' + humanBytes(s.TotalBytesServed) + ' total<br><br>';
+                html += '<table style="width:100%;border-collapse:collapse;font-size:0.85em;">';
+                html += '<tr style="border-bottom:1px solid #444;"><th align="left">Peer</th><th>Online</th><th>RTT</th><th>Items</th><th>Streams</th><th>Bytes</th><th>Last check</th></tr>';
+                (s.Peers || []).forEach(function (p) {
+                    html += '<tr><td>' + (p.Name || '(unnamed)') + '</td>';
+                    html += '<td align="center">' + (p.Online ? '✓' : '✗') + '</td>';
+                    html += '<td align="right">' + (p.LastRttMs || 0) + ' ms</td>';
+                    html += '<td align="right">' + p.CachedItemCount + '</td>';
+                    html += '<td align="right">' + p.StreamCount + '</td>';
+                    html += '<td align="right">' + humanBytes(p.BytesServed) + '</td>';
+                    html += '<td align="right" style="color:#888;">' + (p.LastCheckUtc ? p.LastCheckUtc.substring(11, 19) : '–') + '</td></tr>';
+                });
+                html += '</table>';
+                if (s.TopStreamed && s.TopStreamed.length) {
+                    html += '<br><strong>Top streamed items:</strong><br>';
+                    s.TopStreamed.slice(0, 5).forEach(function (t) {
+                        html += '<div style="color:#aaa;">' + t.ItemId.substring(0, 12) + '… — ' + t.PlayCount + '× / ' + humanBytes(t.Bytes) + '</div>';
+                    });
+                }
+                html += '<div style="color:#666;margin-top:0.5em;font-size:0.75em;">Updated ' + new Date().toLocaleTimeString() + '</div>';
+                document.getElementById('FedStats').innerHTML = html;
+            });
+        }
+
         document.querySelector('#FederationConfigPage').addEventListener('viewshow', function () {
             ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
                 document.getElementById('SyncIntervalMinutes').value = config.SyncIntervalMinutes;
@@ -123,6 +163,13 @@
                 renderServers(config.RemoteServers);
                 renderShares();
             });
+            renderStats();
+            if (statsTimer) clearInterval(statsTimer);
+            statsTimer = setInterval(renderStats, 30000);
+        });
+
+        document.querySelector('#FederationConfigPage').addEventListener('viewbeforehide', function () {
+            if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
         });
 
         document.getElementById('CreateShare').addEventListener('click', function () {

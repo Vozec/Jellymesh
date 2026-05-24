@@ -224,6 +224,54 @@ public class RemoteItemStore
         cmd.ExecuteNonQuery();
     }
 
+    public IReadOnlyList<(Guid PeerId, int ItemCount)> CountItemsPerPeer()
+    {
+        var result = new List<(Guid, int)>();
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT server_id, COUNT(*) FROM remote_items GROUP BY server_id;";
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) result.Add((Guid.Parse(r.GetString(0)), r.GetInt32(1)));
+        return result;
+    }
+
+    public (long TotalBytes, int StreamCount) PeerStreamTotals(Guid peerId)
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT COALESCE(SUM(bytes_served), 0), COUNT(*) FROM stream_audit WHERE peer_id = $p;";
+        cmd.Parameters.AddWithValue("$p", peerId.ToString());
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? (r.GetInt64(0), r.GetInt32(1)) : (0L, 0);
+    }
+
+    public IReadOnlyList<(Guid PeerId, string ItemId, int PlayCount, long Bytes)> TopStreamedItems(int limit = 10)
+    {
+        var rows = new List<(Guid, string, int, long)>();
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = @"SELECT peer_id, item_id, COUNT(*), COALESCE(SUM(bytes_served), 0)
+            FROM stream_audit GROUP BY peer_id, item_id ORDER BY 3 DESC LIMIT $l;";
+        cmd.Parameters.AddWithValue("$l", limit);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            rows.Add((Guid.Parse(r.GetString(0)), r.GetString(1), r.GetInt32(2), r.GetInt64(3)));
+        return rows;
+    }
+
+    public int CountDistinctTmdbAcrossPeers()
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(DISTINCT tmdb) FROM remote_items WHERE tmdb IS NOT NULL AND tmdb <> '';";
+        var v = cmd.ExecuteScalar();
+        return v is long l ? (int)l : (v is int i ? i : 0);
+    }
+
     public IEnumerable<(Guid PeerId, string ItemId, DateTime Started, DateTime? Ended, long Bytes)> RecentAudits(int limit = 100)
     {
         using var c = new SqliteConnection(ConnString);
