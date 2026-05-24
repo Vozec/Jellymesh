@@ -73,6 +73,23 @@
                     <span>Generate public link</span>
                 </button>
 
+                <h3>Requests</h3>
+                <p>Ask peers to add a film, or triage what peers asked from you.</p>
+                <h4 style="margin:0.5em 0 0.2em 0;">Send a request</h4>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.5em;max-width:60em;">
+                    <select id="ReqPeerSelect"><option value="">— pick a peer —</option></select>
+                    <input type="text" id="ReqTmdb" placeholder="TMDB id (or title below)" />
+                    <input type="text" id="ReqTitle" placeholder="Title" />
+                    <input type="number" id="ReqYear" placeholder="Year" min="1900" max="2100" />
+                </div>
+                <input type="text" id="ReqNote" placeholder="Note (optional)" style="margin-top:0.4em;width:100%;max-width:60em;" />
+                <button is="emby-button" type="button" id="SendRequest" class="raised" style="margin-top:0.3em;"><span>Send</span></button>
+
+                <h4 style="margin:1em 0 0.2em 0;">Inbound (peers asked you)</h4>
+                <div id="ReqInList"></div>
+                <h4 style="margin:1em 0 0.2em 0;">Outbound (you asked peers)</h4>
+                <div id="ReqOutList"></div>
+
                 <h3>Share keys (inbound — what I expose to friends)</h3>
                 <p>Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
                 <div id="SharesList"></div>
@@ -114,6 +131,87 @@
             });
             document.getElementById('RemoteServersList').innerHTML = html;
         }
+
+        function statusBadge(status) {
+            var color = ({
+                pending: '#dd0', accepted: '#4e4', declined: '#e44',
+                dismissed: '#888', 'send-failed': '#e44'
+            })[status] || '#aaa';
+            return '<span style="color:' + color + ';">' + esc(status) + '</span>';
+        }
+
+        function fmtRequest(r, showActions) {
+            var who = esc(r.Title || r.TmdbId || r.ImdbId || '(unknown)');
+            var meta = (r.Year ? ' (' + r.Year + ')' : '') + (r.TmdbId ? ' tmdb:' + esc(r.TmdbId) : '');
+            var peer = r.PeerUrl ? ' from <code>' + esc(r.PeerUrl) + '</code>' : '';
+            var when = r.RequestedUtc ? ' · ' + new Date(r.RequestedUtc).toLocaleString() : '';
+            var note = r.Note ? '<div style="color:#aaa;font-size:0.85em;margin-top:0.2em;">' + esc(r.Note) + '</div>' : '';
+            var html = '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #333;font-size:0.9em;">';
+            html += '<strong>' + who + '</strong>' + meta + peer + when + ' — ' + statusBadge(r.Status) + note;
+            if (showActions && r.Status === 'pending') {
+                html += '<div style="margin-top:0.3em;">';
+                ['accepted','declined','dismissed'].forEach(function (st) {
+                    html += '<button type="button" class="req-set" data-id="' + r.Id + '" data-status="' + st + '">' + st + '</button> ';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function renderRequests() {
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Requests/in'), type: 'GET', dataType: 'json' }).then(function (rows) {
+                document.getElementById('ReqInList').innerHTML =
+                    (rows && rows.length) ? rows.map(function (r) { return fmtRequest(r, true); }).join('') : '<em>No inbound requests.</em>';
+            });
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Requests/out'), type: 'GET', dataType: 'json' }).then(function (rows) {
+                document.getElementById('ReqOutList').innerHTML =
+                    (rows && rows.length) ? rows.map(function (r) { return fmtRequest(r, false); }).join('') : '<em>No outbound requests.</em>';
+            });
+        }
+
+        function populatePeerSelect() {
+            ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
+                var sel = document.getElementById('ReqPeerSelect');
+                var html = '<option value="">— pick a peer —</option>';
+                (config.RemoteServers || []).filter(function (s) { return s.Enabled; }).forEach(function (s) {
+                    html += '<option value="' + esc(s.Id) + '">' + esc(s.Name || s.BaseUrl) + '</option>';
+                });
+                sel.innerHTML = html;
+            });
+        }
+
+        document.getElementById('SendRequest').addEventListener('click', function () {
+            var peerId = document.getElementById('ReqPeerSelect').value;
+            if (!peerId) { alert('Pick a peer'); return; }
+            var tmdb = document.getElementById('ReqTmdb').value.trim() || null;
+            var title = document.getElementById('ReqTitle').value.trim() || null;
+            if (!tmdb && !title) { alert('Provide either a TMDB id or a title'); return; }
+            var year = parseInt(document.getElementById('ReqYear').value, 10);
+            var note = document.getElementById('ReqNote').value.trim() || null;
+            ApiClient.fetch({
+                url: ApiClient.getUrl('Federation/SendRequest'),
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ PeerId: peerId, TmdbId: tmdb, Title: title, Year: isNaN(year) ? null : year, Note: note })
+            }).then(function () {
+                ['ReqTmdb','ReqTitle','ReqYear','ReqNote'].forEach(function (id) { document.getElementById(id).value = ''; });
+                renderRequests();
+            }).catch(function () {
+                alert('Send failed — peer may not have a FederationShareKey configured for you, or your PublicBaseUrl is unset.');
+            });
+        });
+
+        document.addEventListener('click', function (e) {
+            if (e.target.classList && e.target.classList.contains('req-set')) {
+                var id = e.target.dataset.id;
+                var st = e.target.dataset.status;
+                ApiClient.fetch({
+                    url: ApiClient.getUrl('Federation/Requests/' + id + '/Status?status=' + st),
+                    type: 'POST'
+                }).then(renderRequests);
+            }
+        });
 
         function renderPublicShares() {
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/PublicShares'), type: 'GET', dataType: 'json' }).then(function (shares) {
@@ -246,6 +344,8 @@
                 renderServers(config.RemoteServers);
                 renderShares();
                 renderPublicShares();
+                renderRequests();
+                populatePeerSelect();
             });
             renderStats();
             if (statsTimer) clearInterval(statsTimer);
