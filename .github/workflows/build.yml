@@ -26,15 +26,36 @@ jobs:
       - name: Build (Release)
         run: dotnet build JellyfinFederation.sln -c Release --no-restore /warnaserror
 
-      - name: Test
-        run: dotnet test tests/Jellyfin.Plugin.Federation.Tests/Jellyfin.Plugin.Federation.Tests.csproj -c Release --no-build --logger "trx;LogFileName=test-results.trx"
+      - name: Test (with coverage)
+        run: |
+          dotnet test tests/Jellyfin.Plugin.Federation.Tests/Jellyfin.Plugin.Federation.Tests.csproj \
+            -c Release --no-build \
+            --logger "trx;LogFileName=test-results.trx" \
+            --collect:"XPlat Code Coverage" \
+            --results-directory tests/Jellyfin.Plugin.Federation.Tests/TestResults
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          dotnet tool install -g dotnet-reportgenerator-globaltool
+          reportgenerator \
+            -reports:tests/**/coverage.cobertura.xml \
+            -targetdir:coverage-report \
+            -reporttypes:"MarkdownSummaryGithub;TextSummary"
+          cat coverage-report/Summary.txt
+          if [ -f "coverage-report/SummaryGithub.md" ]; then
+            cat coverage-report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: tests/**/TestResults/*.trx
+          path: |
+            tests/**/TestResults/*.trx
+            tests/**/coverage.cobertura.xml
+            coverage-report/
 
       - name: Package plugin zip
         run: bash build/package.sh
@@ -44,6 +65,21 @@ jobs:
         with:
           name: federation-plugin
           path: build/output/*.zip
+
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: dotnet format --verify-no-changes
+        # Whitespace + ordering only — does not lint correctness. Catches drift before
+        # it accumulates across the codebase.
+        run: dotnet format JellyfinFederation.sln --verify-no-changes --severity warn || (echo "::warning::dotnet format would change files — run 'dotnet format' locally before commit" && exit 0)
 
   diagrams:
     runs-on: ubuntu-latest
