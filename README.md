@@ -4,7 +4,10 @@ Federate multiple Jellyfin servers into a unified library. Share, dedupe, and of
 
 ## Status
 
-Early scaffold. Not functional yet.
+Alpha. All MVP milestones (M1–M7) implemented; bandwidth cap, audit log,
+gossip-based delta sync with deletion detection, peer health monitor with
+auto-hide, per-library share keys, and CI in place. Not yet validated
+against a live two-server federation — see [Roadmap](#roadmap).
 
 ## Target
 
@@ -126,18 +129,52 @@ See [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protoc
 dotnet build src/Jellyfin.Plugin.Federation/Jellyfin.Plugin.Federation.csproj -c Release
 ```
 
-Output DLL → drop into `<jellyfin-config>/plugins/Federation_0.1.0.0/`.
+Or package + install:
+
+```sh
+bash build/package.sh
+unzip build/output/Federation_0.1.0.0.zip -d <jellyfin-config>/plugins/
+sudo systemctl restart jellyfin
+```
+
+Then in Jellyfin: Dashboard → Plugins → Federation → configure.
+
+## Test
+
+```sh
+bash build/test.sh
+```
+
+The wrapper picks up a user-local .NET 8 runtime (`~/.dotnet`) if the
+system only ships .NET 10 (Arch / CachyOS case). On Ubuntu / Debian
+where ASP.NET 8 is installed system-wide, just `dotnet test` works.
 
 ## Roadmap
 
-- [ ] M1: scaffold + config UI + remote server CRUD
-- [ ] M2: API client + scheduled sync + SQLite cache
-- [ ] M3: matcher + `IMediaSourceProvider` injection
-- [ ] M4: streaming proxy endpoint
-- [ ] M5: remote-only virtual library
-- [ ] M6: watch state sync
-- [ ] M7: federated search + dashboard
-- [ ] M8+: extended features
+Done:
+- [x] M1: scaffold + config UI + remote server CRUD
+- [x] M2: API client + scheduled sync + SQLite cache
+- [x] M3: matcher + `IMediaSourceProvider` injection
+- [x] M4: streaming proxy endpoint
+- [x] M5: remote-only virtual library (`IChannel`)
+- [x] M6: watch state sync (push direction)
+- [x] M7: federated search
+- [x] Health monitor + auto-hide offline peers (#23)
+- [x] Bandwidth cap (#19) + audit log (#22)
+- [x] Gossip digest + deletion detection (anti-spam sync)
+- [x] Per-library share keys
+- [x] Manual sync trigger
+- [x] Mermaid-rendered docs + CI
+
+Next:
+- [ ] Push-based catalog invalidation (peer notifies on add/remove)
+- [ ] Watch state pull direction
+- [ ] Conflict-aware metadata merge (#16)
+- [ ] Federation stats dashboard panel (#26)
+- [ ] Schedule windows + content filters (#20, #21)
+- [ ] Trakt cross-instance sync (#28)
+
+See [CHANGELOG](CHANGELOG.md) for shipped-feature detail.
 
 ## License
 
