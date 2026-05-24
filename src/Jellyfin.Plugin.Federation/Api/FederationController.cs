@@ -231,6 +231,8 @@ public class FederationController : ControllerBase
         [FromServices] Services.IntroductionService intro)
     {
         if (payload is null || string.IsNullOrWhiteSpace(payload.ForUrl)) return BadRequest("ForUrl required");
+        if (payload.ForUrl.Length > 512) return BadRequest("ForUrl too long");
+        if (payload.Note is { Length: > 2048 }) return BadRequest("Note too long");
         var key = ResolveShareKey(shareKey);
         if (key is null) return Unauthorized();
 
@@ -257,6 +259,8 @@ public class FederationController : ControllerBase
     {
         if (payload is null || string.IsNullOrWhiteSpace(payload.NewPeerUrl) || string.IsNullOrWhiteSpace(payload.NewPeerKey))
             return BadRequest("NewPeerUrl and NewPeerKey required");
+        if (payload.NewPeerUrl.Length > 512 || payload.NewPeerKey.Length > 256) return BadRequest("payload field too long");
+        if (payload.IntroducedBy is { Length: > 256 }) return BadRequest("IntroducedBy too long");
         var key = ResolveShareKey(shareKey);
         if (key is null) return Unauthorized();
 
@@ -294,33 +298,46 @@ public class FederationController : ControllerBase
         if (config.Reciprocity != Configuration.ReciprocityMode.AutoAcceptReciprocal)
             return StatusCode(403, new { reason = "this node does not auto-accept reciprocal keys; manual exchange required" });
 
-        // Anti-spoof: when the calling key is bound, the request URL must match the bind.
-        // Without a bound key, we'd be open to "give me a free key" from any share-key holder.
-        if (!string.IsNullOrEmpty(key.BoundPeerUrl) && !Services.PeerUrl.SameHost(key.BoundPeerUrl, payload.FromBaseUrl))
+        // Anti-spoof: the calling key MUST be bound. Without bound URL, any share-key holder
+        // could claim any FromBaseUrl and get a free reciprocal key. Reject unbound keys
+        // outright when reciprocity is automated.
+        if (string.IsNullOrEmpty(key.BoundPeerUrl))
+            return StatusCode(403, "reciprocal-key requests require a bound share key for anti-spoof");
+        if (!Services.PeerUrl.SameHost(key.BoundPeerUrl, payload.FromBaseUrl))
             return StatusCode(403, "FromBaseUrl does not match bound peer URL of the presenting key");
 
         var fromCanon = Services.PeerUrl.Canonicalize(payload.FromBaseUrl);
         if (fromCanon is null) return BadRequest("FromBaseUrl must include http:// or https:// scheme");
 
         var tpl = config.ReciprocityTemplate;
-        var newKey = new Configuration.ShareKey
+        lock (Plugin.ConfigWriteLock)
         {
-            ApiKey = GenerateApiKey(),
-            Label = $"Reciprocal → {fromCanon}",
-            BoundPeerUrl = fromCanon,
-            IssuedForUrl = fromCanon,
-            LibraryIds = tpl.LibraryIds.ToList(),
-            BlockedTags = tpl.BlockedTags.ToList(),
-            MaxOfficialRating = tpl.MaxOfficialRating,
-            StrictUnknownRating = tpl.StrictUnknownRating,
-            CanRequestIntroductions = false,
-            MintMode = Configuration.IntroductionMintMode.Reject,
-            Enabled = true
-        };
-        config.Shares.Add(newKey);
-        Plugin.Instance?.SaveConfiguration();
-        _logger.LogInformation("Auto-minted reciprocal key for {Url}", fromCanon);
-        return Ok(new { newKey.ApiKey, OurBaseUrl = Services.PeerUrl.Canonicalize(config.PublicBaseUrl) });
+            // Dedup: returning the same key on retry prevents the Shares list from growing
+            // unboundedly when a peer re-requests reciprocity.
+            var existing = config.Shares.FirstOrDefault(s =>
+                s.Enabled && s.IssuedForUrl == fromCanon);
+            if (existing is not null)
+                return Ok(new { existing.ApiKey, OurBaseUrl = Services.PeerUrl.Canonicalize(config.PublicBaseUrl) });
+
+            var newKey = new Configuration.ShareKey
+            {
+                ApiKey = GenerateApiKey(),
+                Label = $"Reciprocal to {fromCanon}",
+                BoundPeerUrl = fromCanon,
+                IssuedForUrl = fromCanon,
+                LibraryIds = tpl.LibraryIds.ToList(),
+                BlockedTags = tpl.BlockedTags.ToList(),
+                MaxOfficialRating = tpl.MaxOfficialRating,
+                StrictUnknownRating = tpl.StrictUnknownRating,
+                CanRequestIntroductions = false,
+                MintMode = Configuration.IntroductionMintMode.Reject,
+                Enabled = true
+            };
+            config.Shares.Add(newKey);
+            Plugin.Instance?.SaveConfiguration();
+            _logger.LogInformation("Auto-minted reciprocal key for {Url}", fromCanon);
+            return Ok(new { newKey.ApiKey, OurBaseUrl = Services.PeerUrl.Canonicalize(config.PublicBaseUrl) });
+        }
     }
 
     [Authorize(Policy = Policies.RequiresElevation)]
@@ -397,23 +414,40 @@ public class FederationController : ControllerBase
         }
         if (pending.OurRole == "receiver")
         {
-            // The note holds "forwarded by ... - proposed key: <key>". Parse it back.
+            // Guard against double-add: the pre-Approve dedup only blocked at queue time;
+            // admin may have added the peer manually since, or another receiver row for the
+            // same URL got approved first.
+            if (config.RemoteServers.Any(s => Services.PeerUrl.SameHost(s.BaseUrl, pending.ForUrlCanonical)))
+            {
+                store.UpdateStatus(id, "revoked");
+                return Conflict(new { status = "already-a-peer", reason = "RemoteServer for this URL already exists" });
+            }
+
             var note = pending.Note ?? "";
             var keyIdx = note.IndexOf("proposed key: ", StringComparison.Ordinal);
             if (keyIdx < 0) return BadRequest("malformed pending receiver note");
             var keyValue = note[(keyIdx + "proposed key: ".Length)..].Trim();
 
-            // Add the new peer to RemoteServers (FederationShareKey only - ApiKey for stream
-            // proxy is a separate higher-trust grant the admin must paste manually later).
-            config.RemoteServers.Add(new Configuration.RemoteServer
+            lock (Plugin.ConfigWriteLock)
             {
-                Name = "Introduced - " + pending.ForUrlCanonical,
-                BaseUrl = pending.ForUrlCanonical,
-                FederationShareKey = keyValue,
-                Enabled = true
-            });
-            Plugin.Instance?.SaveConfiguration();
-            store.Activate(id, Guid.Empty); // marker - no specific key id for receiver role
+                config.RemoteServers.Add(new Configuration.RemoteServer
+                {
+                    Name = "Introduced - " + pending.ForUrlCanonical,
+                    BaseUrl = pending.ForUrlCanonical,
+                    FederationShareKey = keyValue,
+                    Enabled = true
+                });
+                Plugin.Instance?.SaveConfiguration();
+            }
+            if (!store.Activate(id, Guid.Empty))
+            {
+                lock (Plugin.ConfigWriteLock)
+                {
+                    config.RemoteServers.RemoveAll(s => Services.PeerUrl.SameHost(s.BaseUrl, pending.ForUrlCanonical));
+                    Plugin.Instance?.SaveConfiguration();
+                }
+                return Conflict(new { status = "race", reason = "another active introduction for this URL exists; rolled back" });
+            }
             return Ok(new { status = "added-to-peers" });
         }
         return BadRequest("cannot approve forwarder-role rows (they're audit only)");
@@ -429,37 +463,48 @@ public class FederationController : ControllerBase
         var config = Plugin.Instance?.Configuration;
         if (config is null) return StatusCode(500);
 
-        // Revoke the underlying issued key, if any.
-        if (intro.IssuedKeyId.HasValue && intro.IssuedKeyId.Value != Guid.Empty)
+        lock (Plugin.ConfigWriteLock)
         {
-            config.Shares.RemoveAll(k => k.Id == intro.IssuedKeyId.Value);
+            if (intro.IssuedKeyId.HasValue && intro.IssuedKeyId.Value != Guid.Empty)
+                config.Shares.RemoveAll(k => k.Id == intro.IssuedKeyId.Value);
+
+            if (intro.OurRole == "receiver" && !string.IsNullOrEmpty(intro.ForUrlCanonical))
+                config.RemoteServers.RemoveAll(s => Services.PeerUrl.SameHost(s.BaseUrl, intro.ForUrlCanonical));
         }
         store.UpdateStatus(id, "revoked");
 
         var cascaded = 0;
-        if (cascade && intro.IssuedKeyId.HasValue)
+        if (cascade && intro.IssuedKeyId.HasValue && intro.IssuedKeyId.Value != Guid.Empty)
         {
-            // Find downstream intros that used the revoked key as their introducer, recursively.
-            // Bounded - total intros count is small.
+            // BFS walks via includeRevoked=true so a previously-revoked intermediate doesn't
+            // truncate descent into still-active grandchildren.
             var toVisit = new System.Collections.Generic.Queue<Guid>();
+            var seen = new System.Collections.Generic.HashSet<Guid>();
             toVisit.Enqueue(intro.IssuedKeyId.Value);
             while (toVisit.Count > 0)
             {
                 var keyId = toVisit.Dequeue();
-                foreach (var child in store.ListIssuedBy(keyId))
+                if (!seen.Add(keyId)) continue;
+                foreach (var child in store.ListIssuedBy(keyId, includeRevoked: true))
                 {
                     if (child.IssuedKeyId.HasValue && child.IssuedKeyId.Value != Guid.Empty)
                     {
-                        config.Shares.RemoveAll(k => k.Id == child.IssuedKeyId.Value);
+                        lock (Plugin.ConfigWriteLock)
+                        {
+                            config.Shares.RemoveAll(k => k.Id == child.IssuedKeyId.Value);
+                        }
                         toVisit.Enqueue(child.IssuedKeyId.Value);
                     }
-                    store.UpdateStatus(child.Id, "revoked");
-                    cascaded++;
+                    if (child.Status != "revoked")
+                    {
+                        store.UpdateStatus(child.Id, "revoked");
+                        cascaded++;
+                    }
                 }
             }
         }
 
-        Plugin.Instance?.SaveConfiguration();
+        lock (Plugin.ConfigWriteLock) { Plugin.Instance?.SaveConfiguration(); }
         return Ok(new { status = "revoked", cascaded });
     }
 
@@ -473,13 +518,15 @@ public class FederationController : ControllerBase
 
         var collected = new System.Collections.Generic.List<object>();
         var toVisit = new System.Collections.Generic.Queue<Guid>();
+        var seen = new System.Collections.Generic.HashSet<Guid>();
         toVisit.Enqueue(intro.IssuedKeyId.Value);
         while (toVisit.Count > 0)
         {
             var keyId = toVisit.Dequeue();
-            foreach (var child in store.ListIssuedBy(keyId))
+            if (!seen.Add(keyId)) continue;
+            foreach (var child in store.ListIssuedBy(keyId, includeRevoked: true))
             {
-                collected.Add(new { child.Id, child.ForUrlCanonical, child.IssuedKeyId });
+                collected.Add(new { child.Id, child.ForUrlCanonical, child.IssuedKeyId, child.Status });
                 if (child.IssuedKeyId.HasValue && child.IssuedKeyId.Value != Guid.Empty)
                     toVisit.Enqueue(child.IssuedKeyId.Value);
             }

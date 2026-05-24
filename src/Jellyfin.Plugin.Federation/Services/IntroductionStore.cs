@@ -204,14 +204,18 @@ public class IntroductionStore
         return rdr.Read() ? Read(rdr) : null;
     }
 
-    /// <summary>Keys issued by a given introducer key - used for cascade-revoke preview.</summary>
-    public IReadOnlyList<Introduction> ListIssuedBy(Guid introducerKeyId)
+    /// <summary>Keys issued by a given introducer key. includeRevoked=true is required for
+    /// cascade walks so a previously-revoked intermediate doesn't truncate descent into
+    /// still-active grandchildren (review #5 finding).</summary>
+    public IReadOnlyList<Introduction> ListIssuedBy(Guid introducerKeyId, bool includeRevoked = false)
     {
         var rows = new List<Introduction>();
         using var c = new SqliteConnection(ConnString);
         c.Open();
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, our_role, introducer_key_id, for_url_canonical, issued_key_id, hop_count, status, created_utc, completed_utc, note FROM introductions WHERE our_role='issuer' AND introducer_key_id=$ik AND status='active' ORDER BY created_utc DESC;";
+        cmd.CommandText = includeRevoked
+            ? "SELECT id, our_role, introducer_key_id, for_url_canonical, issued_key_id, hop_count, status, created_utc, completed_utc, note FROM introductions WHERE our_role='issuer' AND introducer_key_id=$ik ORDER BY created_utc DESC;"
+            : "SELECT id, our_role, introducer_key_id, for_url_canonical, issued_key_id, hop_count, status, created_utc, completed_utc, note FROM introductions WHERE our_role='issuer' AND introducer_key_id=$ik AND status='active' ORDER BY created_utc DESC;";
         cmd.Parameters.AddWithValue("$ik", introducerKeyId.ToString());
         using var rdr = cmd.ExecuteReader();
         while (rdr.Read()) rows.Add(Read(rdr));

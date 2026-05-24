@@ -59,8 +59,12 @@ public class IntroductionService
         switch (introducerKey.MintMode)
         {
             case IntroductionMintMode.Reject:
-                _store.InsertPending("issuer", forCanon, introducerKey.Id, hopCount, note);
-                _store.UpdateStatus(_store.ListByRole("issuer", "pending").First(p => p.ForUrlCanonical == forCanon).Id, "rejected");
+                var rejectedId = _store.InsertPending("issuer", forCanon, introducerKey.Id, hopCount, note);
+                if (rejectedId > 0)
+                {
+                    try { _store.UpdateStatus(rejectedId, "rejected"); }
+                    catch (Exception ex) { _logger.LogDebug(ex, "Couldn't flip rejection audit row to rejected"); }
+                }
                 return MintResult.Denied("rejected", "introducer key is in Reject mode");
 
             case IntroductionMintMode.Request:
@@ -120,8 +124,11 @@ public class IntroductionService
         // slot. Skip the InsertActiveOrGet (which would conflict with the now-activated row).
         if (existingPendingId.HasValue)
         {
-            config.Shares.Add(newKey);
-            Plugin.Instance?.SaveConfiguration();
+            lock (Plugin.ConfigWriteLock)
+            {
+                config.Shares.Add(newKey);
+                Plugin.Instance?.SaveConfiguration();
+            }
             _store.Activate(existingPendingId.Value, newKey.Id);
             _logger.LogInformation("Approved introduction {Id} → minted key {KeyId} for {Url}",
                 existingPendingId.Value, newKey.Id, forCanon);
@@ -164,9 +171,11 @@ public class IntroductionService
             // mint and read). Fall through to register our key - repairs the broken link.
         }
 
-        // Persist the new key.
-        config.Shares.Add(newKey);
-        Plugin.Instance?.SaveConfiguration();
+        lock (Plugin.ConfigWriteLock)
+        {
+            config.Shares.Add(newKey);
+            Plugin.Instance?.SaveConfiguration();
+        }
 
         _logger.LogInformation("Minted introduction key {KeyId} for {Url} via introducer {IntroKeyId}",
             newKey.Id, forCanon, introducerKey.Id);
