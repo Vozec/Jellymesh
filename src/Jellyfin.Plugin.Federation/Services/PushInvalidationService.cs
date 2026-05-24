@@ -1,11 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Jellyfin.Data.Enums;
-using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -19,29 +18,36 @@ namespace Jellyfin.Plugin.Federation.Services;
 /// next sync round to actually re-pull instead of skipping via digest-match.
 ///
 /// Bridges the latency gap between local change and peer notice without spamming peers
-/// with one HTTP call per item.
+/// with one HTTP call per item. Failed peers are retried with exponential backoff
+/// (30s / 60s / 120s / 240s / 480s) up to MaxAttempts; a fresh local mutation resets
+/// retry counters so new data always tries immediately on the next debounce tick.
 /// </summary>
 public class PushInvalidationService : BackgroundService
 {
+    private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(5);
+
     private readonly ILibraryManager _libraryManager;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly PeerHealthRegistry _health;
     private readonly ILogger<PushInvalidationService> _logger;
 
     private long _dirtyTicks; // set to DateTime.UtcNow.Ticks when an event fires; 0 = clean.
+    private readonly ConcurrentDictionary<Guid, RetryState> _retries = new();
 
-    public PushInvalidationService(ILibraryManager libraryManager, IHttpClientFactory httpClientFactory, ILogger<PushInvalidationService> logger)
+    public PushInvalidationService(
+        ILibraryManager libraryManager,
+        IHttpClientFactory httpClientFactory,
+        PeerHealthRegistry health,
+        ILogger<PushInvalidationService> logger)
     {
         _libraryManager = libraryManager;
         _httpClientFactory = httpClientFactory;
+        _health = health;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Only structural mutations affect the catalog membership digest. ItemUpdated fires
-        // for every metadata refresh / image scan / NFO touch — subscribing to it floods peers
-        // with invalidations on routine background work and was the whole anti-pattern the
-        // gossip digest was supposed to avoid.
         _libraryManager.ItemAdded += OnItemMutated;
         _libraryManager.ItemRemoved += OnItemMutated;
         _logger.LogInformation("Federation push-invalidation hook armed.");
@@ -50,30 +56,20 @@ public class PushInvalidationService : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken).ConfigureAwait(false);
-
-                var lastDirty = Interlocked.Read(ref _dirtyTicks);
-                if (lastDirty == 0) continue;
+                try { await Task.Delay(TickInterval, stoppingToken).ConfigureAwait(false); }
+                catch (TaskCanceledException) { break; }
 
                 var config = Plugin.Instance?.Configuration;
-                var debounce = TimeSpan.FromSeconds(Math.Max(5, config?.PushDebounceSeconds ?? 30));
-                var elapsed = DateTime.UtcNow - new DateTime(lastDirty, DateTimeKind.Utc);
-                if (elapsed < debounce) continue;
-
-                // Atomically clear. If a fresh event landed between read and CAS, the CAS
-                // no-ops (returns the new value) and we skip this tick — the next tick will
-                // pick up the new mark with its own debounce window. Without this check we'd
-                // fire a redundant POST AND re-fire on the next tick.
-                if (Interlocked.CompareExchange(ref _dirtyTicks, 0, lastDirty) != lastDirty)
-                    continue;
-
                 if (config is null || string.IsNullOrWhiteSpace(config.PublicBaseUrl))
                 {
-                    _logger.LogDebug("Push-invalidation skipped: PublicBaseUrl not configured.");
-                    continue;
+                    continue; // not configured for push — gossip-pull still runs
                 }
 
-                await FireAsync(config, stoppingToken).ConfigureAwait(false);
+                // Two work paths per tick:
+                //   1. Fresh dirty flag past debounce → fire to ALL peers, build retry queue from failures
+                //   2. Any peers in retry queue whose NextAttempt is in the past → retry just those
+                await TryFireFreshAsync(config, stoppingToken).ConfigureAwait(false);
+                await DrainRetryQueueAsync(config, stoppingToken).ConfigureAwait(false);
             }
         }
         finally
@@ -83,44 +79,131 @@ public class PushInvalidationService : BackgroundService
         }
     }
 
-    private void OnItemMutated(object? sender, ItemChangeEventArgs e)
+    private async Task TryFireFreshAsync(Configuration.PluginConfiguration config, CancellationToken ct)
     {
-        if (e.Item is null) return;
-        // Only flag if the mutation is on a federatable item type. Pre-scan tag/people
-        // updates flood the event stream; we don't care unless an actual catalog entry shifted.
-        var kind = e.Item.GetType().Name;
-        if (kind != "Movie" && kind != "Series" && kind != "Episode") return;
-        Interlocked.Exchange(ref _dirtyTicks, DateTime.UtcNow.Ticks);
+        var lastDirty = Interlocked.Read(ref _dirtyTicks);
+        if (lastDirty == 0) return;
+
+        var debounce = TimeSpan.FromSeconds(Math.Max(5, config.PushDebounceSeconds));
+        var elapsed = DateTime.UtcNow - new DateTime(lastDirty, DateTimeKind.Utc);
+        if (elapsed < debounce) return;
+
+        // Atomic clear. If a fresh event landed between read and CAS, the CAS no-ops and we
+        // skip this tick — the next tick handles the new mark with its own debounce.
+        if (Interlocked.CompareExchange(ref _dirtyTicks, 0, lastDirty) != lastDirty) return;
+
+        // Fresh data → reset retry counters for everyone. A peer that was in backoff gets a
+        // fresh attempt; if THAT also fails, the new failure restarts the backoff sequence.
+        _retries.Clear();
+
+        var peers = SelectPeersFor(config);
+        await FireToPeersAsync(peers, config.PublicBaseUrl, ct).ConfigureAwait(false);
     }
 
-    private async Task FireAsync(Configuration.PluginConfiguration config, CancellationToken ct)
+    private async Task DrainRetryQueueAsync(Configuration.PluginConfiguration config, CancellationToken ct)
     {
-        var peers = config.RemoteServers
+        if (_retries.IsEmpty) return;
+
+        var now = DateTime.UtcNow;
+        var due = _retries
+            .Where(kv => kv.Value.NextAttemptUtc <= now)
+            .Select(kv => kv.Key)
+            .ToArray();
+        if (due.Length == 0) return;
+
+        var peerLookup = config.RemoteServers.ToDictionary(s => s.Id);
+        var duePeers = due
+            .Where(id => peerLookup.TryGetValue(id, out var s) && s.Enabled && !string.IsNullOrEmpty(s.FederationShareKey))
+            .Select(id => peerLookup[id])
+            .ToArray();
+
+        await FireToPeersAsync(duePeers, config.PublicBaseUrl, ct).ConfigureAwait(false);
+    }
+
+    private Configuration.RemoteServer[] SelectPeersFor(Configuration.PluginConfiguration config)
+        => config.RemoteServers
             .Where(s => s.Enabled && !string.IsNullOrEmpty(s.FederationShareKey))
             .ToArray();
+
+    private async Task FireToPeersAsync(Configuration.RemoteServer[] peers, string ourBaseUrl, CancellationToken ct)
+    {
         if (peers.Length == 0) return;
 
-        var payload = new InvalidatePayload { FromBaseUrl = config.PublicBaseUrl.TrimEnd('/') };
+        var payload = new InvalidatePayload { FromBaseUrl = ourBaseUrl.TrimEnd('/') };
         var http = _httpClientFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(10);
 
         foreach (var peer in peers)
         {
-            try
+            // Don't waste retry attempts on a peer we already know is offline — wait until
+            // the health monitor flips it back, then a new event will reset and we'll retry.
+            if (!_health.IsOnline(peer.Id))
             {
-                using var req = new HttpRequestMessage(HttpMethod.Post, $"{peer.BaseUrl.TrimEnd('/')}/Federation/Invalidate")
-                {
-                    Content = JsonContent.Create(payload)
-                };
-                req.Headers.Add("X-Federation-Share", peer.FederationShareKey);
-                using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
-                _logger.LogDebug("Push to {Peer}: {Status}", peer.Name, (int)resp.StatusCode);
+                _logger.LogDebug("Push to {Peer} deferred — health=offline", peer.Name);
+                continue;
             }
-            catch (Exception ex)
+
+            var ok = await TrySendAsync(http, peer, payload, ct).ConfigureAwait(false);
+            if (ok)
             {
-                _logger.LogDebug(ex, "Push to {Peer} failed (will gossip-pull on next sync)", peer.Name);
+                _retries.TryRemove(peer.Id, out _);
+            }
+            else
+            {
+                ScheduleRetry(peer);
             }
         }
+    }
+
+    private async Task<bool> TrySendAsync(HttpClient http, Configuration.RemoteServer peer, InvalidatePayload payload, CancellationToken ct)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{peer.BaseUrl.TrimEnd('/')}/Federation/Invalidate")
+            {
+                Content = JsonContent.Create(payload)
+            };
+            req.Headers.Add("X-Federation-Share", peer.FederationShareKey);
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            _logger.LogDebug("Push to {Peer}: {Status}", peer.Name, (int)resp.StatusCode);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Push to {Peer} failed", peer.Name);
+            return false;
+        }
+    }
+
+    private void ScheduleRetry(Configuration.RemoteServer peer)
+    {
+        var prev = _retries.TryGetValue(peer.Id, out var existing) ? existing.AttemptCount : 0;
+        var delay = RetrySchedule.NextDelay(prev + 1);
+        if (delay is null)
+        {
+            _logger.LogWarning("Push to {Peer} gave up after {Max} attempts; gossip-pull will catch up on next sync", peer.Name, RetrySchedule.MaxAttempts);
+            _retries.TryRemove(peer.Id, out _);
+            return;
+        }
+        _retries[peer.Id] = new RetryState
+        {
+            AttemptCount = prev + 1,
+            NextAttemptUtc = DateTime.UtcNow.Add(delay.Value)
+        };
+    }
+
+    private void OnItemMutated(object? sender, ItemChangeEventArgs e)
+    {
+        if (e.Item is null) return;
+        var kind = e.Item.GetType().Name;
+        if (kind != "Movie" && kind != "Series" && kind != "Episode") return;
+        Interlocked.Exchange(ref _dirtyTicks, DateTime.UtcNow.Ticks);
+    }
+
+    private class RetryState
+    {
+        public int AttemptCount { get; set; }
+        public DateTime NextAttemptUtc { get; set; }
     }
 }
 
