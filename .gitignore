@@ -1,0 +1,11 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+*.dll
+*.pdb
+build/output/
+.idea/
+*.swp

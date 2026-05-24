@@ -1,0 +1,18 @@
+using Jellyfin.Plugin.Federation.Providers;
+using Jellyfin.Plugin.Federation.Services;
+using MediaBrowser.Controller;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Plugins;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Jellyfin.Plugin.Federation;
+
+public class PluginServiceRegistrator : IPluginServiceRegistrator
+{
+    public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
+    {
+        serviceCollection.AddSingleton<RemoteItemStore>();
+        serviceCollection.AddSingleton<RemoteJellyfinClient>();
+        serviceCollection.AddSingleton<IMediaSourceProvider, FederatedMediaSourceProvider>();
+    }
+}

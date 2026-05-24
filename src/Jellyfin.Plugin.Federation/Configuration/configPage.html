@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Federation</title>
+</head>
+<body>
+<div id="FederationConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+    <div data-role="content">
+        <div class="content-primary">
+            <form id="FederationConfigForm">
+                <h2>Jellyfin Federation</h2>
+                <p>Configure peer Jellyfin servers to federate libraries with.</p>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="SyncIntervalMinutes">Sync interval (minutes)</label>
+                    <input is="emby-input" type="number" id="SyncIntervalMinutes" min="5" max="1440" />
+                </div>
+
+                <div class="checkboxContainer">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="EnableDedup" />
+                        <span>Enable deduplication (merge matching items across peers)</span>
+                    </label>
+                </div>
+
+                <div class="checkboxContainer">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="ShowRemoteOnlyItems" />
+                        <span>Show items that exist only on peer servers (virtual "Friends Library")</span>
+                    </label>
+                </div>
+
+                <div class="checkboxContainer">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="EnableWatchStateSync" />
+                        <span>Sync watch state (resume position, played flag) across peers</span>
+                    </label>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="MatchPriority">Match strategy</label>
+                    <select is="emby-select" id="MatchPriority">
+                        <option value="TmdbOnly">TMDB id only (strictest)</option>
+                        <option value="TmdbThenImdb">TMDB then IMDB</option>
+                        <option value="TmdbThenImdbThenTitle">TMDB, IMDB, then title+year</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="OutboundBitrateCapBps">Outbound bitrate cap (bps, 0 = unlimited)</label>
+                    <input is="emby-input" type="number" id="OutboundBitrateCapBps" min="0" />
+                </div>
+
+                <h3>Peer servers</h3>
+                <div id="RemoteServersList"></div>
+                <button is="emby-button" type="button" id="AddRemoteServer" class="raised">
+                    <span>Add peer server</span>
+                </button>
+
+                <br /><br />
+                <button is="emby-button" type="submit" class="raised button-submit block">
+                    <span>Save</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        var FederationPluginId = '9f3c2a8e-6b1d-4f7a-b3c5-1e2d9a8b7c6e';
+
+        function renderServers(servers) {
+            var html = '';
+            (servers || []).forEach(function (s, i) {
+                html += '<div class="paperList" data-idx="' + i + '" style="padding:1em;margin:0.5em 0;border:1px solid #444;">';
+                html += '<input type="text" placeholder="Name" value="' + (s.Name || '') + '" data-field="Name" />';
+                html += '<input type="text" placeholder="https://peer.example.com" value="' + (s.BaseUrl || '') + '" data-field="BaseUrl" />';
+                html += '<input type="text" placeholder="API key" value="' + (s.ApiKey || '') + '" data-field="ApiKey" />';
+                html += '<input type="text" placeholder="Remote user id (optional)" value="' + (s.RemoteUserId || '') + '" data-field="RemoteUserId" />';
+                html += '<label><input type="checkbox" data-field="Enabled" ' + (s.Enabled ? 'checked' : '') + ' /> Enabled</label>';
+                html += '<button type="button" class="remove-server">Remove</button>';
+                html += '</div>';
+            });
+            document.getElementById('RemoteServersList').innerHTML = html;
+        }
+
+        document.querySelector('#FederationConfigPage').addEventListener('viewshow', function () {
+            ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
+                document.getElementById('SyncIntervalMinutes').value = config.SyncIntervalMinutes;
+                document.getElementById('EnableDedup').checked = config.EnableDedup;
+                document.getElementById('ShowRemoteOnlyItems').checked = config.ShowRemoteOnlyItems;
+                document.getElementById('EnableWatchStateSync').checked = config.EnableWatchStateSync;
+                document.getElementById('MatchPriority').value = config.MatchPriority;
+                document.getElementById('OutboundBitrateCapBps').value = config.OutboundBitrateCapBps;
+                renderServers(config.RemoteServers);
+            });
+        });
+
+        document.getElementById('AddRemoteServer').addEventListener('click', function () {
+            var list = document.getElementById('RemoteServersList');
+            var current = collectServers();
+            current.push({ Name: '', BaseUrl: '', ApiKey: '', Enabled: true });
+            renderServers(current);
+        });
+
+        document.getElementById('RemoteServersList').addEventListener('click', function (e) {
+            if (e.target.classList.contains('remove-server')) {
+                var idx = parseInt(e.target.closest('[data-idx]').dataset.idx);
+                var current = collectServers();
+                current.splice(idx, 1);
+                renderServers(current);
+            }
+        });
+
+        function collectServers() {
+            var out = [];
+            document.querySelectorAll('#RemoteServersList [data-idx]').forEach(function (row) {
+                var entry = {};
+                row.querySelectorAll('[data-field]').forEach(function (inp) {
+                    entry[inp.dataset.field] = inp.type === 'checkbox' ? inp.checked : inp.value;
+                });
+                out.push(entry);
+            });
+            return out;
+        }
+
+        document.getElementById('FederationConfigForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
+                config.SyncIntervalMinutes = parseInt(document.getElementById('SyncIntervalMinutes').value);
+                config.EnableDedup = document.getElementById('EnableDedup').checked;
+                config.ShowRemoteOnlyItems = document.getElementById('ShowRemoteOnlyItems').checked;
+                config.EnableWatchStateSync = document.getElementById('EnableWatchStateSync').checked;
+                config.MatchPriority = document.getElementById('MatchPriority').value;
+                config.OutboundBitrateCapBps = parseInt(document.getElementById('OutboundBitrateCapBps').value);
+                config.RemoteServers = collectServers();
+                ApiClient.updatePluginConfiguration(FederationPluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
+            });
+            return false;
+        });
+    </script>
+</div>
+</body>
+</html>
