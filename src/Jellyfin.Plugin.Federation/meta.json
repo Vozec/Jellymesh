@@ -1,6 +1,6 @@
 {
     "category": "General",
-    "changelog": "Initial scaffold.",
+    "changelog": "Pre-1.0 RC — all MVP+ shipped, 4 code-review passes, 101 tests.",
     "description": "Federate multiple Jellyfin servers. Share libraries, dedupe matches via TMDB/IMDB ids, expose multi-version playback.",
     "guid": "9f3c2a8e-6b1d-4f7a-b3c5-1e2d9a8b7c6e",
     "name": "Federation",
@@ -8,5 +8,5 @@
     "owner": "vozec",
     "targetAbi": "10.10.0.0",
     "timestamp": "2026-05-24T00:00:00Z",
-    "version": "0.1.0.0"
+    "version": "0.9.0.0"
 }

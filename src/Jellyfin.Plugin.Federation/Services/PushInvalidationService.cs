@@ -55,6 +55,7 @@ public class PushInvalidationService : BackgroundService
         // work, defeating the gossip-digest anti-spam guarantee. (Restored design comment.)
         _libraryManager.ItemAdded += OnItemMutated;
         _libraryManager.ItemRemoved += OnItemMutated;
+        _health.HealthChanged += OnHealthChanged;
         _logger.LogInformation("Federation push-invalidation hook armed.");
 
         try
@@ -81,6 +82,31 @@ public class PushInvalidationService : BackgroundService
         {
             _libraryManager.ItemAdded -= OnItemMutated;
             _libraryManager.ItemRemoved -= OnItemMutated;
+            _health.HealthChanged -= OnHealthChanged;
+        }
+    }
+
+    private void OnHealthChanged(object? sender, PeerHealthChangedEventArgs e)
+    {
+        // When a peer flips back online, accelerate its retry: set NextAttemptUtc to now so
+        // the next tick (within 5s) re-fires instead of waiting for the next backoff window
+        // (which could be 8 minutes deep if the peer had been failing for a while).
+        try
+        {
+            if (!e.Online) return;
+            if (_retries.TryGetValue(e.PeerId, out var state))
+            {
+                _retries[e.PeerId] = new RetryState
+                {
+                    AttemptCount = state.AttemptCount,
+                    NextAttemptUtc = DateTime.UtcNow
+                };
+                _logger.LogDebug("Peer {Id} back online, retry NextAttempt advanced to now", e.PeerId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "OnHealthChanged swallowed exception");
         }
     }
 

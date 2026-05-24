@@ -4,6 +4,66 @@ All notable changes to this project will be documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Semantic versioning.
 
+## [0.9.0] - 2026-05-24
+
+Pre-1.0 release candidate. All MVP and extended features shipped, four
+code-review passes done, 101 tests passing. Pending: validation against
+a real 2-peer federation.
+
+### Added (round 5)
+- **Push retry with exponential backoff** in `PushInvalidationService`:
+  30/60/120/240/480 s × 5 attempts, gives up + warns, gossip-pull is
+  the fallback. Health-aware (offline peers re-queued instead of
+  dropped). `RetrySchedule` extracted as pure static + 11 tests.
+- **Parallel per-peer fire** via Task.WhenAll — one slow peer no longer
+  blocks the others in the same tick.
+- **Health-flip → immediate retry drain**: subscribe to
+  `PeerHealthRegistry.HealthChanged`; when a peer comes back online, its
+  retry entry's NextAttemptUtc is advanced to now so the next tick
+  re-fires immediately (was: wait for next mutation).
+- **`PeerUrl` canonical URL helper** (scheme://host:port,
+  case-normalized, port-explicit) — replaces brittle
+  string-equal-after-TrimEnd-slash everywhere peer URLs are compared.
+  22 tests covering the classic drifts (slash, port, case, scheme).
+- **`ShareKey.BoundPeerUrl`** anti-spoofing: when set, the share key
+  can only attribute incoming Invalidate / Request calls to that one
+  specific peer URL — `payload.FromBaseUrl` is ignored. Closes the case
+  where any share-key holder could claim to be any peer.
+- **Config UI exposure** for previously XML-only fields:
+  `PublicBaseUrl`, `PushDebounceSeconds`, per-peer `LocalUserIdForSync`,
+  per-share `ScheduleTimeZoneId` + `StrictUnknownRating` + `BoundPeerUrl`.
+- **Requests admin UI**: send form (peer dropdown + tmdb/title/year),
+  inbound list with accept/decline/dismiss buttons, outbound list with
+  dismiss for `send-failed`.
+
+### Fixed (code-review #4)
+- `PeerUrl.Canonicalize` no longer silently promotes bare hostnames to
+  `https://`. Admin who entered `peer.local:8096` got canonical
+  `https://…:8096` while the real Jellyfin runs `http://…:8096` —
+  `SameHost` returned false on every legitimate inbound call. Now bare-
+  host input returns null; `CreateShare` propagates as 400.
+- `FireToPeersAsync` parallelized with `Task.WhenAll` (was sequential
+  foreach + await — one 10s-timeout peer blocked all others).
+- Offline peers in fresh fire are now `ScheduleRetry`'d instead of
+  silently dropped. Previously a peer that went offline during the
+  debounce window missed the push entirely until the next mutation.
+- `ScheduleRetry` rewritten with `AddOrUpdate` atomic semantics — safe
+  under the now-parallel `FireToPeersAsync`.
+- `CreateShare` returns 400 on invalid `BoundPeerUrl` (was: silently
+  stored garbage that never matched any real peer).
+- `ReceiveRequest` dedup log uses `attributedUrl` not
+  `payload.FromBaseUrl` — audit trail matches the stored row.
+- `configPage.html` no longer overrides explicit `0` with `30` for
+  `PushDebounceSeconds` (`parseInt + isNaN` instead of `|| 30`).
+- `OnItemMutated` wrapped in try/catch — event handler running on
+  Jellyfin's dispatcher thread can't propagate to other subscribers.
+- Task.Delay cancel catch broadened from `TaskCanceledException` to
+  `OperationCanceledException`.
+
+### Fixed (code-review #3)
+- Already documented above (RequestStore.Insert status param,
+  uniq_inbound_pending title column, whitespace validation, etc.)
+
 ## [Unreleased]
 
 ### Added
