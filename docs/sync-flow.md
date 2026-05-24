@@ -64,3 +64,46 @@ sequenceDiagram
     WSS->>Peer: POST /Users/{u}/Items/remote-uuid/UserData
     Peer-->>WSS: 204
 ```
+
+## Push-invalidation with retry
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant JF as Jellyfin core
+    participant PIS as PushInvalidationService
+    participant H as PeerHealthRegistry
+    participant P as Peer
+
+    JF-->>PIS: ItemAdded / ItemRemoved (Movie | Series | Episode)
+    PIS->>PIS: Interlocked.Exchange dirty=UtcNow
+    Note over PIS: 5s tick loop
+
+    PIS->>PIS: elapsed >= PushDebounceSeconds?
+    PIS->>PIS: CAS clear dirty
+    PIS->>PIS: reset all _retries (fresh data = fresh attempt)
+
+    loop per enabled peer with FederationShareKey
+        PIS->>H: IsOnline(peer)?
+        alt online
+            PIS->>P: POST /Federation/Invalidate
+            alt success
+                P-->>PIS: 2xx
+                PIS->>PIS: remove from _retries
+            else fail
+                P-->>PIS: 5xx / network err
+                PIS->>PIS: schedule retry +30s (1st) / +60s (2nd) / …
+            end
+        else offline
+            Note over PIS: skip — will catch up on health-flip
+        end
+    end
+
+    Note over PIS: subsequent 5s ticks drain _retries
+    PIS->>PIS: any peer NextAttempt <= UtcNow?
+    PIS->>P: POST /Federation/Invalidate (retry)
+    P-->>PIS: 2xx → clear / fail → next backoff step
+
+    Note over PIS: after 5 failed attempts:<br/>give up + log warning<br/>gossip-pull is the fallback
+```
+

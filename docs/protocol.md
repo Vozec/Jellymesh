@@ -16,17 +16,31 @@ an `X-Federation-Share` header instead.
 | GET | `/Federation/Share/Catalog/Items` | `X-Federation-Share` | same shape, scoped |
 | GET | `/Federation/Stream/{serverId}/{itemId}?sourceId=X` | user | proxied HLS/MP4 stream |
 
-### Admin / UI
+### Admin (requires elevation)
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/Federation/Peers/Status` | per-peer `{ Online, LastRttMs, LastCheckUtc }` |
+| GET | `/Federation/Stats` | per-peer + global aggregates (items, dedup ratio, streams, bytes) |
 | GET | `/Federation/Search?searchTerm=X&limit=N` | fan-out search across all peers |
 | GET | `/Federation/Audit/Recent?limit=N` | recent stream-serve log |
 | POST | `/Federation/Sync/Trigger` | run the sync scheduled task now |
 | GET | `/Federation/Shares` | list issued share keys (preview) |
-| POST | `/Federation/Shares` | issue a new share key |
+| POST | `/Federation/Shares` | issue a new share key (returns the key once) |
 | DELETE | `/Federation/Shares/{id}` | revoke share key |
+| GET | `/Federation/PublicShares` | list per-video anon links + status |
+| POST | `/Federation/PublicShares` | mint a public link (`{ItemId, ExpiresUtc?, MaxUses?}`) |
+| DELETE | `/Federation/PublicShares/{token}` | revoke a public link |
+| GET | `/Federation/Requests/{in\|out}?status=...` | list peer-to-peer requests |
+| POST | `/Federation/SendRequest` | ask a peer to add an item |
+| POST | `/Federation/Requests/{id}/Status?status=...` | accept / decline / dismiss / send-failed |
+
+### Anonymous (public viewer)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/Federation/Public/{token}` | minimal HTML `<video>` viewer; consumes 1 use |
+| GET | `/Federation/Public/{token}/Stream` | raw file with Range support (validates only) |
 
 ## Gossip-based sync
 
