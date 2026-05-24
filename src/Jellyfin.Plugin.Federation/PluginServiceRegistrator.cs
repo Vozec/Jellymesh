@@ -18,6 +18,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<PublicShareStore>();
         serviceCollection.AddSingleton<FederationStatsService>();
         serviceCollection.AddSingleton<RequestStore>();
+        serviceCollection.AddSingleton<DiagnosticsService>();
         serviceCollection.AddSingleton<IMediaSourceProvider, FederatedMediaSourceProvider>();
         serviceCollection.AddHostedService<WatchStateSyncService>();
         serviceCollection.AddSingleton<PeerHealthRegistry>();

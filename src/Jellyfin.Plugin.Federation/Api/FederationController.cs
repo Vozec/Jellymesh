@@ -417,6 +417,11 @@ h1{{font-weight:400;font-size:1.2rem}}
         => Ok(stats.Build());
 
     [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Diagnostics")]
+    public async Task<IActionResult> Diagnostics([FromServices] Services.DiagnosticsService diag, CancellationToken ct)
+        => Ok(await diag.RunAsync(ct).ConfigureAwait(false));
+
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Catalog/Digest")]
     public IActionResult CatalogDigest([FromServices] Services.LocalCatalogDigest digest)
         => Ok(digest.Compute());

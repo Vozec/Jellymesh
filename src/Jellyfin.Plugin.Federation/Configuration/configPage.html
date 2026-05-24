@@ -64,6 +64,10 @@
 
                 <h3>Federation status</h3>
                 <div id="FedStats" style="font-family:monospace;font-size:0.9em;padding:0.5em;background:#1a1a1a;border:1px solid #333;">Loading…</div>
+                <button is="emby-button" type="button" id="RunDiagnostics" class="raised" style="margin-top:0.5em;">
+                    <span>Run diagnostics</span>
+                </button>
+                <div id="DiagOutput" style="font-family:monospace;font-size:0.85em;white-space:pre-wrap;padding:0.5em;margin-top:0.5em;background:#0f0f0f;border:1px solid #333;display:none;"></div>
 
                 <h3>Peer servers (outbound — servers I read from)</h3>
                 <div id="RemoteServersList"></div>
@@ -336,6 +340,35 @@
             while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
             return n.toFixed(i === 0 ? 0 : 1) + ' ' + u[i];
         }
+
+        document.getElementById('RunDiagnostics').addEventListener('click', function () {
+            var btn = this;
+            btn.disabled = true;
+            var out = document.getElementById('DiagOutput');
+            out.style.display = 'block';
+            out.textContent = 'Running probes against each enabled peer…';
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Diagnostics'), type: 'GET', dataType: 'json' }).then(function (r) {
+                var lines = [];
+                lines.push('Generated: ' + r.GeneratedUtc);
+                lines.push('Our PublicBaseUrl: ' + (r.OurPublicBaseUrl || '(unset — push disabled)'));
+                lines.push('Push invalidation: ' + (r.PushInvalidationConfigured ? 'enabled' : 'disabled'));
+                lines.push('Peers: ' + r.EnabledPeerCount + ' enabled, ' + r.DisabledPeerCount + ' disabled');
+                lines.push('');
+                (r.Peers || []).forEach(function (p) {
+                    lines.push('— ' + (p.Name || '(unnamed)') + ' (' + p.BaseUrl + ')');
+                    lines.push('  cached health: ' + (p.CachedOnline ? 'online' : 'offline') + ', last RTT ' + p.CachedRttMs + ' ms');
+                    (p.Checks || []).forEach(function (c) {
+                        lines.push('  ' + (c.Ok ? '✓' : '✗') + ' ' + c.Name + ' — ' + c.Detail);
+                    });
+                    lines.push('');
+                });
+                out.textContent = lines.join('\n');
+                btn.disabled = false;
+            }).catch(function (err) {
+                out.textContent = 'Diagnostics failed: HTTP ' + (err && err.status || '?');
+                btn.disabled = false;
+            });
+        });
 
         var statsTimer = null;
         function renderStats() {
