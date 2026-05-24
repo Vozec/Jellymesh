@@ -62,6 +62,30 @@
                     <input is="emby-input" type="number" id="PushDebounceSeconds" min="5" max="3600" />
                 </div>
 
+                <h4 style="margin-top:1em;">Introductions (delegated key issuance)</h4>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="Reciprocity">Reciprocity</label>
+                    <select is="emby-select" id="Reciprocity">
+                        <option value="Off">Off — no auto-action when we mint</option>
+                        <option value="AutoRequest">Auto-request — remind admin to ask peer for a key back</option>
+                        <option value="AutoAcceptReciprocal">Auto-accept reciprocal — auto-mint when a peer asks for a key back</option>
+                    </select>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="IntroductionHopCap">Hop cap (empty = no cap)</label>
+                    <input is="emby-input" type="number" id="IntroductionHopCap" min="1" max="20" placeholder="empty = unlimited" />
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:30em;">
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="IntroductionRatePerHour">Rate per hour (per introducer)</label>
+                        <input is="emby-input" type="number" id="IntroductionRatePerHour" min="1" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="IntroductionRatePerDay">Rate per day (per introducer)</label>
+                        <input is="emby-input" type="number" id="IntroductionRatePerDay" min="1" />
+                    </div>
+                </div>
+
                 <h3>Federation status</h3>
                 <div id="FedStats" style="font-family:monospace;font-size:0.9em;padding:0.5em;background:#1a1a1a;border:1px solid #333;">Loading…</div>
                 <button is="emby-button" type="button" id="RunDiagnostics" class="raised" style="margin-top:0.5em;">
@@ -74,6 +98,30 @@
                 <button is="emby-button" type="button" id="AddRemoteServer" class="raised">
                     <span>Add peer server</span>
                 </button>
+
+                <h3>Introductions</h3>
+                <p>Ask an existing peer to introduce you a new contact, or triage incoming introduction requests.</p>
+
+                <h4 style="margin:0.5em 0 0.2em 0;">Send an introduction</h4>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:60em;">
+                    <select id="IntroPeerSelect"><option value="">— pick a peer (introducer) —</option></select>
+                    <input type="url" id="IntroForUrl" placeholder="New peer URL (https://newpeer.example)" />
+                </div>
+                <input type="text" id="IntroNote" placeholder="Note (optional)" style="margin-top:0.4em;width:100%;max-width:60em;" />
+                <label style="margin-top:0.4em;display:block;">
+                    <input type="checkbox" id="IntroAlsoForward" checked />
+                    Also forward the issued key to the new peer (if we have a share key with them)
+                </label>
+                <button is="emby-button" type="button" id="SendIntroduction" class="raised" style="margin-top:0.3em;"><span>Send</span></button>
+
+                <h4 style="margin:1em 0 0.2em 0;">Pending — peers want to add us as a contact</h4>
+                <div id="IntroPendingReceiver"></div>
+
+                <h4 style="margin:1em 0 0.2em 0;">Issued — keys we minted via introduction</h4>
+                <div id="IntroIssued"></div>
+
+                <h4 style="margin:1em 0 0.2em 0;">Outbound — introductions we sent</h4>
+                <div id="IntroForwarder"></div>
 
                 <h3>Public video share links</h3>
                 <p>Generate a single-video URL anyone can open without a Jellyfin account. Optional expiry and use cap.</p>
@@ -121,6 +169,18 @@
                     <input type="checkbox" id="NewShareStrictUnknown" />
                     Strict mode — also hide items with unrated or regional ratings (e.g. FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.
                 </label>
+                <label style="margin-top:0.4em;display:block;">
+                    <input type="checkbox" id="NewShareCanIntro" />
+                    Allow this key to request introductions on me (route /Federation/Introduce calls)
+                </label>
+                <div class="inputContainer" style="max-width:30em;">
+                    <label class="inputLabel inputLabelUnfocused" for="NewShareMintMode">Mint mode (what to do when this key asks me to introduce)</label>
+                    <select is="emby-select" id="NewShareMintMode">
+                        <option value="Request">Request — queue for admin approval (safe default)</option>
+                        <option value="AutoAccept">Auto-accept — mint immediately</option>
+                        <option value="Reject">Reject</option>
+                    </select>
+                </div>
                 <button is="emby-button" type="button" id="CreateShare" class="raised" style="margin-top:0.5em;">
                     <span>Generate share key</span>
                 </button>
@@ -400,6 +460,100 @@
             });
         }
 
+        function renderIntroductions() {
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Introductions/receiver') + '?status=pending', type: 'GET', dataType: 'json' }).then(function (rows) {
+                document.getElementById('IntroPendingReceiver').innerHTML = (rows && rows.length)
+                    ? rows.map(function (r) {
+                        return '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #333;font-size:0.9em;">'
+                            + '<strong>' + esc(r.ForUrlCanonical) + '</strong> · hop ' + r.HopCount + '<br>'
+                            + '<div style="color:#aaa;font-size:0.85em;margin-top:0.2em;">' + esc(r.Note || '') + '</div>'
+                            + '<div style="margin-top:0.3em;">'
+                            + '<button type="button" class="intro-approve" data-id="' + r.Id + '">Approve (add as peer)</button> '
+                            + '<button type="button" class="intro-revoke" data-id="' + r.Id + '" data-role="receiver">Decline</button>'
+                            + '</div></div>';
+                    }).join('')
+                    : '<em>No pending introductions.</em>';
+            });
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Introductions/issuer'), type: 'GET', dataType: 'json' }).then(function (rows) {
+                document.getElementById('IntroIssued').innerHTML = (rows && rows.length)
+                    ? rows.map(function (r) {
+                        return '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #333;font-size:0.9em;">'
+                            + '<strong>' + esc(r.ForUrlCanonical) + '</strong> · ' + esc(r.Status)
+                            + ' · hop ' + r.HopCount
+                            + (r.IssuedKeyId ? ' · key ' + esc(r.IssuedKeyId.substring(0, 8)) : '')
+                            + '<div style="margin-top:0.3em;">'
+                            + (r.Status === 'pending' ? '<button type="button" class="intro-approve" data-id="' + r.Id + '">Approve & mint</button> ' : '')
+                            + (r.Status === 'active' ? '<button type="button" class="intro-revoke-preview" data-id="' + r.Id + '">Revoke…</button>' : '')
+                            + '</div></div>';
+                    }).join('')
+                    : '<em>No issued introductions.</em>';
+            });
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Introductions/forwarder'), type: 'GET', dataType: 'json' }).then(function (rows) {
+                document.getElementById('IntroForwarder').innerHTML = (rows && rows.length)
+                    ? rows.map(function (r) {
+                        return '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #333;font-size:0.9em;">'
+                            + '<strong>' + esc(r.ForUrlCanonical) + '</strong> · ' + esc(r.Status)
+                            + (r.Note ? ' · ' + esc(r.Note) : '') + '</div>';
+                    }).join('')
+                    : '<em>No outbound introductions.</em>';
+            });
+        }
+
+        document.getElementById('SendIntroduction').addEventListener('click', function () {
+            var peerId = document.getElementById('IntroPeerSelect').value;
+            var forUrl = document.getElementById('IntroForUrl').value.trim();
+            var note = document.getElementById('IntroNote').value.trim() || null;
+            var alsoFwd = document.getElementById('IntroAlsoForward').checked;
+            if (!peerId || !forUrl) { alert('Pick a peer and enter the new peer URL'); return; }
+            ApiClient.fetch({
+                url: ApiClient.getUrl('Federation/IntroducePeer'),
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ PeerId: peerId, ForUrl: forUrl, Note: note, AlsoForward: alsoFwd })
+            }).then(function (r) {
+                alert('Result: ' + JSON.stringify(r, null, 2));
+                ['IntroForUrl','IntroNote'].forEach(function (id) { document.getElementById(id).value = ''; });
+                renderIntroductions();
+            }).catch(function (err) {
+                alert('Introduce failed: HTTP ' + (err && err.status || '?'));
+            });
+        });
+
+        document.querySelector('#FederationConfigPage').addEventListener('click', function (e) {
+            if (e.target.classList && e.target.classList.contains('intro-approve')) {
+                ApiClient.fetch({
+                    url: ApiClient.getUrl('Federation/Introductions/' + e.target.dataset.id + '/Approve'),
+                    type: 'POST'
+                }).then(renderIntroductions);
+            }
+            if (e.target.classList && e.target.classList.contains('intro-revoke')) {
+                if (!confirm('Decline / revoke this introduction?')) return;
+                ApiClient.fetch({
+                    url: ApiClient.getUrl('Federation/Introductions/' + e.target.dataset.id + '/Revoke?cascade=false'),
+                    type: 'POST'
+                }).then(renderIntroductions);
+            }
+            if (e.target.classList && e.target.classList.contains('intro-revoke-preview')) {
+                var id = e.target.dataset.id;
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/Introductions/' + id + '/CascadePreview'), type: 'GET', dataType: 'json' }).then(function (p) {
+                    var n = (p.cascade || []).length;
+                    var msg = n === 0
+                        ? 'Revoke this introduction-key?\n(No downstream keys depend on it.)'
+                        : 'This intro has ' + n + ' downstream introduction-key(s) chained through it:\n\n'
+                            + (p.cascade || []).map(function (x) { return '  • ' + x.ForUrlCanonical; }).join('\n')
+                            + '\n\nOK = revoke ALL ' + (n + 1) + ' keys. Cancel.';
+                    var cascade = false;
+                    if (n > 0 && confirm(msg)) { cascade = true; }
+                    else if (n > 0) { if (!confirm('Revoke just THIS key (keep downstream)?')) return; }
+                    else if (!confirm(msg)) return;
+                    ApiClient.fetch({
+                        url: ApiClient.getUrl('Federation/Introductions/' + id + '/Revoke?cascade=' + cascade),
+                        type: 'POST'
+                    }).then(renderIntroductions);
+                });
+            }
+        });
+
         document.querySelector('#FederationConfigPage').addEventListener('viewshow', function () {
             ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
                 document.getElementById('SyncIntervalMinutes').value = config.SyncIntervalMinutes;
@@ -410,11 +564,23 @@
                 document.getElementById('OutboundBitrateCapBps').value = config.OutboundBitrateCapBps;
                 document.getElementById('PublicBaseUrl').value = config.PublicBaseUrl || '';
                 document.getElementById('PushDebounceSeconds').value = config.PushDebounceSeconds || 30;
+                document.getElementById('Reciprocity').value = config.Reciprocity || 'Off';
+                document.getElementById('IntroductionHopCap').value = config.IntroductionHopCap == null ? '' : config.IntroductionHopCap;
+                document.getElementById('IntroductionRatePerHour').value = config.IntroductionRatePerHour || 5;
+                document.getElementById('IntroductionRatePerDay').value = config.IntroductionRatePerDay || 50;
                 renderServers(config.RemoteServers);
                 renderShares();
                 renderPublicShares();
                 renderRequests();
+                renderIntroductions();
                 populatePeerSelect();
+                // Also populate the introduction peer dropdown — reuses populatePeerSelect's logic.
+                var introSel = document.getElementById('IntroPeerSelect');
+                var html = '<option value="">— pick a peer (introducer) —</option>';
+                (config.RemoteServers || []).filter(function (s) { return s.Enabled && s.FederationShareKey; }).forEach(function (s) {
+                    html += '<option value="' + esc(s.Id) + '">' + esc(s.Name || s.BaseUrl) + '</option>';
+                });
+                introSel.innerHTML = html;
             });
             renderStats();
             if (statsTimer) clearInterval(statsTimer);
@@ -441,7 +607,9 @@
                     BlockedTags: splitCsv('NewShareBlockedTags'),
                     MaxOfficialRating: pick('NewShareMaxRating'),
                     StrictUnknownRating: document.getElementById('NewShareStrictUnknown').checked,
-                    BoundPeerUrl: pick('NewShareBoundPeerUrl')
+                    BoundPeerUrl: pick('NewShareBoundPeerUrl'),
+                    CanRequestIntroductions: document.getElementById('NewShareCanIntro').checked,
+                    MintMode: document.getElementById('NewShareMintMode').value
                 })
             }).then(function (resp) {
                 alert('Share key generated:\n\n' + resp.ApiKey + '\n\nHand it to your friend.');
@@ -504,10 +672,13 @@
                 config.MatchPriority = document.getElementById('MatchPriority').value;
                 config.OutboundBitrateCapBps = parseInt(document.getElementById('OutboundBitrateCapBps').value);
                 config.PublicBaseUrl = document.getElementById('PublicBaseUrl').value.trim();
-                // Don't use `|| 30` — that overrides legitimate 0 with 30. parseInt + isNaN
-                // distinguishes empty from explicit-zero; server-side Math.Max(5, …) clamps.
                 var debounce = parseInt(document.getElementById('PushDebounceSeconds').value, 10);
                 config.PushDebounceSeconds = isNaN(debounce) ? 30 : debounce;
+                config.Reciprocity = document.getElementById('Reciprocity').value;
+                var hopCap = parseInt(document.getElementById('IntroductionHopCap').value, 10);
+                config.IntroductionHopCap = isNaN(hopCap) ? null : hopCap;
+                config.IntroductionRatePerHour = parseInt(document.getElementById('IntroductionRatePerHour').value, 10) || 5;
+                config.IntroductionRatePerDay = parseInt(document.getElementById('IntroductionRatePerDay').value, 10) || 50;
                 config.RemoteServers = collectServers();
                 ApiClient.updatePluginConfiguration(FederationPluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
             });

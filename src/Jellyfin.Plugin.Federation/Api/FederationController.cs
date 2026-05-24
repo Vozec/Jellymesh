@@ -796,6 +796,8 @@ h1{{font-weight:400;font-size:1.2rem}}
             BoundPeerUrl = string.IsNullOrWhiteSpace(req.BoundPeerUrl) ? null :
                 (Services.PeerUrl.Canonicalize(req.BoundPeerUrl) ?? throw new ArgumentException(
                     "BoundPeerUrl must include http:// or https:// scheme (and a parseable host)", nameof(req))),
+            CanRequestIntroductions = req.CanRequestIntroductions,
+            MintMode = req.MintMode,
             ApiKey = GenerateApiKey(),
             Enabled = true
         };
@@ -939,6 +941,8 @@ public class CreateShareRequest
     public string? MaxOfficialRating { get; set; }
     public bool StrictUnknownRating { get; set; }
     public string? BoundPeerUrl { get; set; }
+    public bool CanRequestIntroductions { get; set; }
+    public Configuration.IntroductionMintMode MintMode { get; set; } = Configuration.IntroductionMintMode.Request;
 }
 
 public class CreatePublicShareRequest
