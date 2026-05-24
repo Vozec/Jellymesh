@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
@@ -64,4 +66,72 @@ public class FederationController : ControllerBase
         if (config is null) return Ok(Array.Empty<object>());
         return Ok(config.RemoteServers.Select(s => new { s.Id, s.Name, s.BaseUrl, s.Enabled }));
     }
+
+    [HttpGet("Search")]
+    public async Task<IActionResult> Search([FromQuery] string searchTerm, [FromQuery] int limit = 25, CancellationToken ct = default)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null || string.IsNullOrWhiteSpace(searchTerm))
+            return Ok(new { Results = Array.Empty<object>() });
+
+        var tasks = config.RemoteServers
+            .Where(s => s.Enabled)
+            .Select(s => QueryPeerAsync(s, searchTerm, limit, ct))
+            .ToList();
+
+        var bags = await Task.WhenAll(tasks).ConfigureAwait(false);
+        var merged = bags.SelectMany(x => x).Take(limit * config.RemoteServers.Count).ToList();
+        return Ok(new { TotalRecordCount = merged.Count, Results = merged });
+    }
+
+    private async Task<List<FederatedSearchHit>> QueryPeerAsync(Configuration.RemoteServer server, string searchTerm, int limit, CancellationToken ct)
+    {
+        var results = new List<FederatedSearchHit>();
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.BaseAddress = new Uri(server.BaseUrl.TrimEnd('/'));
+            http.DefaultRequestHeaders.Add("X-Emby-Token", server.ApiKey);
+            http.Timeout = TimeSpan.FromSeconds(10);
+
+            var url = $"/Search/Hints?searchTerm={Uri.EscapeDataString(searchTerm)}&limit={limit}";
+            using var resp = await http.GetAsync(url, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return results;
+
+            using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+
+            if (!doc.RootElement.TryGetProperty("SearchHints", out var hints)) return results;
+
+            foreach (var hit in hints.EnumerateArray())
+            {
+                results.Add(new FederatedSearchHit
+                {
+                    PeerId = server.Id,
+                    PeerName = server.Name,
+                    ItemId = hit.TryGetProperty("Id", out var id) ? id.GetString() : null,
+                    Name = hit.TryGetProperty("Name", out var n) ? n.GetString() : null,
+                    Type = hit.TryGetProperty("Type", out var t) ? t.GetString() : null,
+                    Year = hit.TryGetProperty("ProductionYear", out var y) && y.ValueKind == JsonValueKind.Number ? y.GetInt32() : null,
+                    PrimaryImageUrl = $"{server.BaseUrl.TrimEnd('/')}/Items/{(hit.TryGetProperty("Id", out var iid) ? iid.GetString() : string.Empty)}/Images/Primary"
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Federated search failed for {Peer}", server.Name);
+        }
+        return results;
+    }
+}
+
+public class FederatedSearchHit
+{
+    public Guid PeerId { get; set; }
+    public string? PeerName { get; set; }
+    public string? ItemId { get; set; }
+    public string? Name { get; set; }
+    public string? Type { get; set; }
+    public int? Year { get; set; }
+    public string? PrimaryImageUrl { get; set; }
 }
