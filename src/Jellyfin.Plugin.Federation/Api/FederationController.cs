@@ -107,6 +107,95 @@ public class FederationController : ControllerBase
         }
     }
 
+    // === Anonymous, expiring, use-capped video share links ===
+    // Admin generates one per video; hands the URL to anyone. No Jellyfin auth required to view.
+
+    [HttpPost("PublicShares")]
+    public IActionResult CreatePublicShare([FromBody] CreatePublicShareRequest req,
+        [FromServices] Services.PublicShareStore store,
+        [FromServices] MediaBrowser.Controller.Library.ILibraryManager library)
+    {
+        if (string.IsNullOrWhiteSpace(req.ItemId)) return BadRequest("ItemId required");
+        if (!Guid.TryParse(req.ItemId, out var itemGuid)) return BadRequest("ItemId not a guid");
+
+        var item = library.GetItemById(itemGuid);
+        if (item is null) return NotFound("Item not found");
+
+        var token = store.Create(req.ItemId!, req.ExpiresUtc, req.MaxUses, User?.Identity?.Name);
+        var url = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/Federation/Public/{token}";
+        return Ok(new { token, url, expiresUtc = req.ExpiresUtc, maxUses = req.MaxUses, itemName = item.Name });
+    }
+
+    [HttpDelete("PublicShares/{token}")]
+    public IActionResult RevokePublicShare(string token, [FromServices] Services.PublicShareStore store)
+    {
+        store.Revoke(token);
+        return NoContent();
+    }
+
+    [AllowAnonymous]
+    [HttpGet("Public/{token}")]
+    public IActionResult PublicViewer(string token, [FromServices] Services.PublicShareStore store,
+        [FromServices] MediaBrowser.Controller.Library.ILibraryManager library)
+    {
+        var info = store.GetInfo(token);
+        if (info is null) return NotFound();
+        if (info.ExpiresUtc.HasValue && info.ExpiresUtc < DateTime.UtcNow) return StatusCode(410, "Link expired");
+        if (info.MaxUses.HasValue && info.UsedCount >= info.MaxUses.Value) return StatusCode(410, "Link exhausted");
+
+        if (!Guid.TryParse(info.ItemId, out var g)) return NotFound();
+        var item = library.GetItemById(g);
+        var name = item?.Name ?? "(unknown)";
+
+        var html = $@"<!doctype html>
+<html lang=""en""><head><meta charset=""utf-8""><title>{System.Net.WebUtility.HtmlEncode(name)}</title>
+<style>
+body{{background:#111;color:#eee;font-family:system-ui;margin:0;padding:2rem;text-align:center}}
+video{{max-width:100%;max-height:80vh}}
+h1{{font-weight:400;font-size:1.2rem}}
+.meta{{color:#888;font-size:.8rem;margin-top:1rem}}
+</style></head><body>
+<h1>{System.Net.WebUtility.HtmlEncode(name)}</h1>
+<video controls autoplay src=""/Federation/Public/{token}/Stream""></video>
+<div class=""meta"">Shared link — {info.UsedCount + 1}{(info.MaxUses.HasValue ? "/" + info.MaxUses : "")} use{(info.MaxUses == 1 ? "" : "s")}{(info.ExpiresUtc.HasValue ? $" · expires {info.ExpiresUtc:yyyy-MM-dd HH:mm} UTC" : "")}</div>
+</body></html>";
+        return Content(html, "text/html; charset=utf-8");
+    }
+
+    [AllowAnonymous]
+    [HttpGet("Public/{token}/Stream")]
+    public async Task<IActionResult> PublicStream(string token,
+        [FromServices] Services.PublicShareStore store,
+        [FromServices] MediaBrowser.Controller.Library.ILibraryManager library,
+        CancellationToken ct)
+    {
+        var itemId = store.TryConsume(token);
+        if (itemId is null) return StatusCode(410, "Link invalid, expired, or exhausted");
+
+        if (!Guid.TryParse(itemId, out var g)) return NotFound();
+        var item = library.GetItemById(g);
+        if (item is null || string.IsNullOrEmpty(item.Path) || !System.IO.File.Exists(item.Path)) return NotFound();
+
+        // Stream the raw file with Range support so the browser <video> tag can seek.
+        // Direct-play codecs only — no transcoding from this endpoint.
+        var contentType = GuessContentType(item.Path);
+        return PhysicalFile(item.Path, contentType, enableRangeProcessing: true);
+    }
+
+    private static string GuessContentType(string path)
+    {
+        var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
+        return ext switch
+        {
+            ".mp4" or ".m4v" => "video/mp4",
+            ".webm" => "video/webm",
+            ".mkv" => "video/x-matroska",
+            ".mov" => "video/quicktime",
+            ".avi" => "video/x-msvideo",
+            _ => "application/octet-stream"
+        };
+    }
+
     [HttpGet("Image/{serverId}/{itemId}/{imageType}")]
     public async Task<IActionResult> ProxyImage(string serverId, string itemId, string imageType, CancellationToken ct)
     {
@@ -327,6 +416,13 @@ public class CreateShareRequest
 {
     public string? Label { get; set; }
     public List<string>? LibraryIds { get; set; }
+}
+
+public class CreatePublicShareRequest
+{
+    public string? ItemId { get; set; }
+    public DateTime? ExpiresUtc { get; set; }
+    public int? MaxUses { get; set; }
 }
 
 public class FederatedSearchHit
