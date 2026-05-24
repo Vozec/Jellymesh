@@ -1,7 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
@@ -11,12 +16,24 @@ public class FederationSyncTask : IScheduledTask
 {
     private readonly RemoteJellyfinClient _client;
     private readonly RemoteItemStore _store;
+    private readonly ILibraryManager _libraryManager;
+    private readonly IUserDataManager _userDataManager;
+    private readonly IUserManager _userManager;
     private readonly ILogger<FederationSyncTask> _logger;
 
-    public FederationSyncTask(RemoteJellyfinClient client, RemoteItemStore store, ILogger<FederationSyncTask> logger)
+    public FederationSyncTask(
+        RemoteJellyfinClient client,
+        RemoteItemStore store,
+        ILibraryManager libraryManager,
+        IUserDataManager userDataManager,
+        IUserManager userManager,
+        ILogger<FederationSyncTask> logger)
     {
         _client = client;
         _store = store;
+        _libraryManager = libraryManager;
+        _userDataManager = userDataManager;
+        _userManager = userManager;
         _logger = logger;
     }
 
@@ -94,6 +111,15 @@ public class FederationSyncTask : IScheduledTask
                     _store.SaveDigest(server.Id, pd.Count, pd.Hash, null);
 
                 _logger.LogInformation("Synced {Count} items from {Name}", count, server.Name);
+
+                // Pull peer's user data into a configured local user (if any).
+                if (!string.IsNullOrEmpty(server.LocalUserIdForSync) && Guid.TryParse(server.LocalUserIdForSync, out var localUid))
+                {
+                    var pulled = await PullWatchStateAsync(server, localUid, cancellationToken).ConfigureAwait(false);
+                    if (pulled > 0)
+                        _logger.LogInformation("Pulled {Count} watch-state entries from {Name} into user {Uid}",
+                            pulled, server.Name, localUid);
+                }
             }
             catch (Exception ex)
             {
@@ -105,6 +131,84 @@ public class FederationSyncTask : IScheduledTask
                 progress.Report(100.0 * done / total);
             }
         }
+    }
+
+    private async Task<int> PullWatchStateAsync(Configuration.RemoteServer server, Guid localUserId, CancellationToken ct)
+    {
+        var user = _userManager.GetUserById(localUserId);
+        if (user is null)
+        {
+            _logger.LogWarning("LocalUserIdForSync {Uid} not found in user manager", localUserId);
+            return 0;
+        }
+
+        var applied = 0;
+        await foreach (var entry in _client.FetchUserDataAsync(server, ct))
+        {
+            if (ct.IsCancellationRequested) break;
+
+            var tmdb = entry.ProviderIds.GetValueOrDefault("Tmdb");
+            var imdb = entry.ProviderIds.GetValueOrDefault("Imdb");
+            if (string.IsNullOrEmpty(tmdb) && string.IsNullOrEmpty(imdb)) continue;
+
+            var localItem = FindLocalByProviderId(tmdb, imdb);
+            if (localItem is null) continue;
+
+            var existing = _userDataManager.GetUserData(user, localItem);
+            // Merge rule: latest LastPlayedDate wins for position/played; favorite is OR.
+            var incomingNewer = entry.LastPlayedDate.HasValue
+                && (!existing.LastPlayedDate.HasValue || entry.LastPlayedDate > existing.LastPlayedDate);
+
+            var changed = false;
+            if (incomingNewer || (!existing.Played && entry.Played))
+            {
+                existing.Played = entry.Played;
+                if (entry.LastPlayedDate.HasValue) existing.LastPlayedDate = entry.LastPlayedDate;
+                changed = true;
+            }
+            if (incomingNewer && entry.PlaybackPositionTicks != existing.PlaybackPositionTicks)
+            {
+                existing.PlaybackPositionTicks = entry.PlaybackPositionTicks;
+                changed = true;
+            }
+            if (entry.IsFavorite && !existing.IsFavorite)
+            {
+                existing.IsFavorite = true;
+                changed = true;
+            }
+            if (entry.PlayCount > existing.PlayCount)
+            {
+                existing.PlayCount = entry.PlayCount;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                // Reason = Import so WatchStateSyncService's push handler skips this save and
+                // doesn't bounce it back to the peer (loop break).
+                _userDataManager.SaveUserData(user, localItem, existing, UserDataSaveReason.Import, ct);
+                applied++;
+            }
+        }
+        return applied;
+    }
+
+    private BaseItem? FindLocalByProviderId(string? tmdb, string? imdb)
+    {
+        var q = new InternalItemsQuery
+        {
+            IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Episode },
+            Recursive = true,
+            Limit = 1
+        };
+        if (!string.IsNullOrEmpty(tmdb))
+            q.HasAnyProviderId = new Dictionary<string, string> { [MetadataProvider.Tmdb.ToString()] = tmdb };
+        else if (!string.IsNullOrEmpty(imdb))
+            q.HasAnyProviderId = new Dictionary<string, string> { [MetadataProvider.Imdb.ToString()] = imdb };
+        else
+            return null;
+
+        return _libraryManager.GetItemList(q).FirstOrDefault();
     }
 
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()

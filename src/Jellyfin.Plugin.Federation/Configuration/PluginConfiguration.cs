@@ -72,6 +72,13 @@ public class RemoteServer
 
     public string? RemoteUserId { get; set; }
 
+    /// <summary>
+    /// Optional local user id. When set, on each sync round we pull this peer's
+    /// played/in-progress items and merge their UserData into this local user (TMDB-matched
+    /// items only). Empty = pull-direction watch sync disabled for this peer.
+    /// </summary>
+    public string? LocalUserIdForSync { get; set; }
+
     public bool Enabled { get; set; } = true;
 
     public List<string> AllowedLibraryIds { get; set; } = new();

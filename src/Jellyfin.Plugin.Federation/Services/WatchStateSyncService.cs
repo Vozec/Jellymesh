@@ -43,6 +43,10 @@ public class WatchStateSyncService : IHostedService, IDisposable
 
     private void OnUserDataSaved(object? sender, UserDataSaveEventArgs e)
     {
+        // Loop-break: a save with reason=Import was made by our own pull-direction sync.
+        // Pushing it back to peers would ping-pong forever and overwrite peer's freshly-newer state.
+        if (e.SaveReason == UserDataSaveReason.Import) return;
+
         var config = Plugin.Instance?.Configuration;
         if (config is null || !config.EnableWatchStateSync || config.RemoteServers.Count == 0) return;
         if (e.Item is null) return;

@@ -3,6 +3,16 @@ using System.Collections.Generic;
 
 namespace Jellyfin.Plugin.Federation.Models;
 
+public class RemoteUserDataEntry
+{
+    public Dictionary<string, string> ProviderIds { get; set; } = new();
+    public bool Played { get; set; }
+    public long PlaybackPositionTicks { get; set; }
+    public int PlayCount { get; set; }
+    public bool IsFavorite { get; set; }
+    public DateTime? LastPlayedDate { get; set; }
+}
+
 public class RemoteItem
 {
     public Guid ServerId { get; set; }

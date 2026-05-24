@@ -126,6 +126,71 @@ public class RemoteJellyfinClient
         return item;
     }
 
+    /// <summary>
+    /// Fetches the peer's items that have non-default UserData (played, in-progress, or
+    /// favorited). Each result carries ProviderIds for matching to local items + the
+    /// UserData payload.
+    /// </summary>
+    public async IAsyncEnumerable<RemoteUserDataEntry> FetchUserDataAsync(
+        RemoteServer server,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(server.RemoteUserId)) yield break;
+
+        // Two passes — peer's API doesn't have an "IsPlayed OR IsResumable" filter, so we
+        // union the two queries client-side. Played alone is usually the big set;
+        // in-progress adds the resume positions.
+        foreach (var filter in new[] { "IsPlayed=true", "IsResumable=true" })
+        {
+            var url = $"/Users/{server.RemoteUserId}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=UserData,ProviderIds&{filter}&Limit=2000";
+            HttpResponseMessage? resp = null;
+            JsonDocument? doc = null;
+            try
+            {
+                var http = BuildClient(server);
+                resp = await http.GetAsync(url, ct).ConfigureAwait(false);
+                if (!resp.IsSuccessStatusCode) continue;
+                var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "FetchUserData[{Filter}] failed for {Peer}", filter, server.Name);
+                resp?.Dispose(); doc?.Dispose();
+                continue;
+            }
+
+            if (!doc.RootElement.TryGetProperty("Items", out var items)) { resp.Dispose(); doc.Dispose(); continue; }
+
+            foreach (var el in items.EnumerateArray())
+            {
+                var entry = MapUserData(el);
+                if (entry is not null) yield return entry;
+            }
+            resp.Dispose(); doc.Dispose();
+        }
+    }
+
+    private static RemoteUserDataEntry? MapUserData(JsonElement el)
+    {
+        if (!el.TryGetProperty("UserData", out var ud) || ud.ValueKind != JsonValueKind.Object) return null;
+        var entry = new RemoteUserDataEntry
+        {
+            Played = ud.TryGetProperty("Played", out var p) && p.ValueKind == JsonValueKind.True,
+            PlaybackPositionTicks = ud.TryGetProperty("PlaybackPositionTicks", out var pt) && pt.ValueKind == JsonValueKind.Number ? pt.GetInt64() : 0L,
+            PlayCount = ud.TryGetProperty("PlayCount", out var pc) && pc.ValueKind == JsonValueKind.Number ? pc.GetInt32() : 0,
+            IsFavorite = ud.TryGetProperty("IsFavorite", out var f) && f.ValueKind == JsonValueKind.True,
+            LastPlayedDate = ud.TryGetProperty("LastPlayedDate", out var lpd) && lpd.ValueKind == JsonValueKind.String && DateTime.TryParse(lpd.GetString(), out var d) ? d : null
+        };
+        if (el.TryGetProperty("ProviderIds", out var pids) && pids.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in pids.EnumerateObject())
+                if (prop.Value.ValueKind == JsonValueKind.String)
+                    entry.ProviderIds[prop.Name] = prop.Value.GetString() ?? string.Empty;
+        }
+        return entry;
+    }
+
     public async Task<bool> MarkPlayedAsync(RemoteServer server, string remoteItemId, bool played, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(server.RemoteUserId)) return false;
