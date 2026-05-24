@@ -51,6 +51,19 @@ public class ShareKey
     /// <summary>Jellyfin library (TopParent) ids that this key may see. Empty = all libraries.</summary>
     public List<string> LibraryIds { get; set; } = new();
 
+    /// <summary>HH:mm (server local TZ). When both set, peer access is denied outside this window.
+    /// Cross-midnight ranges supported (e.g. 18:00–02:00 means evening + early night).</summary>
+    public string? AllowedHoursStart { get; set; }
+
+    public string? AllowedHoursEnd { get; set; }
+
+    /// <summary>Items carrying any of these tags are hidden from the share.</summary>
+    public List<string> BlockedTags { get; set; } = new();
+
+    /// <summary>Max official rating shown. Items strictly above (or unrated when set strict)
+    /// are hidden. Format: Jellyfin rating string (e.g. "PG-13", "TV-MA"). Null = no filter.</summary>
+    public string? MaxOfficialRating { get; set; }
+
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
     public bool Enabled { get; set; } = true;

@@ -64,13 +64,17 @@
                 <h3>Share keys (inbound — what I expose to friends)</h3>
                 <p>Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
                 <div id="SharesList"></div>
-                <div style="margin-top:0.5em;">
-                    <input type="text" id="NewShareLabel" placeholder="Label (e.g. Movies for Alice)" style="margin-right:0.5em;" />
-                    <input type="text" id="NewShareLibraries" placeholder="Library ids (comma-separated, empty = all)" style="margin-right:0.5em;width:30em;" />
-                    <button is="emby-button" type="button" id="CreateShare" class="raised">
-                        <span>Generate share key</span>
-                    </button>
+                <div style="margin-top:0.5em;display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:60em;">
+                    <input type="text" id="NewShareLabel" placeholder="Label (e.g. Movies for Alice)" />
+                    <input type="text" id="NewShareLibraries" placeholder="Library ids (comma-sep, empty = all)" />
+                    <input type="text" id="NewShareHoursStart" placeholder="Allowed hours start HH:mm (optional)" />
+                    <input type="text" id="NewShareHoursEnd" placeholder="Allowed hours end HH:mm (optional)" />
+                    <input type="text" id="NewShareBlockedTags" placeholder="Blocked tags (comma-sep, optional)" />
+                    <input type="text" id="NewShareMaxRating" placeholder="Max rating (G/PG/PG-13/R/NC-17, optional)" />
                 </div>
+                <button is="emby-button" type="button" id="CreateShare" class="raised" style="margin-top:0.5em;">
+                    <span>Generate share key</span>
+                </button>
 
                 <br /><br />
                 <button is="emby-button" type="submit" class="raised button-submit block">
@@ -173,17 +177,24 @@
         });
 
         document.getElementById('CreateShare').addEventListener('click', function () {
-            var label = document.getElementById('NewShareLabel').value.trim();
-            var libs = document.getElementById('NewShareLibraries').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+            var splitCsv = function (id) { return document.getElementById(id).value.split(',').map(function (s) { return s.trim(); }).filter(Boolean); };
+            var pick = function (id) { return document.getElementById(id).value.trim() || null; };
             ApiClient.fetch({
                 url: ApiClient.getUrl('Federation/Shares'),
                 type: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify({ Label: label, LibraryIds: libs })
+                data: JSON.stringify({
+                    Label: pick('NewShareLabel'),
+                    LibraryIds: splitCsv('NewShareLibraries'),
+                    AllowedHoursStart: pick('NewShareHoursStart'),
+                    AllowedHoursEnd: pick('NewShareHoursEnd'),
+                    BlockedTags: splitCsv('NewShareBlockedTags'),
+                    MaxOfficialRating: pick('NewShareMaxRating')
+                })
             }).then(function (resp) {
                 alert('Share key generated:\n\n' + resp.ApiKey + '\n\nHand it to your friend.');
-                document.getElementById('NewShareLabel').value = '';
-                document.getElementById('NewShareLibraries').value = '';
+                ['NewShareLabel','NewShareLibraries','NewShareHoursStart','NewShareHoursEnd','NewShareBlockedTags','NewShareMaxRating']
+                    .forEach(function (id) { document.getElementById(id).value = ''; });
                 renderShares();
             });
         });

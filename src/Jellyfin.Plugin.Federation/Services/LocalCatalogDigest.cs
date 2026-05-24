@@ -19,23 +19,15 @@ public class LocalCatalogDigest
         _libraryManager = libraryManager;
     }
 
-    public DigestSnapshot Compute(IReadOnlyCollection<string>? libraryIdFilter = null)
+    public DigestSnapshot Compute(IReadOnlyCollection<string>? libraryIdFilter = null,
+        IReadOnlyCollection<string>? blockedTags = null,
+        string? maxOfficialRating = null)
     {
-        var query = new InternalItemsQuery
-        {
-            IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Episode },
-            Recursive = true
-        };
-        if (libraryIdFilter is { Count: > 0 })
-        {
-            query.TopParentIds = libraryIdFilter
-                .Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty)
-                .Where(g => g != Guid.Empty)
-                .ToArray();
-        }
+        var query = BuildQuery(libraryIdFilter);
+        var items = _libraryManager.GetItemList(query).Where(i => PassesContentFilter(i, blockedTags, maxOfficialRating));
 
         var ids = new List<(string Id, DateTime Modified)>();
-        foreach (var item in _libraryManager.GetItemList(query))
+        foreach (var item in items)
         {
             ids.Add((item.Id.ToString("N"), item.DateLastSaved));
         }
@@ -54,7 +46,18 @@ public class LocalCatalogDigest
         return new DigestSnapshot(ids.Count, hash, latest);
     }
 
-    public IReadOnlyList<CatalogItemRef> List(IReadOnlyCollection<string>? libraryIdFilter = null)
+    public IReadOnlyList<CatalogItemRef> List(IReadOnlyCollection<string>? libraryIdFilter = null,
+        IReadOnlyCollection<string>? blockedTags = null,
+        string? maxOfficialRating = null)
+    {
+        var query = BuildQuery(libraryIdFilter);
+        return _libraryManager.GetItemList(query)
+            .Where(i => PassesContentFilter(i, blockedTags, maxOfficialRating))
+            .Select(i => new CatalogItemRef(i.Id.ToString("N"), i.Name, i.GetType().Name, i.DateLastSaved))
+            .ToList();
+    }
+
+    private static InternalItemsQuery BuildQuery(IReadOnlyCollection<string>? libraryIdFilter)
     {
         var query = new InternalItemsQuery
         {
@@ -68,10 +71,39 @@ public class LocalCatalogDigest
                 .Where(g => g != Guid.Empty)
                 .ToArray();
         }
-        return _libraryManager.GetItemList(query)
-            .Select(i => new CatalogItemRef(i.Id.ToString("N"), i.Name, i.GetType().Name, i.DateLastSaved))
-            .ToList();
+        return query;
     }
+
+    private static bool PassesContentFilter(BaseItem item, IReadOnlyCollection<string>? blockedTags, string? maxRating)
+    {
+        if (blockedTags is { Count: > 0 } && item.Tags is { Length: > 0 })
+        {
+            foreach (var t in item.Tags)
+                if (blockedTags.Contains(t, StringComparer.OrdinalIgnoreCase)) return false;
+        }
+        if (!string.IsNullOrEmpty(maxRating) && !string.IsNullOrEmpty(item.OfficialRating))
+        {
+            // Use Jellyfin's parental-rating numeric scale: higher = stricter. We allow items
+            // whose rating numeric ≤ max's numeric. If we can't resolve a number, fall open
+            // (don't hide), matching Jellyfin's own user-content-rating leniency.
+            var itemScore = ParentalScore(item.OfficialRating);
+            var maxScore = ParentalScore(maxRating);
+            if (itemScore.HasValue && maxScore.HasValue && itemScore.Value > maxScore.Value) return false;
+        }
+        return true;
+    }
+
+    private static int? ParentalScore(string rating) => rating.ToUpperInvariant() switch
+    {
+        // Conservative cross-system mapping. Sufficient for "kid-safe" / "adult-only" splits;
+        // not a substitute for Jellyfin's per-user content-rating settings.
+        "G" or "TV-Y" or "TV-G" or "U" => 1,
+        "PG" or "TV-Y7" or "TV-PG" => 5,
+        "PG-13" or "TV-13" or "TV-14" or "12" => 13,
+        "R" or "TV-MA" or "16" or "17" => 17,
+        "NC-17" or "X" or "18" or "AO" => 18,
+        _ => null
+    };
 }
 
 public record DigestSnapshot(int Count, string Hash, DateTime? LatestModifiedUtc);

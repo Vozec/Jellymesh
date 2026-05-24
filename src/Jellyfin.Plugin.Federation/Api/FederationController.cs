@@ -278,7 +278,8 @@ h1{{font-weight:400;font-size:1.2rem}}
     {
         var key = ResolveShareKey(shareKey);
         if (key is null) return Unauthorized();
-        return Ok(digest.Compute(key.LibraryIds));
+        if (!IsWithinSchedule(key)) return StatusCode(403, "Outside allowed-hours window");
+        return Ok(digest.Compute(key.LibraryIds, key.BlockedTags, key.MaxOfficialRating));
     }
 
     [AllowAnonymous]
@@ -288,8 +289,12 @@ h1{{font-weight:400;font-size:1.2rem}}
     {
         var key = ResolveShareKey(shareKey);
         if (key is null) return Unauthorized();
-        return Ok(digest.List(key.LibraryIds));
+        if (!IsWithinSchedule(key)) return StatusCode(403, "Outside allowed-hours window");
+        return Ok(digest.List(key.LibraryIds, key.BlockedTags, key.MaxOfficialRating));
     }
+
+    private static bool IsWithinSchedule(Configuration.ShareKey key)
+        => Services.ScheduleWindow.IsWithin(key.AllowedHoursStart, key.AllowedHoursEnd, DateTime.Now.TimeOfDay);
 
     [HttpGet("Shares")]
     public IActionResult ListShares()
@@ -317,6 +322,10 @@ h1{{font-weight:400;font-size:1.2rem}}
         {
             Label = req.Label ?? "Unnamed share",
             LibraryIds = req.LibraryIds ?? new List<string>(),
+            AllowedHoursStart = string.IsNullOrWhiteSpace(req.AllowedHoursStart) ? null : req.AllowedHoursStart,
+            AllowedHoursEnd = string.IsNullOrWhiteSpace(req.AllowedHoursEnd) ? null : req.AllowedHoursEnd,
+            BlockedTags = req.BlockedTags ?? new List<string>(),
+            MaxOfficialRating = string.IsNullOrWhiteSpace(req.MaxOfficialRating) ? null : req.MaxOfficialRating,
             ApiKey = GenerateApiKey(),
             Enabled = true
         };
@@ -452,6 +461,10 @@ public class CreateShareRequest
 {
     public string? Label { get; set; }
     public List<string>? LibraryIds { get; set; }
+    public string? AllowedHoursStart { get; set; }
+    public string? AllowedHoursEnd { get; set; }
+    public List<string>? BlockedTags { get; set; }
+    public string? MaxOfficialRating { get; set; }
 }
 
 public class CreatePublicShareRequest
