@@ -29,6 +29,11 @@ public class RemoteItemStore
     {
         using var c = new SqliteConnection(ConnString);
         c.Open();
+        using (var pragma = c.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=10000;";
+            pragma.ExecuteNonQuery();
+        }
         using var cmd = c.CreateCommand();
         cmd.CommandText = @"
             CREATE TABLE IF NOT EXISTS remote_items (

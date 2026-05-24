@@ -31,6 +31,7 @@ public class PublicShareStore
     {
         using var c = new SqliteConnection(ConnString);
         c.Open();
+        EnableWal(c);
         using var cmd = c.CreateCommand();
         cmd.CommandText = @"
             CREATE TABLE IF NOT EXISTS public_shares (
@@ -142,6 +143,17 @@ public class PublicShareStore
         cmd.CommandText = "DELETE FROM public_shares WHERE token = $t;";
         cmd.Parameters.AddWithValue("$t", token);
         cmd.ExecuteNonQuery();
+    }
+
+    private static void EnableWal(SqliteConnection c)
+    {
+        // WAL allows concurrent readers with a single writer instead of locking the whole DB
+        // on every write. Combined with the 10s busy_timeout via Default Timeout in the conn
+        // string, this lets the 50-thread TryConsume stress test serialize cleanly instead
+        // of throwing SQLITE_BUSY. Persistent setting — only needs to run once per DB file.
+        using var pragma = c.CreateCommand();
+        pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=10000;";
+        pragma.ExecuteNonQuery();
     }
 
     private static string GenerateToken()

@@ -77,49 +77,7 @@ public class LocalCatalogDigest
     }
 
     private static bool PassesContentFilter(BaseItem item, IReadOnlyCollection<string>? blockedTags, string? maxRating, bool strictUnknown)
-    {
-        if (blockedTags is { Count: > 0 } && item.Tags is { Length: > 0 })
-        {
-            foreach (var t in item.Tags)
-                if (blockedTags.Contains(t, StringComparer.OrdinalIgnoreCase)) return false;
-        }
-        if (!string.IsNullOrEmpty(maxRating))
-        {
-            var maxScore = ParentalScore(maxRating);
-            if (string.IsNullOrEmpty(item.OfficialRating))
-            {
-                // Unrated item + max set: fall open by default (matches Jellyfin's leniency).
-                // strictUnknown forces hide — required for genuine kid-safe scoping where
-                // "untagged" must not bypass the filter.
-                if (strictUnknown) return false;
-            }
-            else
-            {
-                var itemScore = ParentalScore(item.OfficialRating);
-                if (itemScore is null)
-                {
-                    if (strictUnknown) return false; // unrecognised rating + strict = hide
-                }
-                else if (maxScore.HasValue && itemScore.Value > maxScore.Value)
-                {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    private static int? ParentalScore(string rating) => rating.ToUpperInvariant() switch
-    {
-        // Conservative cross-system mapping. Sufficient for "kid-safe" / "adult-only" splits;
-        // not a substitute for Jellyfin's per-user content-rating settings.
-        "G" or "TV-Y" or "TV-G" or "U" => 1,
-        "PG" or "TV-Y7" or "TV-PG" => 5,
-        "PG-13" or "TV-13" or "TV-14" or "12" => 13,
-        "R" or "TV-MA" or "16" or "17" => 17,
-        "NC-17" or "X" or "18" or "AO" => 18,
-        _ => null
-    };
+        => ContentFilter.Passes(item.Tags as IReadOnlyCollection<string>, item.OfficialRating, blockedTags, maxRating, strictUnknown);
 }
 
 public record DigestSnapshot(int Count, string Hash, DateTime? LatestModifiedUtc);

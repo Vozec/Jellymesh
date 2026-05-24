@@ -103,6 +103,44 @@ public class PublicShareStoreTests : IDisposable
         Assert.Equal(1, _store.GetInfo(token)!.UsedCount);
     }
 
+    [Fact]
+    public void TryConsume_caps_at_MaxUses_under_high_contention()
+    {
+        // 50 concurrent callers, cap=10. Atomic UPDATE…WHERE used_count < max_uses RETURNING
+        // must let exactly 10 win — not 50 (no cap), not 40 (over-count), not 5 (busy-throw
+        // before retry). This is the regression test for the DEFERRED-tx pre-check race fix.
+        var token = _store.Create("item-burst", null, maxUses: 10, null);
+
+        var results = new System.Collections.Concurrent.ConcurrentBag<string?>();
+        var b = new System.Threading.Barrier(50);
+        var threads = new System.Threading.Thread[50];
+        for (int i = 0; i < threads.Length; i++)
+        {
+            threads[i] = new System.Threading.Thread(() =>
+            {
+                b.SignalAndWait();
+                results.Add(_store.TryConsume(token));
+            });
+            threads[i].Start();
+        }
+        foreach (var t in threads) t.Join();
+
+        var winners = 0;
+        foreach (var r in results) if (r is not null) winners++;
+        Assert.Equal(10, winners);
+        Assert.Equal(10, _store.GetInfo(token)!.UsedCount);
+    }
+
+    [Fact]
+    public void Create_with_local_kind_expiry_does_not_silently_drift()
+    {
+        // Reproduce the timestamp-Kind bug: caller passes DateTime.UtcNow without explicit Kind.
+        // After the RoundtripKind fix it should still trip the expiry on a value far in the past.
+        var pastUnspecified = DateTime.SpecifyKind(DateTime.UtcNow.AddDays(-30), DateTimeKind.Unspecified);
+        var token = _store.Create("item-past", pastUnspecified, null, null);
+        Assert.Null(_store.TryConsume(token));
+    }
+
     private class TestAppPaths : IApplicationPaths
     {
         public TestAppPaths(string dir) { DataPath = dir; }
