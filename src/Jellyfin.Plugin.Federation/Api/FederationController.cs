@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -18,11 +19,13 @@ namespace Jellyfin.Plugin.Federation.Api;
 public class FederationController : ControllerBase
 {
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly Services.RemoteItemStore _store;
     private readonly ILogger<FederationController> _logger;
 
-    public FederationController(IHttpClientFactory httpClientFactory, ILogger<FederationController> logger)
+    public FederationController(IHttpClientFactory httpClientFactory, Services.RemoteItemStore store, ILogger<FederationController> logger)
     {
         _httpClientFactory = httpClientFactory;
+        _store = store;
         _logger = logger;
     }
 
@@ -55,9 +58,32 @@ public class FederationController : ControllerBase
             Response.Headers[h.Key] = h.Value.ToArray();
         Response.Headers.Remove("transfer-encoding");
 
-        await resp.Content.CopyToAsync(Response.Body, ct).ConfigureAwait(false);
+        var auditId = _store.BeginAudit(server.Id, itemId, User?.Identity?.Name);
+        var bytesServed = 0L;
+        try
+        {
+            await using var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            var cap = config.OutboundBitrateCapBps;
+            await using Stream throttled = cap > 0 ? new Services.ThrottledStream(src, cap / 8) : src;
+
+            var buf = new byte[81920];
+            int n;
+            while ((n = await throttled.ReadAsync(buf.AsMemory(), ct).ConfigureAwait(false)) > 0)
+            {
+                await Response.Body.WriteAsync(buf.AsMemory(0, n), ct).ConfigureAwait(false);
+                bytesServed += n;
+            }
+        }
+        finally
+        {
+            _store.CompleteAudit(auditId, bytesServed);
+        }
         return new EmptyResult();
     }
+
+    [HttpGet("Audit/Recent")]
+    public IActionResult RecentAudit([FromQuery] int limit = 100)
+        => Ok(_store.RecentAudits(Math.Clamp(limit, 1, 1000)));
 
     [HttpGet("Peers/Status")]
     public IActionResult PeersStatus([FromServices] Services.PeerHealthRegistry health)

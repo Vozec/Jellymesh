@@ -53,6 +53,18 @@ public class RemoteItemStore
             CREATE INDEX IF NOT EXISTS idx_tmdb ON remote_items(tmdb);
             CREATE INDEX IF NOT EXISTS idx_imdb ON remote_items(imdb);
             CREATE INDEX IF NOT EXISTS idx_name_year ON remote_items(name, year);
+
+            CREATE TABLE IF NOT EXISTS stream_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                peer_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                started_utc TEXT NOT NULL,
+                ended_utc TEXT,
+                bytes_served INTEGER NOT NULL DEFAULT 0,
+                user_id TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_peer ON stream_audit(peer_id);
+            CREATE INDEX IF NOT EXISTS idx_audit_time ON stream_audit(started_utc);
         ";
         cmd.ExecuteNonQuery();
     }
@@ -176,6 +188,51 @@ public class RemoteItemStore
                 catch { /* ignore */ }
             }
             yield return item;
+        }
+    }
+
+    public long BeginAudit(Guid peerId, string itemId, string? userId)
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = @"INSERT INTO stream_audit (peer_id, item_id, started_utc, user_id) VALUES ($p, $i, $t, $u); SELECT last_insert_rowid();";
+        cmd.Parameters.AddWithValue("$p", peerId.ToString());
+        cmd.Parameters.AddWithValue("$i", itemId);
+        cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$u", (object?)userId ?? DBNull.Value);
+        return (long)(cmd.ExecuteScalar() ?? 0L);
+    }
+
+    public void CompleteAudit(long auditId, long bytesServed)
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = @"UPDATE stream_audit SET ended_utc = $t, bytes_served = $b WHERE id = $i;";
+        cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$b", bytesServed);
+        cmd.Parameters.AddWithValue("$i", auditId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public IEnumerable<(Guid PeerId, string ItemId, DateTime Started, DateTime? Ended, long Bytes)> RecentAudits(int limit = 100)
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT peer_id, item_id, started_utc, ended_utc, bytes_served FROM stream_audit ORDER BY id DESC LIMIT $l;";
+        cmd.Parameters.AddWithValue("$l", limit);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            yield return (
+                Guid.Parse(r.GetString(0)),
+                r.GetString(1),
+                DateTime.Parse(r.GetString(2)),
+                r.IsDBNull(3) ? null : DateTime.Parse(r.GetString(3)),
+                r.GetInt64(4)
+            );
         }
     }
 
