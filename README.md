@@ -70,6 +70,12 @@ Early scaffold. Not functional yet.
 
 ## Architecture
 
+![Architecture](docs/diagrams/architecture-1.png)
+
+See [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md), and [docs/sync-flow.md](docs/sync-flow.md) for full details. Regenerate diagrams with `bash docs/render-diagrams.sh`.
+
+<details><summary>ASCII fallback</summary>
+
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ Local Jellyfin                                               │
@@ -111,6 +117,8 @@ Early scaffold. Not functional yet.
         │ Peer Jellyfin   │
         └─────────────────┘
 ```
+
+</details>
 
 ## Build
 
