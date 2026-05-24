@@ -54,9 +54,13 @@ public class WatchStateSyncService : IHostedService, IDisposable
         var played = e.UserData?.Played ?? false;
         var position = e.UserData?.PlaybackPositionTicks ?? 0L;
 
+        // Snapshot the peer list on the synchronous handler thread; the background task
+        // must not enumerate the live List<RemoteServer> while admin UI may be mutating it.
+        var peerSnapshot = config.RemoteServers.Where(s => s.Enabled).ToArray();
+
         _ = Task.Run(async () =>
         {
-            foreach (var server in config.RemoteServers.Where(s => s.Enabled))
+            foreach (var server in peerSnapshot)
             {
                 try
                 {
@@ -65,8 +69,8 @@ public class WatchStateSyncService : IHostedService, IDisposable
 
                     if (position > 0)
                         await _client.UpdateProgressAsync(server, remoteId, position, CancellationToken.None).ConfigureAwait(false);
-                    if (played)
-                        await _client.MarkPlayedAsync(server, remoteId, true, CancellationToken.None).ConfigureAwait(false);
+                    // Propagate played=false as well — un-marking watched should federate.
+                    await _client.MarkPlayedAsync(server, remoteId, played, CancellationToken.None).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {

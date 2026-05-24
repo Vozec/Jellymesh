@@ -35,7 +35,14 @@ public class PeerHealthRegistry
     public PeerHealth Get(Guid peerId)
         => _state.TryGetValue(peerId, out var h) ? h : new PeerHealth { Online = false, LastCheckUtc = DateTime.MinValue };
 
-    public bool IsOnline(Guid peerId) => Get(peerId).Online;
+    /// <summary>
+    /// True when the peer's last probe succeeded, OR when we've never probed it yet
+    /// (optimistic — first probe failure flips this). Avoids hiding federated sources
+    /// during the 0-to-30-second window after server start before HealthMonitorService's
+    /// first round completes.
+    /// </summary>
+    public bool IsOnline(Guid peerId)
+        => _state.TryGetValue(peerId, out var h) ? h.Online : true;
 
     /// <summary>Short string that changes whenever any peer flips online state. Embed in cache keys.</summary>
     public string Signature()

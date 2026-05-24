@@ -49,20 +49,26 @@ public class FederationController : ControllerBase
         if (Request.Headers.TryGetValue("Range", out var range))
             req.Headers.TryAddWithoutValidation("Range", (string)range!);
 
-        var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
 
         Response.StatusCode = (int)resp.StatusCode;
-        foreach (var h in resp.Headers)
-            Response.Headers[h.Key] = h.Value.ToArray();
-        foreach (var h in resp.Content.Headers)
-            Response.Headers[h.Key] = h.Value.ToArray();
-        Response.Headers.Remove("transfer-encoding");
+        CopySafeHeaders(resp.Headers, Response.Headers);
+        CopySafeHeaders(resp.Content.Headers, Response.Headers);
+        // When we'll throttle and re-meter the body, the upstream Content-Length no longer
+        // matches what we'll write. Let Kestrel set Content-Length (or chunk) based on actual bytes.
+        if (config.OutboundBitrateCapBps > 0) Response.Headers.Remove("content-length");
 
-        var auditId = _store.BeginAudit(server.Id, itemId, User?.Identity?.Name);
+        // Audit row is best-effort — if SQLite is locked we still serve the stream.
+        var auditId = -1L;
+        try { auditId = _store.BeginAudit(server.Id, itemId, User?.Identity?.Name); }
+        catch (Exception ex) { _logger.LogWarning(ex, "BeginAudit failed for {Peer} {Item}; serving stream without audit row", server.Id, itemId); }
+
         var bytesServed = 0L;
         try
         {
-            await using var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            // ThrottledStream owns disposing src (its Dispose forwards). Don't await using src
+            // separately or src is disposed twice.
             var cap = config.OutboundBitrateCapBps;
             await using Stream throttled = cap > 0 ? new Services.ThrottledStream(src, cap / 8) : src;
 
@@ -76,8 +82,50 @@ public class FederationController : ControllerBase
         }
         finally
         {
-            _store.CompleteAudit(auditId, bytesServed);
+            if (auditId > 0)
+            {
+                try { _store.CompleteAudit(auditId, bytesServed); }
+                catch (Exception ex) { _logger.LogWarning(ex, "CompleteAudit failed for {AuditId}", auditId); }
+            }
         }
+        return new EmptyResult();
+    }
+
+    private static readonly HashSet<string> HopByHopHeaders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+        "te", "trailer", "trailers", "transfer-encoding", "upgrade",
+        "server", // we shouldn't impersonate upstream's server header
+    };
+
+    private static void CopySafeHeaders(System.Net.Http.Headers.HttpHeaders src, IHeaderDictionary dst)
+    {
+        foreach (var h in src)
+        {
+            if (HopByHopHeaders.Contains(h.Key)) continue;
+            dst[h.Key] = h.Value.ToArray();
+        }
+    }
+
+    [HttpGet("Image/{serverId}/{itemId}/{imageType}")]
+    public async Task<IActionResult> ProxyImage(string serverId, string itemId, string imageType, CancellationToken ct)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return NotFound();
+        var server = config.RemoteServers.FirstOrDefault(s => s.Id.ToString("N") == serverId);
+        if (server is null || !server.Enabled) return NotFound();
+
+        var http = _httpClientFactory.CreateClient();
+        var url = $"{server.BaseUrl.TrimEnd('/')}/Items/{itemId}/Images/{Uri.EscapeDataString(imageType)}";
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Add("X-Emby-Token", server.ApiKey);
+
+        using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode) return NotFound();
+
+        Response.StatusCode = (int)resp.StatusCode;
+        CopySafeHeaders(resp.Content.Headers, Response.Headers);
+        await resp.Content.CopyToAsync(Response.Body, ct).ConfigureAwait(false);
         return new EmptyResult();
     }
 
@@ -167,7 +215,19 @@ public class FederationController : ControllerBase
     {
         if (string.IsNullOrEmpty(presented)) return null;
         var config = Plugin.Instance?.Configuration;
-        return config?.Shares.FirstOrDefault(s => s.Enabled && s.ApiKey == presented);
+        if (config is null) return null;
+        // Constant-time comparison — same length is necessary; CryptographicOperations.FixedTimeEquals
+        // throws on length mismatch, so equalize via byte spans of equal size.
+        var presentedBytes = System.Text.Encoding.UTF8.GetBytes(presented);
+        foreach (var s in config.Shares)
+        {
+            if (!s.Enabled) continue;
+            var storedBytes = System.Text.Encoding.UTF8.GetBytes(s.ApiKey);
+            if (storedBytes.Length != presentedBytes.Length) continue;
+            if (System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(storedBytes, presentedBytes))
+                return s;
+        }
+        return null;
     }
 
     private static string GenerateApiKey()

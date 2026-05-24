@@ -278,6 +278,7 @@ public class RemoteItemStore
         c.Open();
         using var tx = c.BeginTransaction();
         using var cmd = c.CreateCommand();
+        cmd.Transaction = tx; // Microsoft.Data.Sqlite enforces this when a tx is open on the connection.
         cmd.CommandText = "DELETE FROM remote_items WHERE server_id = $sid AND remote_item_id = $rid;";
         var sidP = cmd.CreateParameter(); sidP.ParameterName = "$sid"; sidP.Value = peerId.ToString(); cmd.Parameters.Add(sidP);
         var ridP = cmd.CreateParameter(); ridP.ParameterName = "$rid"; cmd.Parameters.Add(ridP);

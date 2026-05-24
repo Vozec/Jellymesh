@@ -51,8 +51,7 @@ public class FederationSyncTask : IScheduledTask
                 if (!await _client.PingAsync(server, cancellationToken).ConfigureAwait(false))
                 {
                     _logger.LogWarning("Peer {Name} offline, skipping", server.Name);
-                    done++;
-                    continue;
+                    continue; // finally increments done + reports progress
                 }
 
                 // Gossip step: ask peer for catalog digest. If it matches our cached one,
@@ -65,8 +64,7 @@ public class FederationSyncTask : IScheduledTask
                     if (cached == d.Hash)
                     {
                         _logger.LogDebug("Peer {Name} digest unchanged ({Hash}), skipping pull", server.Name, d.Hash);
-                        done++;
-                        continue;
+                        continue; // finally still increments done + reports progress
                     }
                 }
 
@@ -89,8 +87,11 @@ public class FederationSyncTask : IScheduledTask
                 }
                 _store.PurgeStale(server.Id, syncStart);
 
-                if (digest is { } d2)
-                    _store.SaveDigest(server.Id, d2.Count, d2.Hash, null);
+                // Re-fetch the digest AFTER the pull so the cached hash reflects what we actually
+                // stored, not the pre-pull peer state (which may have shifted during the pull).
+                var postDigest = await _client.FetchDigestAsync(server, cancellationToken).ConfigureAwait(false);
+                if (postDigest is { } pd)
+                    _store.SaveDigest(server.Id, pd.Count, pd.Hash, null);
 
                 _logger.LogInformation("Synced {Count} items from {Name}", count, server.Name);
             }

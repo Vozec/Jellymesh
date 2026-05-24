@@ -62,26 +62,36 @@ public class RemoteJellyfinClient
         RemoteServer server,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
-        var http = BuildClient(server);
+        const int pageSize = 500;
         var fields = "ProviderIds,MediaSources,MediaStreams,Path,Width,Height,Container,Bitrate,RunTimeTicks";
-        var url = $"/Items?Recursive=true&IncludeItemTypes=Movie,Series,Episode&Fields={fields}&Limit=10000";
+        var prefix = !string.IsNullOrEmpty(server.RemoteUserId) ? $"/Users/{server.RemoteUserId}/Items" : "/Items";
 
-        if (!string.IsNullOrEmpty(server.RemoteUserId))
-            url = $"/Users/{server.RemoteUserId}/Items?Recursive=true&IncludeItemTypes=Movie,Series,Episode&Fields={fields}&Limit=10000";
-
-        using var resp = await http.GetAsync(url, ct).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-
-        var doc = await JsonDocument.ParseAsync(
-            await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false), cancellationToken: ct).ConfigureAwait(false);
-
-        if (!doc.RootElement.TryGetProperty("Items", out var items))
-            yield break;
-
-        foreach (var el in items.EnumerateArray())
+        var http = BuildClient(server);
+        var start = 0;
+        int total;
+        do
         {
-            yield return MapItem(server.Id, el);
-        }
+            var url = $"{prefix}?Recursive=true&IncludeItemTypes=Movie,Series,Episode&Fields={fields}&StartIndex={start}&Limit={pageSize}";
+            using var resp = await http.GetAsync(url, ct).ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
+
+            using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+
+            total = doc.RootElement.TryGetProperty("TotalRecordCount", out var t) && t.ValueKind == JsonValueKind.Number
+                ? t.GetInt32() : 0;
+
+            if (!doc.RootElement.TryGetProperty("Items", out var items)) yield break;
+
+            var thisPage = 0;
+            foreach (var el in items.EnumerateArray())
+            {
+                yield return MapItem(server.Id, el);
+                thisPage++;
+            }
+            if (thisPage == 0) yield break;
+            start += thisPage;
+        } while (start < total);
     }
 
     private static RemoteItem MapItem(Guid serverId, JsonElement el)
@@ -169,7 +179,8 @@ public class RemoteJellyfinClient
 
             using var resp = await http.GetAsync(url, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode) return null;
-            var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false), cancellationToken: ct).ConfigureAwait(false);
+            using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
             if (!doc.RootElement.TryGetProperty("Items", out var items)) return null;
             foreach (var el in items.EnumerateArray())
                 if (el.TryGetProperty("Id", out var id)) return id.GetString();

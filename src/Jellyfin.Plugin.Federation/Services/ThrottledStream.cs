@@ -32,9 +32,10 @@ public class ThrottledStream : Stream
 
     public override int Read(byte[] buffer, int offset, int count)
     {
-        var n = _inner.Read(buffer, offset, count);
-        Throttle(n).GetAwaiter().GetResult();
-        return n;
+        // Sync path: no Throttle (would block a thread-pool thread on Task.Delay and ignore
+        // the caller's cancellation). Throttling applies only on the async path, which is
+        // what the proxy controller and Kestrel's response stream use.
+        return _inner.Read(buffer, offset, count);
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)

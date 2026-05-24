@@ -36,7 +36,10 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
 
     public string Description => "Media available on federated peer Jellyfin servers but not in your local library.";
 
-    public string DataVersion => $"{DateTime.UtcNow:yyyyMMddHH}-{_health.Signature()}";
+    // DataVersion only changes when peer health flips — _health.Signature() embeds a
+    // counter that increments on every state transition. No date prefix → the channel
+    // cache file isn't thrown away every hour for nothing.
+    public string DataVersion => _health.Signature();
 
     public string HomePageUrl => "https://github.com/vozec/JellyfinFederation";
 
@@ -52,7 +55,7 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
 
     public bool IsEnabledFor(string userId) => Plugin.Instance?.Configuration.ShowRemoteOnlyItems ?? true;
 
-    public string GetCacheKey(string? userId) => $"federation-{DateTime.UtcNow:yyyyMMddHH}-{_health.Signature()}-{userId}";
+    public string GetCacheKey(string? userId) => $"federation-{_health.Signature()}-{userId}";
 
     public IEnumerable<ImageType> GetSupportedChannelImages() => new[] { ImageType.Primary };
 
@@ -89,7 +92,9 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
                 MediaType = ChannelMediaType.Video,
                 ProductionYear = remote.ProductionYear,
                 ProviderIds = new Dictionary<string, string>(remote.ProviderIds),
-                ImageUrl = $"{server.BaseUrl.TrimEnd('/')}/Items/{remote.RemoteItemId}/Images/Primary?api_key={server.ApiKey}",
+                // Image is fetched server-side by the plugin's reverse-proxy endpoint
+                // (FederationController.ProxyImage) so the peer API key never reaches the client.
+                ImageUrl = $"/Federation/Image/{server.Id:N}/{remote.RemoteItemId}/Primary",
                 MediaSources = BuildMediaSources(server.Id, remote)
             };
             items.Add(info);
@@ -139,10 +144,12 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
             if (parsed is null) return list;
             foreach (var ms in parsed)
             {
-                ms.Id = $"fed_{serverId:N}_{ms.Id}";
-                ms.Protocol = MediaProtocol.Http;
+                var originalSourceId = ms.Id;
+                ms.Id = $"fed_{serverId:N}_{originalSourceId}";
                 ms.IsRemote = true;
-                ms.Path = $"/Federation/Stream/{serverId:N}/{remote.RemoteItemId}?sourceId={ms.Id}";
+                // Pass the ORIGINAL source id in the proxy URL — the peer doesn't know
+                // about the fed_<guid>_ prefix.
+                ms.Path = $"/Federation/Stream/{serverId:N}/{remote.RemoteItemId}?sourceId={Uri.EscapeDataString(originalSourceId ?? string.Empty)}";
                 list.Add(ms);
             }
         }
