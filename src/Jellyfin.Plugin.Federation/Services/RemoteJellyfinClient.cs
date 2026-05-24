@@ -37,6 +37,27 @@ public class RemoteJellyfinClient
         }
     }
 
+    /// <summary>Fetches the peer's Federation plugin catalog digest. Returns null if the peer doesn't run the plugin.</summary>
+    public async Task<(int Count, string Hash)?> FetchDigestAsync(RemoteServer server, CancellationToken ct)
+    {
+        try
+        {
+            var http = BuildClient(server);
+            using var resp = await http.GetAsync("/Federation/Catalog/Digest", ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return null;
+            using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            var count = doc.RootElement.TryGetProperty("Count", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : 0;
+            var hash = doc.RootElement.TryGetProperty("Hash", out var h) ? h.GetString() ?? string.Empty : string.Empty;
+            return (count, hash);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Digest fetch failed for {Server} (peer may not run plugin)", server.Name);
+            return null;
+        }
+    }
+
     public async IAsyncEnumerable<RemoteItem> FetchItemsAsync(
         RemoteServer server,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)

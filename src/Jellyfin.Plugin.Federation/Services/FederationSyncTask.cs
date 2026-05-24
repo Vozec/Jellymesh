@@ -55,14 +55,43 @@ public class FederationSyncTask : IScheduledTask
                     continue;
                 }
 
+                // Gossip step: ask peer for catalog digest. If it matches our cached one,
+                // skip the full pull (anti-spam — no point downloading 10k items every minute
+                // when nothing changed). Peers without the plugin return null → fall back to full pull.
+                var digest = await _client.FetchDigestAsync(server, cancellationToken).ConfigureAwait(false);
+                if (digest is { } d)
+                {
+                    var cached = _store.GetCachedDigest(server.Id);
+                    if (cached == d.Hash)
+                    {
+                        _logger.LogDebug("Peer {Name} digest unchanged ({Hash}), skipping pull", server.Name, d.Hash);
+                        done++;
+                        continue;
+                    }
+                }
+
+                var seenIds = new HashSet<string>(StringComparer.Ordinal);
                 var count = 0;
                 await foreach (var item in _client.FetchItemsAsync(server, cancellationToken))
                 {
                     _store.Upsert(item);
+                    seenIds.Add(item.RemoteItemId);
                     count++;
                 }
 
+                // Delete detection: anything we had cached for this peer but didn't see this round is gone.
+                var previousIds = _store.GetItemIdsForPeer(server.Id);
+                previousIds.ExceptWith(seenIds);
+                if (previousIds.Count > 0)
+                {
+                    _store.DeleteItemsByIds(server.Id, previousIds);
+                    _logger.LogInformation("Removed {Count} deleted items from {Name}", previousIds.Count, server.Name);
+                }
                 _store.PurgeStale(server.Id, syncStart);
+
+                if (digest is { } d2)
+                    _store.SaveDigest(server.Id, d2.Count, d2.Hash, null);
+
                 _logger.LogInformation("Synced {Count} items from {Name}", count, server.Name);
             }
             catch (Exception ex)

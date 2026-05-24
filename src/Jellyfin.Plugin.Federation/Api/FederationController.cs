@@ -85,6 +85,21 @@ public class FederationController : ControllerBase
     public IActionResult RecentAudit([FromQuery] int limit = 100)
         => Ok(_store.RecentAudits(Math.Clamp(limit, 1, 1000)));
 
+    [HttpGet("Catalog/Digest")]
+    public IActionResult CatalogDigest([FromServices] Services.LocalCatalogDigest digest)
+        => Ok(digest.Compute());
+
+    [HttpGet("Catalog/Items")]
+    public IActionResult CatalogItems([FromServices] Services.LocalCatalogDigest digest)
+        => Ok(digest.List());
+
+    [HttpPost("Sync/Trigger")]
+    public IActionResult TriggerSync([FromServices] MediaBrowser.Model.Tasks.ITaskManager taskManager)
+    {
+        taskManager.Execute<Services.FederationSyncTask>();
+        return Ok(new { triggered = true });
+    }
+
     [HttpGet("Peers/Status")]
     public IActionResult PeersStatus([FromServices] Services.PeerHealthRegistry health)
     {

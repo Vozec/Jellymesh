@@ -65,6 +65,14 @@ public class RemoteItemStore
             );
             CREATE INDEX IF NOT EXISTS idx_audit_peer ON stream_audit(peer_id);
             CREATE INDEX IF NOT EXISTS idx_audit_time ON stream_audit(started_utc);
+
+            CREATE TABLE IF NOT EXISTS peer_digests (
+                peer_id TEXT PRIMARY KEY,
+                item_count INTEGER NOT NULL,
+                catalog_hash TEXT NOT NULL,
+                latest_modified_utc TEXT,
+                last_synced_utc TEXT NOT NULL
+            );
         ";
         cmd.ExecuteNonQuery();
     }
@@ -234,6 +242,64 @@ public class RemoteItemStore
                 r.GetInt64(4)
             );
         }
+    }
+
+    public string? GetCachedDigest(Guid peerId)
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT catalog_hash FROM peer_digests WHERE peer_id = $p;";
+        cmd.Parameters.AddWithValue("$p", peerId.ToString());
+        var r = cmd.ExecuteScalar();
+        return r is null or DBNull ? null : (string)r;
+    }
+
+    public void SaveDigest(Guid peerId, int count, string hash, DateTime? latestModified)
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = @"INSERT INTO peer_digests (peer_id, item_count, catalog_hash, latest_modified_utc, last_synced_utc)
+            VALUES ($p, $cnt, $h, $lm, $ts)
+            ON CONFLICT(peer_id) DO UPDATE SET item_count=excluded.item_count, catalog_hash=excluded.catalog_hash,
+                latest_modified_utc=excluded.latest_modified_utc, last_synced_utc=excluded.last_synced_utc;";
+        cmd.Parameters.AddWithValue("$p", peerId.ToString());
+        cmd.Parameters.AddWithValue("$cnt", count);
+        cmd.Parameters.AddWithValue("$h", hash);
+        cmd.Parameters.AddWithValue("$lm", (object?)latestModified?.ToString("O") ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ts", DateTime.UtcNow.ToString("O"));
+        cmd.ExecuteNonQuery();
+    }
+
+    public void DeleteItemsByIds(Guid peerId, IEnumerable<string> remoteItemIds)
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var tx = c.BeginTransaction();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "DELETE FROM remote_items WHERE server_id = $sid AND remote_item_id = $rid;";
+        var sidP = cmd.CreateParameter(); sidP.ParameterName = "$sid"; sidP.Value = peerId.ToString(); cmd.Parameters.Add(sidP);
+        var ridP = cmd.CreateParameter(); ridP.ParameterName = "$rid"; cmd.Parameters.Add(ridP);
+        foreach (var id in remoteItemIds)
+        {
+            ridP.Value = id;
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
+    }
+
+    public HashSet<string> GetItemIdsForPeer(Guid peerId)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT remote_item_id FROM remote_items WHERE server_id = $sid;";
+        cmd.Parameters.AddWithValue("$sid", peerId.ToString());
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) set.Add(r.GetString(0));
+        return set;
     }
 
     public void PurgeStale(Guid serverId, DateTime olderThanUtc)
