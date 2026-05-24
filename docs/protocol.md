@@ -22,6 +22,7 @@ an `X-Federation-Share` header instead.
 |--------|------|---------|
 | GET | `/Federation/Peers/Status` | per-peer `{ Online, LastRttMs, LastCheckUtc }` |
 | GET | `/Federation/Stats` | per-peer + global aggregates (items, dedup ratio, streams, bytes) |
+| GET | `/Federation/Diagnostics` | live self-test against each peer: URL parse, key set, ping, digest, auth, pull-sync wiring |
 | GET | `/Federation/Search?searchTerm=X&limit=N` | fan-out search across all peers |
 | GET | `/Federation/Audit/Recent?limit=N` | recent stream-serve log |
 | POST | `/Federation/Sync/Trigger` | run the sync scheduled task now |

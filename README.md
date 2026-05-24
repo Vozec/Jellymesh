@@ -116,6 +116,7 @@ Admin (requires elevation):
 ```
 GET    /Federation/Peers/Status
 GET    /Federation/Stats
+GET    /Federation/Diagnostics              (live self-test against each peer)
 GET    /Federation/Audit/Recent?limit=N
 GET    /Federation/Catalog/Digest
 GET    /Federation/Catalog/Items
