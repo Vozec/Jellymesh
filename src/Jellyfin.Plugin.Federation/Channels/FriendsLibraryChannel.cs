@@ -21,12 +21,14 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
 {
     private readonly RemoteItemStore _store;
     private readonly ILibraryManager _libraryManager;
+    private readonly PeerHealthRegistry _health;
     private readonly ILogger<FriendsLibraryChannel> _logger;
 
-    public FriendsLibraryChannel(RemoteItemStore store, ILibraryManager libraryManager, ILogger<FriendsLibraryChannel> logger)
+    public FriendsLibraryChannel(RemoteItemStore store, ILibraryManager libraryManager, PeerHealthRegistry health, ILogger<FriendsLibraryChannel> logger)
     {
         _store = store;
         _libraryManager = libraryManager;
+        _health = health;
         _logger = logger;
     }
 
@@ -34,7 +36,7 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
 
     public string Description => "Media available on federated peer Jellyfin servers but not in your local library.";
 
-    public string DataVersion => DateTime.UtcNow.ToString("yyyyMMddHH");
+    public string DataVersion => $"{DateTime.UtcNow:yyyyMMddHH}-{_health.Signature()}";
 
     public string HomePageUrl => "https://github.com/vozec/JellyfinFederation";
 
@@ -50,7 +52,7 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
 
     public bool IsEnabledFor(string userId) => Plugin.Instance?.Configuration.ShowRemoteOnlyItems ?? true;
 
-    public string GetCacheKey(string? userId) => $"federation-{DateTime.UtcNow:yyyyMMddHH}-{userId}";
+    public string GetCacheKey(string? userId) => $"federation-{DateTime.UtcNow:yyyyMMddHH}-{_health.Signature()}-{userId}";
 
     public IEnumerable<ImageType> GetSupportedChannelImages() => new[] { ImageType.Primary };
 
@@ -76,6 +78,7 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
 
             var server = config.RemoteServers.FirstOrDefault(s => s.Id == remote.ServerId);
             if (server is null || !server.Enabled) continue;
+            if (!_health.IsOnline(server.Id)) continue;
 
             var info = new ChannelItemInfo
             {
