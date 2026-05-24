@@ -225,6 +225,37 @@ public class RemoteJellyfinClient
         return entry;
     }
 
+    /// <summary>Send a "please add this" request to a peer using their FederationShareKey.</summary>
+    public async Task<bool> SendRequestAsync(RemoteServer server, string ourPublicBaseUrl,
+        string? tmdbId, string? imdbId, string? title, int? year, string? note, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(server.FederationShareKey)) return false;
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(10);
+            var url = $"{server.BaseUrl.TrimEnd('/')}/Federation/Request";
+            var body = JsonContent.Create(new
+            {
+                FromBaseUrl = ourPublicBaseUrl?.TrimEnd('/'),
+                TmdbId = tmdbId,
+                ImdbId = imdbId,
+                Title = title,
+                Year = year,
+                Note = note
+            });
+            using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = body };
+            req.Headers.Add("X-Federation-Share", server.FederationShareKey);
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SendRequest to {Peer} failed", server.Name);
+            return false;
+        }
+    }
+
     public async Task<bool> MarkPlayedAsync(RemoteServer server, string remoteItemId, bool played, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(server.RemoteUserId)) return false;

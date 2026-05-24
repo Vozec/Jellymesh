@@ -111,6 +111,96 @@ public class FederationController : ControllerBase
         }
     }
 
+    // === Peer-to-peer "please add this" request system ===
+
+    [AllowAnonymous]
+    [HttpPost("Request")]
+    public IActionResult ReceiveRequest([FromHeader(Name = "X-Federation-Share")] string? shareKey,
+        [FromBody] IncomingRequestPayload payload,
+        [FromServices] Services.RequestStore requests)
+    {
+        var key = ResolveShareKey(shareKey);
+        if (key is null) return Unauthorized();
+        if (payload is null || (string.IsNullOrEmpty(payload.TmdbId) && string.IsNullOrEmpty(payload.ImdbId) && string.IsNullOrEmpty(payload.Title)))
+            return BadRequest("need at least one of TmdbId, ImdbId, Title");
+
+        var config = Plugin.Instance?.Configuration;
+        Guid? peerId = null;
+        if (config is not null && !string.IsNullOrEmpty(payload.FromBaseUrl))
+        {
+            var senderUrl = payload.FromBaseUrl.TrimEnd('/');
+            var match = config.RemoteServers.FirstOrDefault(s =>
+                string.Equals(s.BaseUrl?.TrimEnd('/'), senderUrl, StringComparison.OrdinalIgnoreCase));
+            peerId = match?.Id;
+        }
+
+        var id = requests.Insert(new Services.FederationRequest
+        {
+            Direction = "in",
+            PeerId = peerId,
+            PeerUrl = payload.FromBaseUrl,
+            TmdbId = payload.TmdbId,
+            ImdbId = payload.ImdbId,
+            Title = payload.Title,
+            Year = payload.Year,
+            Note = payload.Note
+        });
+        // Returns null when uniq_inbound_pending kicks in — still a 204 to the peer (idempotent
+        // semantics: "we got your request, already on our list").
+        return NoContent();
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("SendRequest")]
+    public async Task<IActionResult> SendRequest([FromBody] SendRequestPayload payload,
+        [FromServices] Services.RequestStore requests,
+        [FromServices] Services.RemoteJellyfinClient client,
+        CancellationToken ct)
+    {
+        if (payload is null || !Guid.TryParse(payload.PeerId, out var peerId)) return BadRequest();
+        var config = Plugin.Instance?.Configuration;
+        var peer = config?.RemoteServers.FirstOrDefault(s => s.Id == peerId);
+        if (peer is null) return NotFound("Unknown peer");
+        if (string.IsNullOrEmpty(peer.FederationShareKey)) return BadRequest("Peer has no FederationShareKey configured for us");
+        if (string.IsNullOrEmpty(config!.PublicBaseUrl)) return BadRequest("PublicBaseUrl not set — peer wouldn't be able to identify us");
+
+        var ok = await client.SendRequestAsync(peer, config.PublicBaseUrl, payload.TmdbId, payload.ImdbId, payload.Title, payload.Year, payload.Note, ct).ConfigureAwait(false);
+
+        requests.Insert(new Services.FederationRequest
+        {
+            Direction = "out",
+            PeerId = peer.Id,
+            PeerUrl = peer.BaseUrl,
+            TmdbId = payload.TmdbId,
+            ImdbId = payload.ImdbId,
+            Title = payload.Title,
+            Year = payload.Year,
+            Note = payload.Note,
+            Status = ok ? "pending" : "send-failed"
+        });
+
+        return ok ? Ok(new { sent = true }) : StatusCode(502, "Peer rejected the request");
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Requests/{direction}")]
+    public IActionResult ListRequests(string direction, [FromQuery] string? status,
+        [FromServices] Services.RequestStore requests)
+    {
+        if (direction != "in" && direction != "out") return BadRequest("direction must be 'in' or 'out'");
+        return Ok(requests.List(direction, status));
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("Requests/{id}/Status")]
+    public IActionResult SetRequestStatus(long id, [FromQuery] string status,
+        [FromServices] Services.RequestStore requests)
+    {
+        if (status is not ("pending" or "accepted" or "declined" or "dismissed"))
+            return BadRequest("status must be pending|accepted|declined|dismissed");
+        return requests.UpdateStatus(id, status) ? NoContent() : NotFound();
+    }
+
     // === Push-invalidation receiver ===
     // A peer ran the local PushInvalidationService and is telling us their catalog changed.
     // They identify themselves via X-Federation-Share (a key WE issued) + their public URL.
@@ -537,6 +627,26 @@ public class CreatePublicShareRequest
     public string? ItemId { get; set; }
     public DateTime? ExpiresUtc { get; set; }
     public int? MaxUses { get; set; }
+}
+
+public class IncomingRequestPayload
+{
+    public string? FromBaseUrl { get; set; }
+    public string? TmdbId { get; set; }
+    public string? ImdbId { get; set; }
+    public string? Title { get; set; }
+    public int? Year { get; set; }
+    public string? Note { get; set; }
+}
+
+public class SendRequestPayload
+{
+    public string? PeerId { get; set; }
+    public string? TmdbId { get; set; }
+    public string? ImdbId { get; set; }
+    public string? Title { get; set; }
+    public int? Year { get; set; }
+    public string? Note { get; set; }
 }
 
 public class FederatedSearchHit
