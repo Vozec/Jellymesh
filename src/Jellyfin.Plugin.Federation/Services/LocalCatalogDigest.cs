@@ -19,13 +19,20 @@ public class LocalCatalogDigest
         _libraryManager = libraryManager;
     }
 
-    public DigestSnapshot Compute()
+    public DigestSnapshot Compute(IReadOnlyCollection<string>? libraryIdFilter = null)
     {
         var query = new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Episode },
             Recursive = true
         };
+        if (libraryIdFilter is { Count: > 0 })
+        {
+            query.TopParentIds = libraryIdFilter
+                .Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty)
+                .Where(g => g != Guid.Empty)
+                .ToArray();
+        }
 
         var ids = new List<(string Id, DateTime Modified)>();
         foreach (var item in _libraryManager.GetItemList(query))
@@ -47,13 +54,20 @@ public class LocalCatalogDigest
         return new DigestSnapshot(ids.Count, hash, latest);
     }
 
-    public IReadOnlyList<CatalogItemRef> List()
+    public IReadOnlyList<CatalogItemRef> List(IReadOnlyCollection<string>? libraryIdFilter = null)
     {
         var query = new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Episode },
             Recursive = true
         };
+        if (libraryIdFilter is { Count: > 0 })
+        {
+            query.TopParentIds = libraryIdFilter
+                .Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty)
+                .Where(g => g != Guid.Empty)
+                .ToArray();
+        }
         return _libraryManager.GetItemList(query)
             .Select(i => new CatalogItemRef(i.Id.ToString("N"), i.Name, i.GetType().Name, i.DateLastSaved))
             .ToList();

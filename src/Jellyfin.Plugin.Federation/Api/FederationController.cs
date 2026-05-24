@@ -93,6 +93,90 @@ public class FederationController : ControllerBase
     public IActionResult CatalogItems([FromServices] Services.LocalCatalogDigest digest)
         => Ok(digest.List());
 
+    // === Share-key scoped endpoints ===
+    // Peers query these with X-Federation-Share header. The key is bound to a subset of
+    // libraries (or all). This lets the user split library access per-friend without
+    // exposing their full Jellyfin token.
+
+    [AllowAnonymous]
+    [HttpGet("Share/Catalog/Digest")]
+    public IActionResult ShareCatalogDigest([FromHeader(Name = "X-Federation-Share")] string? shareKey,
+        [FromServices] Services.LocalCatalogDigest digest)
+    {
+        var key = ResolveShareKey(shareKey);
+        if (key is null) return Unauthorized();
+        return Ok(digest.Compute(key.LibraryIds));
+    }
+
+    [AllowAnonymous]
+    [HttpGet("Share/Catalog/Items")]
+    public IActionResult ShareCatalogItems([FromHeader(Name = "X-Federation-Share")] string? shareKey,
+        [FromServices] Services.LocalCatalogDigest digest)
+    {
+        var key = ResolveShareKey(shareKey);
+        if (key is null) return Unauthorized();
+        return Ok(digest.List(key.LibraryIds));
+    }
+
+    [HttpGet("Shares")]
+    public IActionResult ListShares()
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return Ok(Array.Empty<object>());
+        return Ok(config.Shares.Select(s => new
+        {
+            s.Id,
+            s.Label,
+            s.LibraryIds,
+            s.Enabled,
+            s.CreatedUtc,
+            ApiKeyPreview = s.ApiKey.Length > 8 ? s.ApiKey[..4] + "…" + s.ApiKey[^4..] : "***"
+        }));
+    }
+
+    [HttpPost("Shares")]
+    public IActionResult CreateShare([FromBody] CreateShareRequest req)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        var key = new Configuration.ShareKey
+        {
+            Label = req.Label ?? "Unnamed share",
+            LibraryIds = req.LibraryIds ?? new List<string>(),
+            ApiKey = GenerateApiKey(),
+            Enabled = true
+        };
+        config.Shares.Add(key);
+        Plugin.Instance!.SaveConfiguration();
+        return Ok(new { key.Id, key.Label, key.ApiKey, key.LibraryIds });
+    }
+
+    [HttpDelete("Shares/{id}")]
+    public IActionResult DeleteShare(Guid id)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        var removed = config.Shares.RemoveAll(s => s.Id == id);
+        if (removed == 0) return NotFound();
+        Plugin.Instance!.SaveConfiguration();
+        return NoContent();
+    }
+
+    private static Configuration.ShareKey? ResolveShareKey(string? presented)
+    {
+        if (string.IsNullOrEmpty(presented)) return null;
+        var config = Plugin.Instance?.Configuration;
+        return config?.Shares.FirstOrDefault(s => s.Enabled && s.ApiKey == presented);
+    }
+
+    private static string GenerateApiKey()
+    {
+        var bytes = new byte[32];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        return Convert.ToHexString(bytes);
+    }
+
     [HttpPost("Sync/Trigger")]
     public IActionResult TriggerSync([FromServices] MediaBrowser.Model.Tasks.ITaskManager taskManager)
     {
@@ -177,6 +261,12 @@ public class FederationController : ControllerBase
         }
         return results;
     }
+}
+
+public class CreateShareRequest
+{
+    public string? Label { get; set; }
+    public List<string>? LibraryIds { get; set; }
 }
 
 public class FederatedSearchHit

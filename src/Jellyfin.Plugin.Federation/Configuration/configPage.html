@@ -52,11 +52,22 @@
                     <input is="emby-input" type="number" id="OutboundBitrateCapBps" min="0" />
                 </div>
 
-                <h3>Peer servers</h3>
+                <h3>Peer servers (outbound — servers I read from)</h3>
                 <div id="RemoteServersList"></div>
                 <button is="emby-button" type="button" id="AddRemoteServer" class="raised">
                     <span>Add peer server</span>
                 </button>
+
+                <h3>Share keys (inbound — what I expose to friends)</h3>
+                <p>Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
+                <div id="SharesList"></div>
+                <div style="margin-top:0.5em;">
+                    <input type="text" id="NewShareLabel" placeholder="Label (e.g. Movies for Alice)" style="margin-right:0.5em;" />
+                    <input type="text" id="NewShareLibraries" placeholder="Library ids (comma-separated, empty = all)" style="margin-right:0.5em;width:30em;" />
+                    <button is="emby-button" type="button" id="CreateShare" class="raised">
+                        <span>Generate share key</span>
+                    </button>
+                </div>
 
                 <br /><br />
                 <button is="emby-button" type="submit" class="raised button-submit block">
@@ -75,13 +86,30 @@
                 html += '<div class="paperList" data-idx="' + i + '" style="padding:1em;margin:0.5em 0;border:1px solid #444;">';
                 html += '<input type="text" placeholder="Name" value="' + (s.Name || '') + '" data-field="Name" />';
                 html += '<input type="text" placeholder="https://peer.example.com" value="' + (s.BaseUrl || '') + '" data-field="BaseUrl" />';
-                html += '<input type="text" placeholder="API key" value="' + (s.ApiKey || '') + '" data-field="ApiKey" />';
+                html += '<input type="text" placeholder="Jellyfin API key" value="' + (s.ApiKey || '') + '" data-field="ApiKey" />';
+                html += '<input type="text" placeholder="Federation share key (from peer)" value="' + (s.FederationShareKey || '') + '" data-field="FederationShareKey" />';
                 html += '<input type="text" placeholder="Remote user id (optional)" value="' + (s.RemoteUserId || '') + '" data-field="RemoteUserId" />';
                 html += '<label><input type="checkbox" data-field="Enabled" ' + (s.Enabled ? 'checked' : '') + ' /> Enabled</label>';
                 html += '<button type="button" class="remove-server">Remove</button>';
                 html += '</div>';
             });
             document.getElementById('RemoteServersList').innerHTML = html;
+        }
+
+        function renderShares() {
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Shares'), type: 'GET', dataType: 'json' }).then(function (shares) {
+                var html = '';
+                (shares || []).forEach(function (k) {
+                    html += '<div style="padding:0.5em;margin:0.25em 0;border:1px solid #333;">';
+                    html += '<strong>' + (k.Label || '(no label)') + '</strong> — ';
+                    html += 'libs: ' + (k.LibraryIds && k.LibraryIds.length ? k.LibraryIds.join(', ') : '(all)');
+                    html += ' — key: <code>' + k.ApiKeyPreview + '</code> ';
+                    html += '<button type="button" class="copy-share" data-id="' + k.Id + '">Copy full key</button> ';
+                    html += '<button type="button" class="delete-share" data-id="' + k.Id + '">Delete</button>';
+                    html += '</div>';
+                });
+                document.getElementById('SharesList').innerHTML = html || '<em>No share keys yet.</em>';
+            });
         }
 
         document.querySelector('#FederationConfigPage').addEventListener('viewshow', function () {
@@ -93,7 +121,38 @@
                 document.getElementById('MatchPriority').value = config.MatchPriority;
                 document.getElementById('OutboundBitrateCapBps').value = config.OutboundBitrateCapBps;
                 renderServers(config.RemoteServers);
+                renderShares();
             });
+        });
+
+        document.getElementById('CreateShare').addEventListener('click', function () {
+            var label = document.getElementById('NewShareLabel').value.trim();
+            var libs = document.getElementById('NewShareLibraries').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+            ApiClient.fetch({
+                url: ApiClient.getUrl('Federation/Shares'),
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ Label: label, LibraryIds: libs })
+            }).then(function (resp) {
+                alert('Share key generated:\n\n' + resp.ApiKey + '\n\nHand it to your friend.');
+                document.getElementById('NewShareLabel').value = '';
+                document.getElementById('NewShareLibraries').value = '';
+                renderShares();
+            });
+        });
+
+        document.getElementById('SharesList').addEventListener('click', function (e) {
+            if (e.target.classList.contains('delete-share')) {
+                if (!confirm('Revoke this share key?')) return;
+                var id = e.target.dataset.id;
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/Shares/' + id), type: 'DELETE' }).then(renderShares);
+            }
+            if (e.target.classList.contains('copy-share')) {
+                ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
+                    var k = (config.Shares || []).find(function (x) { return x.Id === e.target.dataset.id; });
+                    if (k) { navigator.clipboard.writeText(k.ApiKey); alert('Copied to clipboard.'); }
+                });
+            }
         });
 
         document.getElementById('AddRemoteServer').addEventListener('click', function () {

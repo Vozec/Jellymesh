@@ -8,6 +8,8 @@ public class PluginConfiguration : BasePluginConfiguration
 {
     public List<RemoteServer> RemoteServers { get; set; } = new();
 
+    public List<ShareKey> Shares { get; set; } = new();
+
     public int SyncIntervalMinutes { get; set; } = 60;
 
     public bool EnableDedup { get; set; } = true;
@@ -23,6 +25,24 @@ public class PluginConfiguration : BasePluginConfiguration
     public long OutboundBitrateCapBps { get; set; } = 0;
 }
 
+public class ShareKey
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>Random opaque token sent by the peer in the X-Federation-Share header.</summary>
+    public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>Human label, e.g. "Movies → Alice".</summary>
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>Jellyfin library (TopParent) ids that this key may see. Empty = all libraries.</summary>
+    public List<string> LibraryIds { get; set; } = new();
+
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+
+    public bool Enabled { get; set; } = true;
+}
+
 public class RemoteServer
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -31,7 +51,11 @@ public class RemoteServer
 
     public string BaseUrl { get; set; } = string.Empty;
 
+    /// <summary>Jellyfin user-level API key for streaming. Used as X-Emby-Token on /Items, /Videos, /Users/*.</summary>
     public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>Share key the peer issued for us. Sent as X-Federation-Share on /Federation/Share/* calls.</summary>
+    public string FederationShareKey { get; set; } = string.Empty;
 
     public string? RemoteUserId { get; set; }
 
