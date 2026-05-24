@@ -54,9 +54,7 @@ public class FederationStatsService
         // TMDB to all rows (including items lacking a TMDB id — episodes, anime, home media,
         // not-yet-matched items) wildly inflates the ratio. Use TMDB-bearing rows on both sides.
         var (tmdbRowCount, distinctTmdb) = _store.CountTmdbRowsAndDistinct();
-        var dedupRatio = tmdbRowCount > 0
-            ? 1.0 - ((double)distinctTmdb / tmdbRowCount)
-            : 0.0;
+        var dedupRatio = ComputeDedupRatio(tmdbRowCount, distinctTmdb);
 
         var serversSnapshot = config.RemoteServers.ToArray();
 
@@ -68,7 +66,7 @@ public class FederationStatsService
             OnlinePeerCount = serversSnapshot.Count(s => _health.Get(s.Id).Online),
             TotalCachedItems = totalCachedItems,
             DistinctItems = distinctTmdb,
-            DedupRatio = Math.Round(dedupRatio, 4),
+            DedupRatio = dedupRatio,
             TotalStreamCount = totalStreams,
             TotalBytesServed = totalBytes,
             Peers = perPeer,
@@ -76,6 +74,21 @@ public class FederationStatsService
                 .Select(t => new TopStreamedEntry { PeerId = t.PeerId, ItemId = t.ItemId, PlayCount = t.PlayCount, Bytes = t.Bytes })
                 .ToList()
         };
+    }
+
+    /// <summary>
+    /// Dedup ratio for the federation dashboard. 0 = every TMDB-bearing item is unique
+    /// across peers. 1 = pure duplication (theoretically — distinct=0). 0.5 = on average,
+    /// every item is on two peers. Rounded to 4 decimal places for display.
+    /// </summary>
+    /// <param name="tmdbRowCount">Total rows in remote_items with non-empty tmdb.</param>
+    /// <param name="distinctTmdb">DISTINCT tmdb values across those rows.</param>
+    public static double ComputeDedupRatio(int tmdbRowCount, int distinctTmdb)
+    {
+        if (tmdbRowCount <= 0) return 0.0;
+        if (distinctTmdb <= 0) return 1.0; // every row is a dup, distinct count is bogus → clamp
+        if (distinctTmdb > tmdbRowCount) return 0.0; // can't have more distinct values than rows
+        return Math.Round(1.0 - ((double)distinctTmdb / tmdbRowCount), 4);
     }
 }
 
