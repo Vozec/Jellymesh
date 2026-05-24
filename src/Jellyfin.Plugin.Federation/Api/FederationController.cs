@@ -112,7 +112,7 @@ public class FederationController : ControllerBase
         }
     }
 
-    // === Peer-to-peer "please add this" request system ===
+    // === Request system ===
 
     [AllowAnonymous]
     [HttpPost("Request")]
@@ -222,8 +222,7 @@ public class FederationController : ControllerBase
         return requests.UpdateStatus(id, status) ? NoContent() : NotFound();
     }
 
-    // === Introductions (delegated key issuance) ===
-    // See docs/introductions.md for the trust model.
+    // === Introductions ===
 
     [AllowAnonymous]
     [HttpPost("Introduce")]
@@ -558,10 +557,6 @@ public class FederationController : ControllerBase
     }
 
     // === Push-invalidation receiver ===
-    // A peer ran the local PushInvalidationService and is telling us their catalog changed.
-    // They identify themselves via X-Federation-Share (a key WE issued) + their public URL.
-    // We match the URL against our RemoteServers and drop the cached digest for that peer
-    // so the next sync round actually re-pulls.
 
     [AllowAnonymous]
     [HttpPost("Invalidate")]
@@ -592,8 +587,7 @@ public class FederationController : ControllerBase
         return NoContent();
     }
 
-    // === Anonymous, expiring, use-capped video share links ===
-    // Admin generates one per video; hands the URL to anyone. No Jellyfin auth required to view.
+    // === Anonymous video share links ===
 
     [Authorize(Policy = Policies.RequiresElevation)]
     [HttpPost("PublicShares")]
@@ -769,9 +763,6 @@ h1{{font-weight:400;font-size:1.2rem}}
         => Ok(digest.List());
 
     // === Share-key scoped endpoints ===
-    // Peers query these with X-Federation-Share header. The key is bound to a subset of
-    // libraries (or all). This lets the user split library access per-friend without
-    // exposing their full Jellyfin token.
 
     [AllowAnonymous]
     [HttpGet("Share/Catalog/Digest")]

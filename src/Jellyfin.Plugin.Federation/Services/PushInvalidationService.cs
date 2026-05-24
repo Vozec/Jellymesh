@@ -71,9 +71,6 @@ public class PushInvalidationService : BackgroundService
                     continue; // not configured for push - gossip-pull still runs
                 }
 
-                // Two work paths per tick:
-                //   1. Fresh dirty flag past debounce → fire to ALL peers, build retry queue from failures
-                //   2. Any peers in retry queue whose NextAttempt is in the past → retry just those
                 await TryFireFreshAsync(config, stoppingToken).ConfigureAwait(false);
                 await DrainRetryQueueAsync(config, stoppingToken).ConfigureAwait(false);
             }
