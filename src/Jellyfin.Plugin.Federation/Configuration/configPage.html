@@ -112,6 +112,7 @@
                     <input type="text" id="NewShareBlockedTags" placeholder="Blocked tags (comma-sep, optional)" />
                     <input type="text" id="NewShareMaxRating" placeholder="Max rating (G/PG/PG-13/R/NC-17, optional)" />
                 </div>
+                <input type="text" id="NewShareBoundPeerUrl" placeholder="Bind to peer URL (optional, e.g. https://alice.example — anti-spoofing)" style="margin-top:0.4em;width:100%;max-width:60em;" />
                 <label style="margin-top:0.4em;display:block;">
                     <input type="checkbox" id="NewShareStrictUnknown" />
                     Strict mode — also hide items with unrated or regional ratings (e.g. FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.
@@ -406,11 +407,12 @@
                     ScheduleTimeZoneId: pick('NewShareTimeZone'),
                     BlockedTags: splitCsv('NewShareBlockedTags'),
                     MaxOfficialRating: pick('NewShareMaxRating'),
-                    StrictUnknownRating: document.getElementById('NewShareStrictUnknown').checked
+                    StrictUnknownRating: document.getElementById('NewShareStrictUnknown').checked,
+                    BoundPeerUrl: pick('NewShareBoundPeerUrl')
                 })
             }).then(function (resp) {
                 alert('Share key generated:\n\n' + resp.ApiKey + '\n\nHand it to your friend.');
-                ['NewShareLabel','NewShareLibraries','NewShareHoursStart','NewShareHoursEnd','NewShareTimeZone','NewShareBlockedTags','NewShareMaxRating']
+                ['NewShareLabel','NewShareLibraries','NewShareHoursStart','NewShareHoursEnd','NewShareTimeZone','NewShareBlockedTags','NewShareMaxRating','NewShareBoundPeerUrl']
                     .forEach(function (id) { document.getElementById(id).value = ''; });
                 document.getElementById('NewShareStrictUnknown').checked = false;
                 renderShares();

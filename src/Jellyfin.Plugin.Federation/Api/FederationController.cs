@@ -138,11 +138,15 @@ public class FederationController : ControllerBase
         if (title is { Length: > 512 }) return BadRequest("title too long");
         if (note is { Length: > 2048 }) return BadRequest("note too long");
 
+        // Identity preference order: ShareKey.BoundPeerUrl (anti-spoof) > payload.FromBaseUrl
+        // (legacy / unbound keys). Bound keys make payload.FromBaseUrl a UI hint only.
+        var attributedUrl = !string.IsNullOrEmpty(key.BoundPeerUrl) ? key.BoundPeerUrl : payload.FromBaseUrl;
+
         var config = Plugin.Instance?.Configuration;
         Guid? peerId = null;
-        if (config is not null && !string.IsNullOrEmpty(payload.FromBaseUrl))
+        if (config is not null && !string.IsNullOrEmpty(attributedUrl))
         {
-            var match = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, payload.FromBaseUrl));
+            var match = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, attributedUrl));
             peerId = match?.Id;
         }
 
@@ -150,7 +154,7 @@ public class FederationController : ControllerBase
         {
             Direction = "in",
             PeerId = peerId,
-            PeerUrl = payload.FromBaseUrl,
+            PeerUrl = attributedUrl,
             TmdbId = tmdb,
             ImdbId = imdb,
             Title = title,
@@ -230,15 +234,20 @@ public class FederationController : ControllerBase
     {
         var key = ResolveShareKey(shareKey);
         if (key is null) return Unauthorized();
-        if (payload is null || string.IsNullOrEmpty(payload.FromBaseUrl)) return BadRequest();
+        if (payload is null) return BadRequest();
+
+        // If the share key is bound to a specific URL, the payload's claim is ignored —
+        // it can only invalidate the digest for that one peer.
+        var senderUrl = string.IsNullOrEmpty(key.BoundPeerUrl) ? payload.FromBaseUrl : key.BoundPeerUrl;
+        if (string.IsNullOrEmpty(senderUrl)) return BadRequest();
 
         var config = Plugin.Instance?.Configuration;
         if (config is null) return StatusCode(500);
 
-        var match = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, payload.FromBaseUrl));
+        var match = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, senderUrl));
         if (match is null)
         {
-            _logger.LogDebug("Invalidate from {Url} ignored — no matching RemoteServer", payload.FromBaseUrl);
+            _logger.LogDebug("Invalidate from {Url} ignored — no matching RemoteServer", senderUrl);
             return NoContent();
         }
 
@@ -494,6 +503,7 @@ h1{{font-weight:400;font-size:1.2rem}}
             BlockedTags = req.BlockedTags ?? new List<string>(),
             MaxOfficialRating = string.IsNullOrWhiteSpace(req.MaxOfficialRating) ? null : req.MaxOfficialRating,
             StrictUnknownRating = req.StrictUnknownRating,
+            BoundPeerUrl = string.IsNullOrWhiteSpace(req.BoundPeerUrl) ? null : Services.PeerUrl.Canonicalize(req.BoundPeerUrl) ?? req.BoundPeerUrl.Trim(),
             ApiKey = GenerateApiKey(),
             Enabled = true
         };
@@ -638,6 +648,7 @@ public class CreateShareRequest
     public List<string>? BlockedTags { get; set; }
     public string? MaxOfficialRating { get; set; }
     public bool StrictUnknownRating { get; set; }
+    public string? BoundPeerUrl { get; set; }
 }
 
 public class CreatePublicShareRequest

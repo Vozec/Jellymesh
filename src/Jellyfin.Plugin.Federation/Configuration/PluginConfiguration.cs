@@ -74,6 +74,13 @@ public class ShareKey
     /// matches Jellyfin's own leniency — but for childproofing this should be true.</summary>
     public bool StrictUnknownRating { get; set; } = false;
 
+    /// <summary>Optional. When set, peer push-invalidation / request callbacks that present
+    /// this share key MUST come from this URL (canonicalized scheme://host:port). The
+    /// payload's claimed FromBaseUrl is ignored for attribution. Closes the spoofing case
+    /// where any share-key holder could claim to be a different peer in our config.
+    /// Empty = trust payload.FromBaseUrl (legacy behaviour).</summary>
+    public string? BoundPeerUrl { get; set; }
+
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
     public bool Enabled { get; set; } = true;
