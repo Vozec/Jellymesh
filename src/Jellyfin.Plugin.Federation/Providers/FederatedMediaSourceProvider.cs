@@ -18,11 +18,13 @@ namespace Jellyfin.Plugin.Federation.Providers;
 public class FederatedMediaSourceProvider : IMediaSourceProvider
 {
     private readonly RemoteItemStore _store;
+    private readonly PeerHealthRegistry _health;
     private readonly ILogger<FederatedMediaSourceProvider> _logger;
 
-    public FederatedMediaSourceProvider(RemoteItemStore store, ILogger<FederatedMediaSourceProvider> logger)
+    public FederatedMediaSourceProvider(RemoteItemStore store, PeerHealthRegistry health, ILogger<FederatedMediaSourceProvider> logger)
     {
         _store = store;
+        _health = health;
         _logger = logger;
     }
 
@@ -43,6 +45,7 @@ public class FederatedMediaSourceProvider : IMediaSourceProvider
         {
             var server = config.RemoteServers.FirstOrDefault(s => s.Id == match.ServerId);
             if (server is null || !server.Enabled) continue;
+            if (!_health.IsOnline(server.Id)) continue;
 
             try
             {

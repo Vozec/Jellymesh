@@ -60,11 +60,24 @@ public class FederationController : ControllerBase
     }
 
     [HttpGet("Peers/Status")]
-    public IActionResult PeersStatus()
+    public IActionResult PeersStatus([FromServices] Services.PeerHealthRegistry health)
     {
         var config = Plugin.Instance?.Configuration;
         if (config is null) return Ok(Array.Empty<object>());
-        return Ok(config.RemoteServers.Select(s => new { s.Id, s.Name, s.BaseUrl, s.Enabled }));
+        return Ok(config.RemoteServers.Select(s =>
+        {
+            var h = health.Get(s.Id);
+            return new
+            {
+                s.Id,
+                s.Name,
+                s.BaseUrl,
+                s.Enabled,
+                Online = h.Online,
+                LastCheckUtc = h.LastCheckUtc,
+                LastRttMs = h.LastRttMs
+            };
+        }));
     }
 
     [HttpGet("Search")]
