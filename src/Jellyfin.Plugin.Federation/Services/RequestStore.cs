@@ -90,8 +90,10 @@ public class RequestStore
             RETURNING id;";
         cmd.Parameters.AddWithValue("$d", req.Direction);
         cmd.Parameters.AddWithValue("$pid", (object?)req.PeerId?.ToString() ?? DBNull.Value);
-        // Normalize peer_url so trailing-slash / case differences don't bypass the unique index.
-        var normalizedUrl = string.IsNullOrEmpty(req.PeerUrl) ? null : req.PeerUrl.TrimEnd('/').ToLowerInvariant();
+        // Canonicalize peer_url so cosmetic drift (trailing slash, http/https, explicit port,
+        // case) doesn't bypass the unique-pending index. Falls back to the raw value if
+        // unparseable (admin can still see what was claimed in the row).
+        var normalizedUrl = PeerUrl.Canonicalize(req.PeerUrl) ?? req.PeerUrl;
         cmd.Parameters.AddWithValue("$purl", (object?)normalizedUrl ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$tmdb", (object?)req.TmdbId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$imdb", (object?)req.ImdbId ?? DBNull.Value);

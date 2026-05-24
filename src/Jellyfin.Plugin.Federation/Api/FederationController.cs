@@ -142,9 +142,7 @@ public class FederationController : ControllerBase
         Guid? peerId = null;
         if (config is not null && !string.IsNullOrEmpty(payload.FromBaseUrl))
         {
-            var senderUrl = payload.FromBaseUrl.TrimEnd('/');
-            var match = config.RemoteServers.FirstOrDefault(s =>
-                string.Equals(s.BaseUrl?.TrimEnd('/'), senderUrl, StringComparison.OrdinalIgnoreCase));
+            var match = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, payload.FromBaseUrl));
             peerId = match?.Id;
         }
 
@@ -237,12 +235,10 @@ public class FederationController : ControllerBase
         var config = Plugin.Instance?.Configuration;
         if (config is null) return StatusCode(500);
 
-        var sender = payload.FromBaseUrl.TrimEnd('/');
-        var match = config.RemoteServers.FirstOrDefault(s =>
-            string.Equals(s.BaseUrl?.TrimEnd('/'), sender, StringComparison.OrdinalIgnoreCase));
+        var match = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, payload.FromBaseUrl));
         if (match is null)
         {
-            _logger.LogDebug("Invalidate from {Url} ignored — no matching RemoteServer", sender);
+            _logger.LogDebug("Invalidate from {Url} ignored — no matching RemoteServer", payload.FromBaseUrl);
             return NoContent();
         }
 
