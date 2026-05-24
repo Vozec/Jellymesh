@@ -95,6 +95,72 @@ public class RemoteJellyfinClient
         return item;
     }
 
+    public async Task<bool> MarkPlayedAsync(RemoteServer server, string remoteItemId, bool played, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(server.RemoteUserId)) return false;
+        try
+        {
+            var http = BuildClient(server);
+            var url = $"/Users/{server.RemoteUserId}/PlayedItems/{remoteItemId}";
+            using var resp = played
+                ? await http.PostAsync(url, content: null, ct).ConfigureAwait(false)
+                : await http.DeleteAsync(url, ct).ConfigureAwait(false);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "MarkPlayed failed for {Server} item {Id}", server.Name, remoteItemId);
+            return false;
+        }
+    }
+
+    public async Task<bool> UpdateProgressAsync(RemoteServer server, string remoteItemId, long? positionTicks, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(server.RemoteUserId)) return false;
+        try
+        {
+            var http = BuildClient(server);
+            var url = $"/Users/{server.RemoteUserId}/Items/{remoteItemId}/UserData";
+            var body = JsonContent.Create(new { PlaybackPositionTicks = positionTicks ?? 0 });
+            using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = body };
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "UpdateProgress failed for {Server} item {Id}", server.Name, remoteItemId);
+            return false;
+        }
+    }
+
+    public async Task<string?> ResolveRemoteItemIdAsync(RemoteServer server, string? tmdbId, string? imdbId, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(tmdbId) && string.IsNullOrEmpty(imdbId)) return null;
+        try
+        {
+            var http = BuildClient(server);
+            var qs = !string.IsNullOrEmpty(tmdbId)
+                ? $"AnyProviderIdEquals=tmdb.{tmdbId}"
+                : $"AnyProviderIdEquals=imdb.{imdbId}";
+            var url = $"/Items?Recursive=true&Fields=ProviderIds&Limit=1&{qs}";
+            if (!string.IsNullOrEmpty(server.RemoteUserId))
+                url = $"/Users/{server.RemoteUserId}/Items?Recursive=true&Fields=ProviderIds&Limit=1&{qs}";
+
+            using var resp = await http.GetAsync(url, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return null;
+            var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false), cancellationToken: ct).ConfigureAwait(false);
+            if (!doc.RootElement.TryGetProperty("Items", out var items)) return null;
+            foreach (var el in items.EnumerateArray())
+                if (el.TryGetProperty("Id", out var id)) return id.GetString();
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "ResolveRemoteItemId failed for {Server}", server.Name);
+            return null;
+        }
+    }
+
     private HttpClient BuildClient(RemoteServer server)
     {
         var http = _httpClientFactory.CreateClient();
