@@ -23,6 +23,19 @@ public class PluginConfiguration : BasePluginConfiguration
     public int RemoteOfflineTimeoutSeconds { get; set; } = 5;
 
     public long OutboundBitrateCapBps { get; set; } = 0;
+
+    /// <summary>
+    /// Our publicly reachable base URL (https://my-jellyfin.example.com). Sent to peers
+    /// on push-invalidation calls so they can identify us in their RemoteServers list.
+    /// If empty, push-invalidation is disabled (peers fall back to gossip-pull only).
+    /// </summary>
+    public string PublicBaseUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Debounce window for push-invalidation. We collect library mutations for N seconds
+    /// before firing one batch to peers, to avoid one POST per ItemAdded during a scan.
+    /// </summary>
+    public int PushDebounceSeconds { get; set; } = 30;
 }
 
 public class ShareKey

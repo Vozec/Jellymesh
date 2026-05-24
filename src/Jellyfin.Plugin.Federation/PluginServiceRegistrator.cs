@@ -20,5 +20,6 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService<WatchStateSyncService>();
         serviceCollection.AddSingleton<PeerHealthRegistry>();
         serviceCollection.AddHostedService<HealthMonitorService>();
+        serviceCollection.AddHostedService<PushInvalidationService>();
     }
 }

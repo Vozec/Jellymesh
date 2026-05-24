@@ -107,6 +107,38 @@ public class FederationController : ControllerBase
         }
     }
 
+    // === Push-invalidation receiver ===
+    // A peer ran the local PushInvalidationService and is telling us their catalog changed.
+    // They identify themselves via X-Federation-Share (a key WE issued) + their public URL.
+    // We match the URL against our RemoteServers and drop the cached digest for that peer
+    // so the next sync round actually re-pulls.
+
+    [AllowAnonymous]
+    [HttpPost("Invalidate")]
+    public IActionResult ReceiveInvalidate([FromHeader(Name = "X-Federation-Share")] string? shareKey,
+        [FromBody] Services.InvalidatePayload payload)
+    {
+        var key = ResolveShareKey(shareKey);
+        if (key is null) return Unauthorized();
+        if (payload is null || string.IsNullOrEmpty(payload.FromBaseUrl)) return BadRequest();
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        var sender = payload.FromBaseUrl.TrimEnd('/');
+        var match = config.RemoteServers.FirstOrDefault(s =>
+            string.Equals(s.BaseUrl?.TrimEnd('/'), sender, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            _logger.LogDebug("Invalidate from {Url} ignored — no matching RemoteServer", sender);
+            return NoContent();
+        }
+
+        _store.InvalidateDigest(match.Id);
+        _logger.LogInformation("Invalidated cached digest for {Peer} per push notification", match.Name);
+        return NoContent();
+    }
+
     // === Anonymous, expiring, use-capped video share links ===
     // Admin generates one per video; hands the URL to anyone. No Jellyfin auth required to view.
 

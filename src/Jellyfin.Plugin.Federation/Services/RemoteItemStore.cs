@@ -272,6 +272,16 @@ public class RemoteItemStore
         cmd.ExecuteNonQuery();
     }
 
+    public void InvalidateDigest(Guid peerId)
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "DELETE FROM peer_digests WHERE peer_id = $p;";
+        cmd.Parameters.AddWithValue("$p", peerId.ToString());
+        cmd.ExecuteNonQuery();
+    }
+
     public void DeleteItemsByIds(Guid peerId, IEnumerable<string> remoteItemIds)
     {
         using var c = new SqliteConnection(ConnString);
