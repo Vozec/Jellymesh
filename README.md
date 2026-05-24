@@ -53,6 +53,7 @@ public viewer pages, and delegated key issuance.
 | **Federated search** | fan out across peers, results tagged with origin |
 | **Per-library share keys** | scope by libraries, hours, blocked tags, rating cap |
 | **Anonymous share links** | per-video, expiring, use-capped, atomic SQL consume |
+| **Subtitle federation** | discover and proxy peer subtitle tracks for items you have locally |
 | **Introductions** | B asks A to mint a key for C, with hop cap, dedup, cascade revoke |
 | **Diagnostics** | one click runs probes against every peer, prints a report |
 | **Dashboard** | online peers, cache, dedup ratio, top streams, bytes served |

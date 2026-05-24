@@ -713,6 +713,112 @@ h1{{font-weight:400;font-size:1.2rem}}
         };
     }
 
+    [HttpGet("Subtitle/{serverId}/{itemId}/{mediaSourceId}/{streamIndex:int}.{format}")]
+    public async Task<IActionResult> ProxySubtitle(string serverId, string itemId, string mediaSourceId,
+        int streamIndex, string format, CancellationToken ct)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return NotFound();
+        if (!Guid.TryParseExact(itemId, "N", out _) && !Guid.TryParse(itemId, out _)) return BadRequest();
+        if (streamIndex < 0) return BadRequest();
+        // Format extension is admin-controllable in URL: allowlist to subtitle codecs only.
+        var fmtLower = format.ToLowerInvariant();
+        if (fmtLower is not ("srt" or "ass" or "ssa" or "vtt" or "sub" or "idx"))
+            return BadRequest("unsupported subtitle format");
+        var server = config.RemoteServers.FirstOrDefault(s => s.Id.ToString("N") == serverId);
+        if (server is null || !server.Enabled) return NotFound();
+
+        var http = _httpClientFactory.CreateClient();
+        Services.RemoteJellyfinClient.AddBasicAuth(http, server);
+        var url = $"{server.BaseUrl.TrimEnd('/')}/Videos/{Uri.EscapeDataString(itemId)}/{Uri.EscapeDataString(mediaSourceId)}/Subtitles/{streamIndex}/Stream.{fmtLower}";
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Add("X-Emby-Token", server.ApiKey);
+
+        using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode) return NotFound();
+
+        Response.StatusCode = (int)resp.StatusCode;
+        CopySafeHeaders(resp.Content.Headers, Response.Headers);
+        await resp.Content.CopyToAsync(Response.Body, ct).ConfigureAwait(false);
+        return new EmptyResult();
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Subtitles/Discover")]
+    public async Task<IActionResult> DiscoverSubtitles([FromQuery] string? tmdb, [FromQuery] string? imdb, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(tmdb) && string.IsNullOrWhiteSpace(imdb)) return BadRequest("tmdb or imdb required");
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        var peers = config.RemoteServers.Where(s => s.Enabled).ToArray();
+        var results = await Task.WhenAll(peers.Select(p => DiscoverPeerSubtitlesAsync(p, tmdb, imdb, ct))).ConfigureAwait(false);
+        return Ok(new { tmdb, imdb, tracks = results.SelectMany(r => r).ToList() });
+    }
+
+    private async Task<List<SubtitleTrack>> DiscoverPeerSubtitlesAsync(Configuration.RemoteServer peer, string? tmdb, string? imdb, CancellationToken ct)
+    {
+        var tracks = new List<SubtitleTrack>();
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.BaseAddress = new Uri(peer.BaseUrl.TrimEnd('/'));
+            http.DefaultRequestHeaders.Add("X-Emby-Token", peer.ApiKey);
+            Services.RemoteJellyfinClient.AddBasicAuth(http, peer);
+            http.Timeout = TimeSpan.FromSeconds(10);
+
+            var qs = !string.IsNullOrEmpty(tmdb) ? $"AnyProviderIdEquals=tmdb.{tmdb}" : $"AnyProviderIdEquals=imdb.{imdb}";
+            var url = $"/Items?Recursive=true&Fields=MediaSources,MediaStreams,ProviderIds&Limit=5&{qs}";
+            using var resp = await http.GetAsync(url, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return tracks;
+            using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            if (!doc.RootElement.TryGetProperty("Items", out var items)) return tracks;
+
+            foreach (var item in items.EnumerateArray())
+            {
+                var remoteItemId = item.TryGetProperty("Id", out var id) ? id.GetString() : null;
+                if (remoteItemId is null || !item.TryGetProperty("MediaSources", out var sources)) continue;
+
+                foreach (var src in sources.EnumerateArray())
+                {
+                    var msId = src.TryGetProperty("Id", out var sid) ? sid.GetString() : null;
+                    if (msId is null || !src.TryGetProperty("MediaStreams", out var streams)) continue;
+
+                    foreach (var streamEl in streams.EnumerateArray())
+                    {
+                        var type = streamEl.TryGetProperty("Type", out var t) ? t.GetString() : null;
+                        if (type != "Subtitle") continue;
+                        var idx = streamEl.TryGetProperty("Index", out var i) && i.ValueKind == JsonValueKind.Number ? i.GetInt32() : -1;
+                        if (idx < 0) continue;
+                        var codec = streamEl.TryGetProperty("Codec", out var c) ? c.GetString() : null;
+                        var lang = streamEl.TryGetProperty("Language", out var l) ? l.GetString() : null;
+                        var title = streamEl.TryGetProperty("Title", out var ti) ? ti.GetString() : null;
+                        var isExternal = streamEl.TryGetProperty("IsExternal", out var ext) && ext.ValueKind == JsonValueKind.True;
+                        tracks.Add(new SubtitleTrack
+                        {
+                            PeerId = peer.Id,
+                            PeerName = peer.Name,
+                            RemoteItemId = remoteItemId,
+                            MediaSourceId = msId,
+                            StreamIndex = idx,
+                            Language = lang,
+                            Codec = codec,
+                            Title = title,
+                            IsExternal = isExternal,
+                            ProxyUrl = $"/Federation/Subtitle/{peer.Id:N}/{remoteItemId}/{msId}/{idx}.{(codec ?? "srt").ToLowerInvariant()}"
+                        });
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Subtitle discovery failed for {Peer}", peer.Name);
+        }
+        return tracks;
+    }
+
     [HttpGet("Image/{serverId}/{itemId}/{imageType}")]
     public async Task<IActionResult> ProxyImage(string serverId, string itemId, string imageType, CancellationToken ct)
     {
@@ -1065,6 +1171,20 @@ public class SendRequestPayload
     public string? Title { get; set; }
     public int? Year { get; set; }
     public string? Note { get; set; }
+}
+
+public class SubtitleTrack
+{
+    public Guid PeerId { get; set; }
+    public string? PeerName { get; set; }
+    public string? RemoteItemId { get; set; }
+    public string? MediaSourceId { get; set; }
+    public int StreamIndex { get; set; }
+    public string? Language { get; set; }
+    public string? Codec { get; set; }
+    public string? Title { get; set; }
+    public bool IsExternal { get; set; }
+    public string? ProxyUrl { get; set; }
 }
 
 public class FederatedSearchHit
