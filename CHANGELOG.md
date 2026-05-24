@@ -154,9 +154,55 @@ Semantic versioning.
 - Stored XSS holes in admin UI closed: `esc()` helper applied to
   `ItemName`, `Label`, peer `Name`, share token interpolations.
 
+### Added (round 4)
+- **Peer-to-peer "please add" request system**: `RequestStore` with
+  inbound + outbound rows, partial-unique-pending dedupe on (direction,
+  peer_url, tmdb, imdb, title). Endpoints: `POST /Federation/Request`
+  (anon, share-key auth), `POST /Federation/SendRequest` (admin),
+  `GET /Federation/Requests/{in|out}?status=...`,
+  `POST /Federation/Requests/{id}/Status?status=...`. Admin UI section
+  for triage: send form (peer dropdown + tmdb/title/year/note), inbound
+  list with accept/decline/dismiss buttons per pending row, outbound
+  list with dismiss button on send-failed rows.
+- `ContentFilter` extracted to a pure-static class with regression tests
+  for known/unknown ratings, strict-unknown mode, blocked-tag case-
+  insensitivity.
+- WAL journal mode + `Default Timeout=10` busy-timeout on all three
+  SQLite stores (PublicShareStore, RemoteItemStore, RequestStore).
+
+### Fixed (code-review #3)
+- `RequestStore.Insert` now binds `req.Status` instead of hard-coding
+  `'pending'` — outbound rows for failed sends are correctly persisted
+  as `'send-failed'`.
+- `uniq_inbound_pending` index now includes `COALESCE(title, '')` and
+  `COALESCE(peer_url, '')` — title-only requests about different films
+  no longer collapse to one row per peer; trailing-slash/case-drift in
+  peer_url no longer bypasses dedup.
+- `ReceiveRequest` validates with `IsNullOrWhiteSpace` and trims inputs;
+  caps field lengths (id≤64, title≤512, note≤2048) so a misbehaving
+  share-key holder can't fill the DB with multi-MB strings.
+- `RequestStore.UpdateStatus` whitelist enforced at the store layer —
+  every caller routes through it, no future caller can poison the column.
+- `SetRequestStatus` allowlist extended to include `'send-failed'`;
+  admin can dismiss failed outbound rows from the UI.
+- `RequestStore.List` ORDER BY now has `id DESC` tiebreaker — same-tick
+  inserts (Windows DateTime.UtcNow ~15ms resolution) have stable order.
+- `ListRequests` validates `?status=` against the same allowlist —
+  typos return 400 instead of silent empty list.
+- Requests UI click handler bound to `#FederationConfigPage` instead of
+  `document` — no more accumulating duplicate POSTs per SPA navigation.
+- Send-button `.catch` distinguishes 502/404/400/other with a meaningful
+  alert instead of always blaming local share-key/PublicBaseUrl config.
+- `RequestStore.Insert` normalises `peer_url` (TrimEnd('/') + lower
+  case) before storage so dedup works regardless of cosmetic URL drift.
+
 ### Notes
 - Plugin DLL targets `net8.0` (Jellyfin 10.10 ABI `10.10.0.0`).
 - Public share viewer only supports direct-play codecs from the browser
   (`<video>` tag). Transcoding-on-anonymous-link deferred.
 - Push retry on transient failure deferred — gossip-pull is the
   fallback path and runs on the scheduled interval.
+- Peer attribution on inbound requests via `FromBaseUrl` is best-effort;
+  for strict identity, future work should bind each ShareKey to a
+  RemoteServer.Id at issue time. Today the admin sees the raw URL
+  the peer claimed.

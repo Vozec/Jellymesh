@@ -154,6 +154,12 @@
                     html += '<button type="button" class="req-set" data-id="' + r.Id + '" data-status="' + st + '">' + st + '</button> ';
                 });
                 html += '</div>';
+            } else if (r.Status === 'send-failed') {
+                // Outbound rows that the peer rejected — admin should at minimum be able to
+                // dismiss the row out of the active list.
+                html += '<div style="margin-top:0.3em;">';
+                html += '<button type="button" class="req-set" data-id="' + r.Id + '" data-status="dismissed">dismiss</button>';
+                html += '</div>';
             }
             html += '</div>';
             return html;
@@ -197,12 +203,24 @@
             }).then(function () {
                 ['ReqTmdb','ReqTitle','ReqYear','ReqNote'].forEach(function (id) { document.getElementById(id).value = ''; });
                 renderRequests();
-            }).catch(function () {
-                alert('Send failed — peer may not have a FederationShareKey configured for you, or your PublicBaseUrl is unset.');
+            }).catch(function (err) {
+                // ApiClient.fetch rejects with the XHR; surface the actual reason instead of
+                // always blaming local config. 502 = peer rejected, 404 = unknown peer,
+                // 400 = our config is missing.
+                var status = err && err.status;
+                var msg;
+                if (status === 502) msg = 'Peer rejected the request — they may not have your share key, or their plugin is offline.';
+                else if (status === 404) msg = 'Unknown peer — refresh the peer list and try again.';
+                else if (status === 400) msg = 'Send failed — your FederationShareKey for this peer or your PublicBaseUrl is unset.';
+                else msg = 'Send failed (HTTP ' + (status || '?') + ').';
+                alert(msg);
             });
         });
 
-        document.addEventListener('click', function (e) {
+        // Bind on the page container, not document — when Jellyfin tears down the SPA view,
+        // the element is removed too and the listener goes with it. document-level binding
+        // would accumulate one listener per navigation, multiplying POSTs per click.
+        document.querySelector('#FederationConfigPage').addEventListener('click', function (e) {
             if (e.target.classList && e.target.classList.contains('req-set')) {
                 var id = e.target.dataset.id;
                 var st = e.target.dataset.status;

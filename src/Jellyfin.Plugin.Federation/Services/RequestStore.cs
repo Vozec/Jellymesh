@@ -61,12 +61,18 @@ public class RequestStore
             );
             CREATE INDEX IF NOT EXISTS idx_req_dir ON federation_requests(direction);
             CREATE INDEX IF NOT EXISTS idx_req_status ON federation_requests(status);
-            -- prevent the same peer from spamming us with the same TMDB twice while pending.
-            -- COALESCE wraps the nullable ids because SQLite treats NULLs as distinct in
-            -- UNIQUE indexes — without it, (peer, tmdb=NULL, imdb=NULL) is treated as
-            -- distinct from itself and duplicates leak through.
+            -- prevent the same peer from spamming us with the same item twice while pending.
+            -- COALESCE wraps nullable identity columns because SQLite treats NULLs as distinct
+            -- in UNIQUE indexes — without it, (peer=NULL, tmdb=NULL, imdb=NULL, title=NULL)
+            -- is treated as distinct from itself and duplicates leak through. Title is in the
+            -- key so title-only requests (no TMDB/IMDB ids) about different films don't all
+            -- collapse to one slot per peer.
             CREATE UNIQUE INDEX IF NOT EXISTS uniq_inbound_pending
-                ON federation_requests(direction, peer_url, COALESCE(tmdb_id, ''), COALESCE(imdb_id, ''))
+                ON federation_requests(direction,
+                    COALESCE(peer_url, ''),
+                    COALESCE(tmdb_id, ''),
+                    COALESCE(imdb_id, ''),
+                    COALESCE(title, ''))
                 WHERE status = 'pending';
         ";
         cmd.ExecuteNonQuery();
@@ -79,18 +85,23 @@ public class RequestStore
         using var cmd = c.CreateCommand();
         cmd.CommandText = @"INSERT INTO federation_requests
             (direction, peer_id, peer_url, tmdb_id, imdb_id, title, year, note, requested_utc, status, last_status_change_utc)
-            VALUES ($d, $pid, $purl, $tmdb, $imdb, $t, $y, $n, $r, 'pending', $r)
+            VALUES ($d, $pid, $purl, $tmdb, $imdb, $t, $y, $n, $r, $st, $r)
             ON CONFLICT DO NOTHING
             RETURNING id;";
         cmd.Parameters.AddWithValue("$d", req.Direction);
         cmd.Parameters.AddWithValue("$pid", (object?)req.PeerId?.ToString() ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$purl", (object?)req.PeerUrl ?? DBNull.Value);
+        // Normalize peer_url so trailing-slash / case differences don't bypass the unique index.
+        var normalizedUrl = string.IsNullOrEmpty(req.PeerUrl) ? null : req.PeerUrl.TrimEnd('/').ToLowerInvariant();
+        cmd.Parameters.AddWithValue("$purl", (object?)normalizedUrl ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$tmdb", (object?)req.TmdbId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$imdb", (object?)req.ImdbId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$t", (object?)req.Title ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$y", (object?)req.Year ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$n", (object?)req.Note ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$r", DateTime.UtcNow.ToString("O"));
+        // Honor req.Status — outbound rows can be inserted as 'send-failed' so admin sees
+        // delivery failures. Default 'pending' set in the FederationRequest record.
+        cmd.Parameters.AddWithValue("$st", req.Status);
         var r = cmd.ExecuteScalar();
         return r is null or DBNull ? null : (long)r;
     }
@@ -101,9 +112,11 @@ public class RequestStore
         using var c = new SqliteConnection(ConnString);
         c.Open();
         using var cmd = c.CreateCommand();
+        // Secondary ORDER BY id ensures total order under same-tick timestamps (Windows
+        // DateTime.UtcNow resolution can be ~15 ms — multiple Inserts share the same string).
         cmd.CommandText = status is null
-            ? "SELECT id, direction, peer_id, peer_url, tmdb_id, imdb_id, title, year, note, requested_utc, status, last_status_change_utc FROM federation_requests WHERE direction = $d ORDER BY requested_utc DESC LIMIT $l;"
-            : "SELECT id, direction, peer_id, peer_url, tmdb_id, imdb_id, title, year, note, requested_utc, status, last_status_change_utc FROM federation_requests WHERE direction = $d AND status = $s ORDER BY requested_utc DESC LIMIT $l;";
+            ? "SELECT id, direction, peer_id, peer_url, tmdb_id, imdb_id, title, year, note, requested_utc, status, last_status_change_utc FROM federation_requests WHERE direction = $d ORDER BY requested_utc DESC, id DESC LIMIT $l;"
+            : "SELECT id, direction, peer_id, peer_url, tmdb_id, imdb_id, title, year, note, requested_utc, status, last_status_change_utc FROM federation_requests WHERE direction = $d AND status = $s ORDER BY requested_utc DESC, id DESC LIMIT $l;";
         cmd.Parameters.AddWithValue("$d", direction);
         cmd.Parameters.AddWithValue("$l", limit);
         if (status is not null) cmd.Parameters.AddWithValue("$s", status);
@@ -129,8 +142,16 @@ public class RequestStore
         return rows;
     }
 
+    private static readonly HashSet<string> ValidStatuses = new(StringComparer.OrdinalIgnoreCase)
+    { "pending", "accepted", "declined", "dismissed", "send-failed" };
+
     public bool UpdateStatus(long id, string newStatus)
     {
+        // Whitelist enforced at the store layer too — every caller routes through here, so any
+        // future internal caller (sync task, migration, test) can't poison the column.
+        if (!ValidStatuses.Contains(newStatus))
+            throw new ArgumentException($"Unknown status '{newStatus}'", nameof(newStatus));
+
         using var c = new SqliteConnection(ConnString);
         c.Open();
         using var cmd = c.CreateCommand();
@@ -140,6 +161,8 @@ public class RequestStore
         cmd.Parameters.AddWithValue("$id", id);
         return cmd.ExecuteNonQuery() > 0;
     }
+
+    public static bool IsValidStatus(string status) => ValidStatuses.Contains(status);
 }
 
 public class FederationRequest

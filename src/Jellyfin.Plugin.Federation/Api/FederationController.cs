@@ -121,8 +121,22 @@ public class FederationController : ControllerBase
     {
         var key = ResolveShareKey(shareKey);
         if (key is null) return Unauthorized();
-        if (payload is null || (string.IsNullOrEmpty(payload.TmdbId) && string.IsNullOrEmpty(payload.ImdbId) && string.IsNullOrEmpty(payload.Title)))
+        if (payload is null) return BadRequest("missing body");
+
+        // Trim and reject whitespace-only — IsNullOrWhiteSpace catches "   " that IsNullOrEmpty
+        // would let through, preventing a peer from consuming pending-uniq slots with garbage.
+        var tmdb = string.IsNullOrWhiteSpace(payload.TmdbId) ? null : payload.TmdbId.Trim();
+        var imdb = string.IsNullOrWhiteSpace(payload.ImdbId) ? null : payload.ImdbId.Trim();
+        var title = string.IsNullOrWhiteSpace(payload.Title) ? null : payload.Title.Trim();
+        var note = string.IsNullOrWhiteSpace(payload.Note) ? null : payload.Note.Trim();
+        if (tmdb is null && imdb is null && title is null)
             return BadRequest("need at least one of TmdbId, ImdbId, Title");
+
+        // Cap field lengths to prevent a (possibly compromised) share-key holder from filling
+        // the requests DB with multi-MB strings.
+        if (tmdb is { Length: > 64 } || imdb is { Length: > 64 }) return BadRequest("id too long");
+        if (title is { Length: > 512 }) return BadRequest("title too long");
+        if (note is { Length: > 2048 }) return BadRequest("note too long");
 
         var config = Plugin.Instance?.Configuration;
         Guid? peerId = null;
@@ -139,14 +153,15 @@ public class FederationController : ControllerBase
             Direction = "in",
             PeerId = peerId,
             PeerUrl = payload.FromBaseUrl,
-            TmdbId = payload.TmdbId,
-            ImdbId = payload.ImdbId,
-            Title = payload.Title,
+            TmdbId = tmdb,
+            ImdbId = imdb,
+            Title = title,
             Year = payload.Year,
-            Note = payload.Note
+            Note = note
         });
-        // Returns null when uniq_inbound_pending kicks in — still a 204 to the peer (idempotent
-        // semantics: "we got your request, already on our list").
+        // Null id = uniq_inbound_pending kicked in. Log for debugging but still respond 204
+        // (idempotent semantics: "we got your request, already on our list").
+        if (id is null) _logger.LogDebug("ReceiveRequest deduped from peer {Url} tmdb={Tmdb} imdb={Imdb} title={Title}", payload.FromBaseUrl, tmdb, imdb, title);
         return NoContent();
     }
 
@@ -188,6 +203,8 @@ public class FederationController : ControllerBase
         [FromServices] Services.RequestStore requests)
     {
         if (direction != "in" && direction != "out") return BadRequest("direction must be 'in' or 'out'");
+        if (status is not null && !Services.RequestStore.IsValidStatus(status))
+            return BadRequest("unknown status");
         return Ok(requests.List(direction, status));
     }
 
@@ -196,8 +213,9 @@ public class FederationController : ControllerBase
     public IActionResult SetRequestStatus(long id, [FromQuery] string status,
         [FromServices] Services.RequestStore requests)
     {
-        if (status is not ("pending" or "accepted" or "declined" or "dismissed"))
-            return BadRequest("status must be pending|accepted|declined|dismissed");
+        // 'send-failed' included so admin can dismiss / retry a failed outbound row.
+        if (!Services.RequestStore.IsValidStatus(status))
+            return BadRequest("status must be pending|accepted|declined|dismissed|send-failed");
         return requests.UpdateStatus(id, status) ? NoContent() : NotFound();
     }
 
