@@ -10,7 +10,7 @@ flowchart TD
     Ping -->|ok| MarkOnline[Health: online]
     MarkOnline --> Digest[GET /Federation/Catalog/Digest]
     Digest -->|peer has no plugin| Pull
-    Digest -->|hash == cached| Skip2[Skip - no changes] --> NextPeer
+    Digest -->|hash == cached| Skip2[Skip (no changes)] --> NextPeer
     Digest -->|hash differs| Pull[GET /Items recursive]
     Pull --> Upsert[Upsert into remote_items]
     Upsert --> Diff[Compute old-ids \ new-ids]
@@ -95,7 +95,7 @@ sequenceDiagram
                 PIS->>PIS: schedule retry +30s (1st) / +60s (2nd) / …
             end
         else offline
-            Note over PIS: skip - will catch up on health-flip
+            Note over PIS: skip; will catch up on health-flip
         end
     end
 

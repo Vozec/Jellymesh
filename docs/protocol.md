@@ -58,7 +58,7 @@ sequenceDiagram
     L->>P: GET /Federation/Catalog/Digest
     P-->>L: { Count: 1840, Hash: 0xABCD…, LatestModifiedUtc: t }
     alt Hash == cached
-        Note over L: skip - no work to do (anti-spam)
+        Note over L: skip (no work, anti-spam)
     else Hash differs
         L->>P: GET /Items?Recursive=true&Fields=ProviderIds,MediaSources,…
         P-->>L: [ items… ]
@@ -80,7 +80,7 @@ hash         = SHA256(serialized).hex()
 
 The hash flips on any add, remove, or metadata change anywhere in the
 covered libraries. Two peers running the plugin against an identical
-library would produce the same digest - though that's never the actual
+library would produce the same digest, though that's never the actual
 comparison; the comparison is "peer's digest now" vs "what I cached last
 round from this peer".
 
@@ -99,7 +99,7 @@ A share key:
 - is opaque (32 random bytes, hex-encoded)
 - maps to a list of Jellyfin library (TopParent) ids; empty = all
 - is revocable via DELETE; immediate effect
-- never appears as `X-Emby-Token` on Bob's side - Bob's plugin sends it
+- never appears as `X-Emby-Token` on Bob's side. Bob's plugin sends it
   only on `/Federation/Share/*` calls
 
 ## Watch state push
@@ -124,7 +124,7 @@ sequenceDiagram
     end
 ```
 
-Push direction only for now. Pull (peer state → local) deferred - would
+Push direction only for now. Pull (peer state → local) deferred, would
 piggyback on the same gossip round.
 
 ## Stream proxy
@@ -140,4 +140,4 @@ When a user picks a remote source in the UI, the player hits
 6. Logs (`peer_id, item_id, bytes_served, started_utc, ended_utc`) to
    `stream_audit`.
 
-The client never learns the peer URL or token - both stay server-side.
+The client never learns the peer URL or token: both stay server-side.

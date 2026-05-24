@@ -20,7 +20,7 @@ graph TB
                 STATS[FederationStatsService<br/>per-peer + global aggregates]
             end
 
-            subgraph STORES[SQLite stores - WAL]
+            subgraph STORES[SQLite stores, WAL]
                 S_REMOTE[(RemoteItemStore<br/>remote_items, peer_digests,<br/>stream_audit)]
                 S_PUBLIC[(PublicShareStore<br/>public_shares)]
                 S_REQ[(RequestStore<br/>federation_requests)]
