@@ -188,9 +188,14 @@
                     <div class="jm-modal-body">
                 <h4 data-i18n="diag.status">Federation status</h4>
                 <div id="FedStats" style="font-family:monospace;font-size:0.9em;padding:0.5em;background:#1a1a1a;border:1px solid #333;" data-i18n="common.loading">Loading…</div>
-                <button is="emby-button" type="button" id="RunDiagnostics" class="raised" style="margin-top:0.5em;">
-                    <span data-i18n="diag.run">Run diagnostics</span>
-                </button>
+                <div style="display:flex;gap:0.5em;margin-top:0.5em;flex-wrap:wrap;">
+                    <button is="emby-button" type="button" id="RunDiagnostics" class="raised">
+                        <span data-i18n="diag.run">Run diagnostics</span>
+                    </button>
+                    <button is="emby-button" type="button" id="TriggerSync" class="raised">
+                        <span data-i18n="diag.sync">Sync peer libraries now</span>
+                    </button>
+                </div>
                 <div id="DiagOutput" style="font-family:monospace;font-size:0.85em;white-space:pre-wrap;padding:0.5em;margin-top:0.5em;background:#0f0f0f;border:1px solid #333;display:none;"></div>
                 <h4 style="margin-top:1em;" data-i18n="diag.audit">Recent inbound activity</h4>
                 <div id="InboundAuditList" style="font-family:monospace;font-size:0.85em;"></div>
@@ -793,6 +798,15 @@
             while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
             return n.toFixed(i === 0 ? 0 : 1) + ' ' + u[i];
         }
+
+        document.getElementById('TriggerSync').addEventListener('click', function () {
+            var btn = this;
+            btn.disabled = true;
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Sync/Trigger'), type: 'POST' })
+                .then(function () { jmToast(t('diag.sync.started')); })
+                .catch(function (err) { jmToast(t('diag.sync.failed', { code: (err && err.status) || '?' }), 'error'); })
+                .finally(function () { setTimeout(function () { btn.disabled = false; }, 1500); });
+        });
 
         document.getElementById('RunDiagnostics').addEventListener('click', function () {
             var btn = this;

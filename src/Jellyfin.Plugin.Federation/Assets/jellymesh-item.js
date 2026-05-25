@@ -398,11 +398,20 @@
                     </select>
                 </div>
                 <button type="button" class="jm-btn" id="jm-libs-refresh" style="margin-left:auto;"><span class="material-icons">refresh</span>Refresh peers</button>
+                <button type="button" class="jm-btn primary" id="jm-libs-sync"><span class="material-icons">sync</span>Sync now</button>
             </div>
             <div id="jm-dashlibs-body"><div class="jm-empty">Loading...</div></div>
         `;
         host.appendChild(panel);
         document.getElementById('jm-libs-refresh').addEventListener('click', () => loadDashlibs(true));
+        document.getElementById('jm-libs-sync').addEventListener('click', (e) => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            jApi('/Federation/Sync/Trigger', { method: 'POST' })
+                .then(() => { toast('Sync started.'); setTimeout(() => loadDashlibs(true), 4000); })
+                .catch((err) => toast(`Sync failed: ${err.message}`, 'error'))
+                .finally(() => setTimeout(() => { btn.disabled = false; }, 1500));
+        });
         document.getElementById('jm-layout').addEventListener('change', (e) => {
             jApi('/Federation/PeerLibraryConfig', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Layout: e.target.value }) })
                 .then(() => toast('Saved.'))
