@@ -36,6 +36,12 @@ public class RetentionCleanupService : BackgroundService
                     if (a > 0 || h > 0)
                         _logger.LogInformation("Retention cleanup: pruned {Audit} audit rows + {Health} health samples (older than {Days}d)", a, h, days);
                 }
+                // Drop the WAL files back into the main db files. SQLite normally never
+                // checkpoints in WAL mode unless reads catch up; on a quiet server the WAL
+                // can grow indefinitely. TRUNCATE keeps the on-disk footprint small +
+                // reduces disk write rate when subsequent commits don't grow the WAL again.
+                _audit.Checkpoint();
+                _health.Checkpoint();
             }
             catch (Exception ex)
             {

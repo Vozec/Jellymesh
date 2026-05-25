@@ -39,6 +39,14 @@ public class HealthMonitorService : BackgroundService
         _libCache?.InvalidatePeer(e.PeerId);
     }
 
+    // Throttle disk persistence: probe in-memory every 30s for online detection, but only
+    // write a row to peer_health_samples every PersistEvery or on state change. Cuts the
+    // health-table write rate from ~2/min/peer to ~12/h/peer in steady state, which keeps
+    // the WAL file small (was growing past 1 MB during a single test session) and the
+    // physical disk quiet.
+    private static readonly TimeSpan PersistEvery = TimeSpan.FromMinutes(5);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, (DateTime LastWrite, bool LastOnline)> _lastPersist = new();
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Federation health monitor started, interval {Interval}s", CheckInterval.TotalSeconds);
@@ -53,7 +61,16 @@ public class HealthMonitorService : BackgroundService
                     var online = await _client.PingAsync(server, stoppingToken).ConfigureAwait(false);
                     sw.Stop();
                     _registry.Update(server.Id, online, sw.Elapsed);
-                    _history.Append(server.Id, online, online ? (int)sw.ElapsedMilliseconds : null);
+
+                    var now = DateTime.UtcNow;
+                    var should = !_lastPersist.TryGetValue(server.Id, out var last)
+                        || last.LastOnline != online
+                        || (now - last.LastWrite) >= PersistEvery;
+                    if (should)
+                    {
+                        _history.Append(server.Id, online, online ? (int)sw.ElapsedMilliseconds : null);
+                        _lastPersist[server.Id] = (now, online);
+                    }
                 });
 
                 try

@@ -140,6 +140,20 @@ public class PeerHealthHistoryStore
         return cmd.ExecuteNonQuery();
     }
 
+    /// <summary>Drop the WAL back into the main db file so it doesn't grow unbounded.</summary>
+    public void Checkpoint()
+    {
+        try
+        {
+            using var c = new SqliteConnection(ConnString);
+            c.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex) { _logger.LogDebug(ex, "Health WAL checkpoint failed"); }
+    }
+
     private static int? Percentile(List<int> sorted, double q)
     {
         if (sorted.Count == 0) return null;
