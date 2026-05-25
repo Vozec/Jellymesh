@@ -75,35 +75,34 @@ sequenceDiagram
     participant H as PeerHealthRegistry
     participant P as Peer
 
-    JF-->>PIS: ItemAdded / ItemRemoved (Movie | Series | Episode)
+    JF-->>PIS: ItemAdded or ItemRemoved
     PIS->>PIS: Interlocked.Exchange dirty=UtcNow
     Note over PIS: 5s tick loop
 
-    PIS->>PIS: elapsed >= PushDebounceSeconds?
+    PIS->>PIS: elapsed bigger than PushDebounceSeconds
     PIS->>PIS: CAS clear dirty
-    PIS->>PIS: reset all _retries (fresh data = fresh attempt)
-
-    loop per enabled peer with FederationShareKey
-        PIS->>H: IsOnline(peer)?
+    PIS->>PIS: reset all retries
+    loop per enabled peer
+        PIS->>H: IsOnline peer
         alt online
-            PIS->>P: POST /Federation/Invalidate
+            PIS->>P: POST Federation Invalidate
             alt success
                 P-->>PIS: 2xx
-                PIS->>PIS: remove from _retries
+                PIS->>PIS: remove from retries
             else fail
-                P-->>PIS: 5xx / network err
-                PIS->>PIS: schedule retry +30s (1st) / +60s (2nd) / …
+                P-->>PIS: 5xx or network error
+                PIS->>PIS: schedule retry 30s 60s 120s
             end
         else offline
-            Note over PIS: skip; will catch up on health-flip
+            Note over PIS: skip, catch up on health flip
         end
     end
 
-    Note over PIS: subsequent 5s ticks drain _retries
-    PIS->>PIS: any peer NextAttempt <= UtcNow?
-    PIS->>P: POST /Federation/Invalidate (retry)
-    P-->>PIS: 2xx → clear / fail → next backoff step
+    Note over PIS: subsequent 5s ticks drain retries
+    PIS->>PIS: any peer NextAttempt past now
+    PIS->>P: POST Federation Invalidate retry
+    P-->>PIS: 2xx clear or fail next backoff
 
-    Note over PIS: after 5 failed attempts:<br/>give up + log warning<br/>gossip-pull is the fallback
+    Note over PIS: after 5 failed attempts give up, gossip-pull is fallback
 ```
 
