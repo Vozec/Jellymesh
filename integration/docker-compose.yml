@@ -1,0 +1,55 @@
+# Three Jellyfin instances on a shared bridge so they can reach each other by name.
+# Plugin DLL bind-mounted from build output. Media shared read-only.
+# Ports exposed to host so we can hit each from curl.
+
+services:
+  jellyfin-a:
+    image: jellyfin/jellyfin:10.10.3
+    container_name: jm-a
+    networks: [jellymesh]
+    ports: ["8096:8096"]
+    volumes:
+      - ./plugin:/config/plugins/Federation_0.9.0.0
+      - ./media-a:/media:ro
+      - jm-a-config:/config
+      - jm-a-cache:/cache
+    environment:
+      - TZ=UTC
+
+  jellyfin-b:
+    image: jellyfin/jellyfin:10.10.3
+    container_name: jm-b
+    networks: [jellymesh]
+    ports: ["8097:8096"]
+    volumes:
+      - ./plugin:/config/plugins/Federation_0.9.0.0
+      - ./media-b:/media:ro
+      - jm-b-config:/config
+      - jm-b-cache:/cache
+    environment:
+      - TZ=UTC
+
+  jellyfin-c:
+    image: jellyfin/jellyfin:10.10.3
+    container_name: jm-c
+    networks: [jellymesh]
+    ports: ["8098:8096"]
+    volumes:
+      - ./plugin:/config/plugins/Federation_0.9.0.0
+      - ./media-c:/media:ro
+      - jm-c-config:/config
+      - jm-c-cache:/cache
+    environment:
+      - TZ=UTC
+
+networks:
+  jellymesh:
+    driver: bridge
+
+volumes:
+  jm-a-config:
+  jm-b-config:
+  jm-b-cache:
+  jm-a-cache:
+  jm-c-config:
+  jm-c-cache:
