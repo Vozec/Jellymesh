@@ -202,6 +202,40 @@
     }
     setTimeout(patchApiClient, 200);
 
+    // Last-resort: any <img> the SPA already rendered with src='/Items/fed_*/Images/*' (before
+    // our ApiClient patch landed) shows a broken image. MutationObserver rewrites those src
+    // attributes inline. Same logic also fires for background-image inline styles on
+    // .cardImage elements.
+    function rewriteFedImages(root) {
+        root.querySelectorAll('img[src*="/Items/fed_"]').forEach((img) => {
+            const newSrc = rewriteImageUrl(img.src);
+            if (newSrc && newSrc !== img.src) img.src = newSrc;
+        });
+        root.querySelectorAll('[style*="/Items/fed_"]').forEach((el) => {
+            const bg = el.style.backgroundImage;
+            if (!bg) return;
+            const m = bg.match(/url\(["']?([^"')]+)["']?\)/);
+            if (!m) return;
+            const newUrl = rewriteImageUrl(m[1]);
+            if (newUrl && newUrl !== m[1]) el.style.backgroundImage = `url('${newUrl}')`;
+        });
+    }
+    function startImageRewriter() {
+        rewriteFedImages(document);
+        const obs = new MutationObserver((muts) => {
+            for (const m of muts) {
+                m.addedNodes.forEach((n) => {
+                    if (n.nodeType !== 1) return;
+                    rewriteFedImages(n);
+                });
+                if (m.type === 'attributes' && m.target instanceof Element) rewriteFedImages(m.target);
+            }
+        });
+        obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style'] });
+    }
+    if (document.body) startImageRewriter();
+    else document.addEventListener('DOMContentLoaded', startImageRewriter);
+
     function ensureStyle() {
         if (document.getElementById('jm-style')) return;
         const s = document.createElement('style');
