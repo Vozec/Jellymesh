@@ -449,7 +449,11 @@
                     + '<div class="jm-modal-body">' + body + '</div>'
                     + '<div style="padding:0.7em 1.1em;border-top:1px solid #333;display:flex;justify-content:flex-end;gap:0.5em;background:#1c1c1c;">' + cancel + ok + '</div>'
                     + '</div>';
-                document.body.appendChild(overlay);
+                // Mount inside #FederationConfigPage so the .jm-modal-* CSS (scoped to that
+                // page id) actually applies. Falling back to body would render the overlay
+                // invisible because no global rules style it.
+                var host = document.getElementById('FederationConfigPage') || document.body;
+                host.appendChild(overlay);
                 overlay.addEventListener('click', function (e) {
                     if (e.target === overlay || e.target.hasAttribute('data-result')) {
                         var r = e.target.getAttribute('data-result') || 'cancel';
@@ -795,12 +799,15 @@
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Shares'), type: 'GET', dataType: 'json' }).then(function (shares) {
                 var html = '';
                 (shares || []).forEach(function (k) {
-                    html += '<div style="padding:0.5em;margin:0.25em 0;border:1px solid #333;">';
-                    html += '<strong>' + esc(k.Label || '(no label)') + '</strong> - ';
-                    html += 'libs: ' + esc(k.LibraryIds && k.LibraryIds.length ? k.LibraryIds.join(', ') : '(all)');
-                    html += ' - key: <code>' + esc(k.ApiKeyPreview) + '</code> ';
-                    html += '<button type="button" class="copy-share" data-id="' + esc(k.Id) + '">Copy full key</button> ';
-                    html += '<button type="button" class="delete-share" data-id="' + esc(k.Id) + '">Delete</button>';
+                    html += '<div style="padding:0.6em 0.8em;margin:0.25em 0;border:1px solid #333;border-radius:0.3em;display:flex;align-items:center;gap:0.6em;">';
+                    html += '<div style="flex:1;min-width:0;">';
+                    html += '<div><strong>' + esc(k.Label || '(no label)') + '</strong></div>';
+                    html += '<div style="color:#888;font-size:0.85em;">libs: ' + esc(k.LibraryIds && k.LibraryIds.length ? k.LibraryIds.join(', ') : '(all)') + ' · key: <code>' + esc(k.ApiKeyPreview) + '</code></div>';
+                    html += '</div>';
+                    html += '<div style="display:flex;gap:0.4em;flex-shrink:0;">';
+                    html += '<button type="button" class="jm-btn copy-share" data-id="' + esc(k.Id) + '">Copy full key</button>';
+                    html += '<button type="button" class="jm-btn danger delete-share" data-id="' + esc(k.Id) + '">Delete</button>';
+                    html += '</div>';
                     html += '</div>';
                 });
                 document.getElementById('SharesList').innerHTML = html || '<em>No share keys yet.</em>';
@@ -890,8 +897,8 @@
                             + '<strong>' + esc(r.ForUrlCanonical) + '</strong> · hop ' + r.HopCount + '<br>'
                             + '<div style="color:#aaa;font-size:0.85em;margin-top:0.2em;">' + esc(r.Note || '') + '</div>'
                             + '<div style="margin-top:0.3em;">'
-                            + '<button type="button" class="intro-approve" data-id="' + r.Id + '">Approve (add as peer)</button> '
-                            + '<button type="button" class="intro-revoke" data-id="' + r.Id + '" data-role="receiver">Decline</button>'
+                            + '<button type="button" class="jm-btn primary intro-approve" data-id="' + r.Id + '">Approve (add as peer)</button> '
+                            + '<button type="button" class="jm-btn danger intro-revoke" data-id="' + r.Id + '" data-role="receiver">Decline</button>'
                             + '</div></div>';
                     }).join('')
                     : '<em>No pending introductions.</em>';
@@ -904,8 +911,8 @@
                             + ' · hop ' + r.HopCount
                             + (r.IssuedKeyId ? ' · key ' + esc(r.IssuedKeyId.substring(0, 8)) : '')
                             + '<div style="margin-top:0.3em;">'
-                            + (r.Status === 'pending' ? '<button type="button" class="intro-approve" data-id="' + r.Id + '">Approve & mint</button> ' : '')
-                            + (r.Status === 'active' ? '<button type="button" class="intro-revoke-preview" data-id="' + r.Id + '">Revoke…</button>' : '')
+                            + (r.Status === 'pending' ? '<button type="button" class="jm-btn primary intro-approve" data-id="' + r.Id + '">Approve & mint</button> ' : '')
+                            + (r.Status === 'active' ? '<button type="button" class="jm-btn danger intro-revoke-preview" data-id="' + r.Id + '">Revoke</button>' : '')
                             + '</div></div>';
                     }).join('')
                     : '<em>No issued introductions.</em>';
@@ -1026,7 +1033,7 @@
                 document.getElementById('AcceptInboundAccessRequests').checked = config.AcceptInboundAccessRequests !== false;
                 document.getElementById('AcceptInboundInvites').checked = config.AcceptInboundInvites !== false;
                 document.getElementById('AcceptInboundIntroductions').checked = config.AcceptInboundIntroductions !== false;
-                document.getElementById('PublishPeerDirectory').checked = !!config.PublishPeerDirectory;
+                document.getElementById('PublishPeerDirectory').checked = config.PublishPeerDirectory !== false;
                 document.getElementById('AcceptOpenAccessRequests').checked = !!config.AcceptOpenAccessRequests;
                 document.getElementById('AccessRequestPerIpHourLimit').value = config.AccessRequestPerIpHourLimit || 5;
                 document.getElementById('AccessRequestAllowlist').value = (config.AccessRequestAllowlist || []).join(', ');
@@ -1157,8 +1164,8 @@
                     + ' &middot; <code>' + esc(t.Token) + '</code>'
                     + ' &middot; uses ' + (t.UsedCount || 0) + (t.MaxUses ? '/' + t.MaxUses : '')
                     + (t.ExpiresUtc ? ' &middot; expires ' + esc(t.ExpiresUtc) : '')
-                    + ' <button type="button" class="copy-invite-token" data-token="' + esc(t.Token) + '">copy</button>'
-                    + ' <button type="button" class="delete-invite-token" data-token="' + esc(t.Token) + '" style="color:#f88;">delete</button>'
+                    + ' <button type="button" class="jm-btn copy-invite-token" data-token="' + esc(t.Token) + '">Copy</button>'
+                    + ' <button type="button" class="jm-btn danger delete-invite-token" data-token="' + esc(t.Token) + '">Delete</button>'
                     + '</div>';
             });
             document.getElementById('AccessInviteTokensList').innerHTML = html || '<em>No invite tokens.</em>';
