@@ -99,7 +99,7 @@
         return `/Federation/Image/${parsed.peerId.replace(/-/g, '')}/${parsed.itemId}/${m[2]}?api_key=${encodeURIComponent(token())}`;
     }
 
-    function handleHookedRequest(url) {
+    function handleHookedRequest(url, originalArgs) {
         // /Items?ParentId=fedlib_... or /Users/{uid}/Items?ParentId=fedlib_...
         const q = getQuery(url);
         if (q.ParentId && q.ParentId.startsWith(FED_LIB_PREFIX)) {
@@ -112,6 +112,33 @@
                     const items = ((data && data.items) || []).map((it) => mapPeerItem(it, peerN));
                     return jsonResponse({ Items: items, TotalRecordCount: items.length, StartIndex: 0 });
                 });
+        }
+        // /Items?ParentId=<local_lib> where the local lib has merged-in peer libs.
+        // Forward original request to the server, then concat the peer items into the
+        // response so the user sees them alongside their local items.
+        if (q.ParentId && /^[0-9a-fA-F]{32}$/.test(q.ParentId)) {
+            const merges = (mergeConfigCache || []).filter((s) =>
+                s.Enabled !== false &&
+                s.MergeWithLocalLibraryId &&
+                s.MergeWithLocalLibraryId.replace(/-/g, '') === q.ParentId);
+            if (merges.length > 0) {
+                return _origFetch.apply(window, originalArgs).then(async (resp) => {
+                    if (!resp.ok) return resp;
+                    const data = await resp.clone().json().catch(() => null);
+                    if (!data || !Array.isArray(data.Items)) return resp;
+                    const limit = Math.min(parseInt(q.Limit, 10) || 100, 200);
+                    for (const m of merges) {
+                        try {
+                            const peerData = await jApi(`/Federation/Peers/${m.PeerId}/Libraries/${encodeURIComponent(m.LibraryId)}/Items?limit=${limit}`);
+                            const peerN = m.PeerId.replace(/-/g, '');
+                            const items = ((peerData && peerData.items) || []).map((it) => mapPeerItem(it, peerN));
+                            data.Items = data.Items.concat(items);
+                            data.TotalRecordCount = (data.TotalRecordCount || 0) + items.length;
+                        } catch (_) { /* peer offline mid-render; skip */ }
+                    }
+                    return jsonResponse(data);
+                });
+            }
         }
         // /Users/{uid}/Items/fedlib_X  ->  return a fake CollectionFolder so movies.html
         // doesn't 400 when it fetches the library metadata.
@@ -140,10 +167,24 @@
     }
 
     const _origFetch = window.fetch;
+    // Merge config cached in-process; refreshed below at intervals so changes saved in the
+    // dashboard panel propagate to all open tabs within 30 s. Pre-loaded so the merge check
+    // in the fetch hook has data on first hit.
+    let mergeConfigCache = null;
+    function refreshMergeConfig() {
+        jApi('/Federation/PeerLibraryConfig').then((cfg) => {
+            mergeConfigCache = (cfg && cfg.settings) || [];
+        }).catch(() => { if (mergeConfigCache === null) mergeConfigCache = []; });
+    }
+    refreshMergeConfig();
+    setInterval(refreshMergeConfig, 30000);
+
     window.fetch = function (input, init) {
         const url = typeof input === 'string' ? input : (input && input.url);
-        if (url && (url.indexOf(FED_LIB_PREFIX) >= 0 || url.indexOf(FED_ITEM_PREFIX) >= 0)) {
-            const hooked = handleHookedRequest(url);
+        const isFederated = url && (url.indexOf(FED_LIB_PREFIX) >= 0 || url.indexOf(FED_ITEM_PREFIX) >= 0);
+        const looksLikeItemsList = url && /\/Items(\?|$)/.test(url) && url.indexOf('ParentId=') > 0;
+        if (isFederated || looksLikeItemsList) {
+            const hooked = handleHookedRequest(url, arguments);
             if (hooked) return Promise.resolve(hooked);
         }
         return _origFetch.apply(this, arguments);
