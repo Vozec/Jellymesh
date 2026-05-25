@@ -91,9 +91,16 @@
         return new Response(JSON.stringify(obj), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
 
+    function rewriteImageUrl(url) {
+        const m = url.match(/\/Items\/(fed_[0-9a-fA-F]{32}_[^/?]+)\/Images\/([^/?]+)/);
+        if (!m) return null;
+        const parsed = parseFedItem(m[1]);
+        if (!parsed) return null;
+        return `/Federation/Image/${parsed.peerId.replace(/-/g, '')}/${parsed.itemId}/${m[2]}?api_key=${encodeURIComponent(token())}`;
+    }
+
     function handleHookedRequest(url) {
-        // Items list scoped to a federated library: /Users/{uid}/Items?ParentId=fedlib_...
-        // or /Items?ParentId=fedlib_...
+        // /Items?ParentId=fedlib_... or /Users/{uid}/Items?ParentId=fedlib_...
         const q = getQuery(url);
         if (q.ParentId && q.ParentId.startsWith(FED_LIB_PREFIX)) {
             const parsed = parseFedLib(q.ParentId);
@@ -106,29 +113,29 @@
                     return jsonResponse({ Items: items, TotalRecordCount: items.length, StartIndex: 0 });
                 });
         }
-        // Single federated item lookup: /Items/{fedId} or /Users/{uid}/Items/{fedId}
-        const itemMatch = url.match(/\/Items\/(fed_[0-9a-fA-F]{32}_[^/?]+)(?:\?|$)/);
-        if (itemMatch) {
-            const parsed = parseFedItem(itemMatch[1]);
-            if (parsed) {
-                return jApi(`/Federation/Peers/${parsed.peerId}/Libraries/x/Items?limit=1`).then(() => {
-                    // Lightweight stub; the full item details come from the channel item page.
-                    return jsonResponse({ Id: itemMatch[1], Name: '(federated item)', Type: 'Movie' });
-                });
+        // /Users/{uid}/Items/fedlib_X  ->  return a fake CollectionFolder so movies.html
+        // doesn't 400 when it fetches the library metadata.
+        const libLookup = url.match(/\/Items\/(fedlib_[0-9a-fA-F]{32}_[^/?]+)(?:\?|$)/);
+        if (libLookup) {
+            const p = parseFedLib(libLookup[1]);
+            if (p) {
+                return jApi(`/Federation/Peers/${p.peerId}/Libraries`).then((libs) => {
+                    const lib = (libs || []).find((l) => l.id === p.libId) || { id: p.libId, name: 'Library', type: 'movies' };
+                    return jsonResponse(fakeFolderItem(p.peerId, lib));
+                }).catch(() => jsonResponse(fakeFolderItem(p.peerId, { id: p.libId, name: 'Library', type: 'movies' })));
             }
         }
-        // Image proxy: /Items/{fedId}/Images/Primary or /Items/{fedId}/Images/Backdrop
-        const imgMatch = url.match(/\/Items\/(fed_[0-9a-fA-F]{32}_[^/?]+)\/Images\/([^/?]+)/);
-        if (imgMatch) {
-            const parsed = parseFedItem(imgMatch[1]);
-            if (parsed) {
-                const newUrl = `/Federation/Image/${parsed.peerId.replace(/-/g, '')}/${parsed.itemId}/${imgMatch[2]}?api_key=${encodeURIComponent(token())}`;
-                return fetch(newUrl);
-            }
+        // /Users/{uid}/Items/fed_X  -> stub item dto so the SPA doesn't 400 trying to fetch
+        // the detail metadata. Real playback uses the local channel item; this stub only
+        // exists for transient lookups like the back-button state.
+        const itemLookup = url.match(/\/Items\/(fed_[0-9a-fA-F]{32}_[^/?]+)(?:\?|$)/);
+        if (itemLookup) {
+            const p = parseFedItem(itemLookup[1]);
+            if (p) return jsonResponse(mapPeerItem({ id: p.itemId, name: '(federated)', type: 'Movie' }, p.peerId.replace(/-/g, '')));
         }
-        // Virtual folder list: /Library/VirtualFolders sometimes asked for our fedlib id.
-        // Let the original request go through - we only need to fake the IsFolder lookup which
-        // Jellyfin doesn't seem to require for the movies.html page to render.
+        // /Items/fed_X/Images/Y or any prefix-variant -> reroute to our image proxy.
+        const rewritten = rewriteImageUrl(url);
+        if (rewritten) return fetch(rewritten);
         return null;
     }
 
@@ -141,6 +148,59 @@
         }
         return _origFetch.apply(this, arguments);
     };
+
+    // XMLHttpRequest path: Jellyfin's legacy ApiClient uses XHR for many endpoints, so the
+    // fetch hook alone misses them. Intercept open() to rewrite federated URLs the same way.
+    const _origXhrOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+        if (typeof url === 'string' && url.indexOf(FED_ITEM_PREFIX) >= 0) {
+            const rewritten = rewriteImageUrl(url);
+            if (rewritten) {
+                arguments[1] = rewritten;
+                return _origXhrOpen.apply(this, arguments);
+            }
+        }
+        // Items list and metadata XHRs are harder to rewrite synchronously here; we leave
+        // them to flow into the fetch path or to fail benignly. The user-visible covers
+        // and the items grid (handled via fetch by modern Jellyfin) are the priority.
+        return _origXhrOpen.apply(this, arguments);
+    };
+
+    // ApiClient.getImageUrl is called by the SPA to build <img src> attribute values for
+    // posters - those never go through fetch, so we patch the getter directly. When the
+    // itemId is federated, return our proxy URL; otherwise fall back to the original.
+    function patchApiClient() {
+        const ac = window.ApiClient;
+        if (!ac || ac._jmPatched) { setTimeout(patchApiClient, 200); return; }
+        ac._jmPatched = true;
+        if (typeof ac.getImageUrl === 'function') {
+            const origGetImage = ac.getImageUrl.bind(ac);
+            ac.getImageUrl = function (itemId, options) {
+                if (typeof itemId === 'string' && itemId.startsWith(FED_ITEM_PREFIX)) {
+                    const p = parseFedItem(itemId);
+                    if (p) {
+                        const type = (options && options.type) || 'Primary';
+                        return `/Federation/Image/${p.peerId.replace(/-/g, '')}/${p.itemId}/${type}?api_key=${encodeURIComponent(token())}`;
+                    }
+                }
+                return origGetImage(itemId, options);
+            };
+        }
+        if (typeof ac.getScaledImageUrl === 'function') {
+            const orig = ac.getScaledImageUrl.bind(ac);
+            ac.getScaledImageUrl = function (itemId, options) {
+                if (typeof itemId === 'string' && itemId.startsWith(FED_ITEM_PREFIX)) {
+                    const p = parseFedItem(itemId);
+                    if (p) {
+                        const type = (options && options.type) || 'Primary';
+                        return `/Federation/Image/${p.peerId.replace(/-/g, '')}/${p.itemId}/${type}?api_key=${encodeURIComponent(token())}`;
+                    }
+                }
+                return orig(itemId, options);
+            };
+        }
+    }
+    setTimeout(patchApiClient, 200);
 
     function ensureStyle() {
         if (document.getElementById('jm-style')) return;
