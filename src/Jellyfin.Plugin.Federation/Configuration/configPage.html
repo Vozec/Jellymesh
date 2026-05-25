@@ -5,28 +5,29 @@
     <title>Federation</title>
 </head>
 <body>
-<style>
-    .jm-tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.6em; margin: 0.8em 0 1.2em 0; }
-    .jm-tile { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 1em; cursor: pointer; text-align: left; color: #ddd; font: inherit; transition: background 0.15s, border-color 0.15s; }
-    .jm-tile:hover { background: #252525; border-color: #5a5a5a; }
-    .jm-tile-icon { font-size: 1.6em; display: block; margin-bottom: 0.3em; }
-    .jm-tile-label { font-weight: 600; }
-    .jm-tile-hint { color: #888; font-size: 0.8em; margin-top: 0.2em; }
-    .jm-tile-badge { display: inline-block; background: #c93; color: #111; border-radius: 0.8em; padding: 0.05em 0.5em; font-size: 0.75em; font-weight: 700; margin-left: 0.4em; }
-    dialog.jm-modal { background: #181818; color: #ddd; border: 1px solid #3a3a3a; border-radius: 0.5em; max-width: 900px; width: 90vw; max-height: 85vh; overflow-y: auto; padding: 0; }
-    dialog.jm-modal::backdrop { background: rgba(0,0,0,0.6); }
-    dialog.jm-modal .jm-modal-head { position: sticky; top: 0; background: #1c1c1c; border-bottom: 1px solid #3a3a3a; padding: 0.8em 1em; display: flex; justify-content: space-between; align-items: center; z-index: 1; }
-    dialog.jm-modal .jm-modal-head h3 { margin: 0; }
-    dialog.jm-modal .jm-modal-body { padding: 1em; }
-    dialog.jm-modal .jm-modal-close { background: transparent; border: none; color: #aaa; font-size: 1.4em; cursor: pointer; padding: 0 0.4em; }
-    dialog.jm-modal .jm-modal-close:hover { color: #fff; }
-    /* When the browser ignores <dialog>, our JS sets [open] and we fall back to a fixed overlay. */
-    dialog.jm-modal[open] { display: block; position: fixed; top: 5vh; left: 50%; transform: translateX(-50%); z-index: 10000; box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
-    .jm-status-bar { display: flex; gap: 1em; align-items: center; flex-wrap: wrap; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 0.6em 0.8em; margin: 0.6em 0; }
-    .jm-brand-row { display: flex; align-items: center; gap: 0.8em; }
-    .jm-brand-row img { width: 56px; height: 56px; }
-</style>
 <div id="FederationConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+<style>
+    /* These styles live INSIDE the page div so Jellyfin's SPA doesn't strip them when it
+       extracts the configuration page out of body. */
+    #FederationConfigPage .jm-tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.6em; margin: 0.8em 0 1.2em 0; }
+    #FederationConfigPage .jm-tile { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 1em; cursor: pointer; text-align: left; color: #ddd; font: inherit; transition: background 0.15s, border-color 0.15s; display: block; width: 100%; }
+    #FederationConfigPage .jm-tile:hover { background: #252525; border-color: #5a5a5a; }
+    #FederationConfigPage .jm-tile-icon { font-size: 1.6em; display: block; margin-bottom: 0.3em; }
+    #FederationConfigPage .jm-tile-label { font-weight: 600; display: block; }
+    #FederationConfigPage .jm-tile-hint { color: #888; font-size: 0.8em; margin-top: 0.2em; }
+    #FederationConfigPage .jm-tile-badge { display: inline-block; background: #c93; color: #111; border-radius: 0.8em; padding: 0.05em 0.5em; font-size: 0.75em; font-weight: 700; margin-left: 0.4em; }
+    #FederationConfigPage .jm-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 9999; align-items: flex-start; justify-content: center; padding: 4vh 2vw; overflow-y: auto; }
+    #FederationConfigPage .jm-modal-overlay.open { display: flex; }
+    #FederationConfigPage .jm-modal-card { background: #181818; color: #ddd; border: 1px solid #3a3a3a; border-radius: 0.5em; max-width: 900px; width: 100%; max-height: 92vh; overflow-y: auto; box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
+    #FederationConfigPage .jm-modal-head { position: sticky; top: 0; background: #1c1c1c; border-bottom: 1px solid #3a3a3a; padding: 0.8em 1em; display: flex; justify-content: space-between; align-items: center; z-index: 1; }
+    #FederationConfigPage .jm-modal-head h3 { margin: 0; }
+    #FederationConfigPage .jm-modal-body { padding: 1em; }
+    #FederationConfigPage .jm-modal-close { background: transparent; border: none; color: #aaa; font-size: 1.4em; cursor: pointer; padding: 0 0.4em; }
+    #FederationConfigPage .jm-modal-close:hover { color: #fff; }
+    #FederationConfigPage .jm-status-bar { display: flex; gap: 1em; align-items: center; flex-wrap: wrap; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 0.6em 0.8em; margin: 0.6em 0; }
+    #FederationConfigPage .jm-brand-row { display: flex; align-items: center; gap: 0.8em; }
+    #FederationConfigPage .jm-brand-row img { width: 56px; height: 56px; }
+</style>
     <div data-role="content">
         <div class="content-primary">
             <form id="FederationConfigForm">
@@ -53,7 +54,7 @@
                     <button type="button" class="jm-tile" data-modal="dlg-diag"><span class="jm-tile-icon">📈</span><span class="jm-tile-label" data-i18n="tile.diag">Diagnostics</span><div class="jm-tile-hint" data-i18n="tile.diag.hint">Stats + audit log</div></button>
                 </div>
 
-                <dialog id="dlg-settings" class="jm-modal">
+                <div class="jm-modal-overlay" data-modal-id="dlg-settings"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.settings">Settings</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
                 <div class="inputContainer">
@@ -148,9 +149,9 @@
                     </div>
                 </div>
                     </div>
-                </dialog>
+                </div></div>
 
-                <dialog id="dlg-diag" class="jm-modal">
+                <div class="jm-modal-overlay" data-modal-id="dlg-diag"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.diag">Diagnostics</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
                 <h4>Federation status</h4>
@@ -162,9 +163,9 @@
                 <h4 style="margin-top:1em;">Recent inbound activity</h4>
                 <div id="InboundAuditList" style="font-family:monospace;font-size:0.85em;"></div>
                     </div>
-                </dialog>
+                </div></div>
 
-                <dialog id="dlg-peers" class="jm-modal">
+                <div class="jm-modal-overlay" data-modal-id="dlg-peers"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.peers">Peers</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
                 <div id="RemoteServersList"></div>
@@ -172,9 +173,9 @@
                     <span>Add peer server</span>
                 </button>
                     </div>
-                </dialog>
+                </div></div>
 
-                <dialog id="dlg-intros" class="jm-modal">
+                <div class="jm-modal-overlay" data-modal-id="dlg-intros"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.intros">Introductions</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
                 <p>Ask an existing peer to introduce you a new contact, or triage incoming introduction requests.</p>
@@ -200,9 +201,9 @@
                 <h4 style="margin:1em 0 0.2em 0;">Outbound</h4>
                 <div id="IntroForwarder"></div>
                     </div>
-                </dialog>
+                </div></div>
 
-                <dialog id="dlg-requests" class="jm-modal">
+                <div class="jm-modal-overlay" data-modal-id="dlg-requests"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.requests">Content requests</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
                 <p>Ask peers to add a film, or triage what peers asked from you.</p>
@@ -223,9 +224,9 @@
                 <h4 style="margin:1em 0 0.2em 0;">Outbound (you asked peers)</h4>
                 <div id="ReqOutList"></div>
                     </div>
-                </dialog>
+                </div></div>
 
-                <dialog id="dlg-shares" class="jm-modal">
+                <div class="jm-modal-overlay" data-modal-id="dlg-shares"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.shares">Share keys</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
                 <p>Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
@@ -263,9 +264,9 @@
                     </button>
                 </details>
                     </div>
-                </dialog>
+                </div></div>
 
-                <dialog id="dlg-privacy" class="jm-modal">
+                <div class="jm-modal-overlay" data-modal-id="dlg-privacy"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.privacy">Privacy</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
                 <p data-i18n="privacy.desc">Master switches for unsolicited inbound contact. Turn off to refuse all new requests regardless of any per-key or per-token rule.</p>
@@ -279,9 +280,9 @@
                     <label><input is="emby-checkbox" type="checkbox" id="AcceptInboundIntroductions" /><span data-i18n="privacy.intro">Accept inbound /Federation/Introduce + /Introduced (peer-mediated introductions)</span></label>
                 </div>
                     </div>
-                </dialog>
+                </div></div>
 
-                <dialog id="dlg-handshake" class="jm-modal">
+                <div class="jm-modal-overlay" data-modal-id="dlg-handshake"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.handshake">Direct handshake</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
                 <p data-i18n="handshake.desc">Bootstrap a peering without going through a third party. The other side's admin approves before any key crosses the wire.</p>
@@ -347,7 +348,7 @@
                     <button is="emby-button" type="button" id="AddToBlocklist" class="raised"><span data-i18n="handshake.blocklist.add">Block this URL</span></button>
                 </div>
                     </div>
-                </dialog>
+                </div></div>
 
                 <button is="emby-button" type="submit" class="raised button-submit block" style="margin-top:0.8em;">
                     <span data-i18n="save">Save</span>
@@ -363,23 +364,27 @@
         // runs before or after the SPA injects this page. Direct addEventListener bindings to
         // individual buttons silently lose elements when the SPA tears down + reinjects the view.
         function openJmModal(id) {
-            var dlg = document.getElementById(id);
-            if (!dlg) return;
-            try {
-                if (typeof dlg.showModal === 'function') { dlg.showModal(); return; }
-            } catch (e) { /* fall through */ }
-            dlg.setAttribute('open', '');
+            var overlay = document.querySelector('#FederationConfigPage [data-modal-id="' + id + '"]');
+            if (overlay) overlay.classList.add('open');
         }
-        function closeJmModal(dlg) {
-            if (!dlg) return;
-            try { dlg.close(); } catch (e) { dlg.removeAttribute('open'); }
+        function closeJmModal(overlay) {
+            if (overlay) overlay.classList.remove('open');
         }
         document.querySelector('#FederationConfigPage').addEventListener('click', function (e) {
             var tile = e.target.closest && e.target.closest('.jm-tile');
             if (tile && tile.dataset.modal) { openJmModal(tile.dataset.modal); return; }
             if (e.target.classList && e.target.classList.contains('jm-modal-close')) {
-                closeJmModal(e.target.closest('dialog'));
+                closeJmModal(e.target.closest('.jm-modal-overlay'));
                 return;
+            }
+            // Click on the backdrop (the overlay itself, not its card) closes the modal.
+            if (e.target.classList && e.target.classList.contains('jm-modal-overlay')) {
+                closeJmModal(e.target);
+            }
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('#FederationConfigPage .jm-modal-overlay.open').forEach(closeJmModal);
             }
         });
 
@@ -397,13 +402,15 @@
         }
 
         function refreshStatusBar() {
+            var bar = document.getElementById('JmStatusSummary');
+            if (!bar) return;
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Stats'), type: 'GET', dataType: 'json' }).then(function (s) {
-                var bar = document.getElementById('JmStatusSummary');
-                if (!bar) return;
                 bar.textContent = s.PeerCount + ' peers (' + s.OnlinePeerCount + ' online) · '
                     + s.TotalCachedItems + ' cached items · '
                     + 'dedup ratio ' + (s.DedupRatio || 0).toFixed(2);
-            }).catch(function () {});
+            }).catch(function (err) {
+                bar.textContent = 'Status unavailable (HTTP ' + (err && err.status) + ')';
+            });
         }
 
         var i18n = {
