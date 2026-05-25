@@ -102,6 +102,23 @@ public class PluginConfiguration : BasePluginConfiguration
     /// (direct), InviteOffer (direct), and Introduced (forwarded via intermediary). A blocked
     /// URL cannot reach us even via a trusted introducer.</summary>
     public List<string> BlockedPeerUrls { get; set; } = new();
+
+    /// <summary>Days to keep completed/denied access-request rows + audit attempts +
+    /// health samples. Older rows are pruned by the cleanup task.</summary>
+    public int RetentionDays { get; set; } = 30;
+
+    // === Webhook outbound ===
+
+    /// <summary>Optional outbound webhook URL. When set, POSTed for events in WebhookEvents.
+    /// Generic JSON body {event, summary, ts, payload}. Empty = no webhook.</summary>
+    public string WebhookUrl { get; set; } = string.Empty;
+
+    /// <summary>Events to deliver. Comma-separated subset of:
+    /// access-request, invite-offer, peer-offline, peer-online.</summary>
+    public string WebhookEvents { get; set; } = "access-request,invite-offer,peer-offline";
+
+    /// <summary>When true, use Discord's webhook content format (single "content" field).</summary>
+    public bool WebhookDiscordFormat { get; set; } = false;
 }
 
 public class AccessInviteToken
@@ -227,6 +244,19 @@ public class RemoteServer
     public bool Enabled { get; set; } = true;
 
     public List<string> AllowedLibraryIds { get; set; } = new();
+
+    /// <summary>Free-form tags used to group peers (family, friends, public...). Empty by default.</summary>
+    public List<string> Tags { get; set; } = new();
+
+    // === Soft-block / per-peer quotas ===
+
+    /// <summary>Max inbound HTTP requests per hour from this peer (any /Federation/* endpoint).
+    /// 0 = unlimited. When exceeded, return 429 with Retry-After.</summary>
+    public int InboundReqPerHourLimit { get; set; } = 0;
+
+    /// <summary>Max bytes served outbound to this peer per day (sum of /Federation/Stream).
+    /// 0 = unlimited. When exceeded, return 429.</summary>
+    public long OutboundBytesPerDayLimit { get; set; } = 0;
 }
 
 public enum MatchStrategy

@@ -118,7 +118,9 @@ public class FederationController : ControllerBase
     [HttpPost("Request")]
     public IActionResult ReceiveRequest([FromHeader(Name = "X-Federation-Share")] string? shareKey,
         [FromBody] IncomingRequestPayload payload,
-        [FromServices] Services.RequestStore requests)
+        [FromServices] Services.RequestStore requests,
+        [FromServices] Services.InboundAuditStore audit,
+        [FromServices] Services.QuotaService quota)
     {
         var key = ResolveShareKey(shareKey);
         if (key is null) return Unauthorized();
@@ -144,12 +146,22 @@ public class FederationController : ControllerBase
         var attributedUrl = !string.IsNullOrEmpty(key.BoundPeerUrl) ? key.BoundPeerUrl : payload.FromBaseUrl;
 
         var config = Plugin.Instance?.Configuration;
+        Configuration.RemoteServer? peerMatch = null;
         Guid? peerId = null;
         if (config is not null && !string.IsNullOrEmpty(attributedUrl))
         {
-            var match = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, attributedUrl));
-            peerId = match?.Id;
+            peerMatch = config.RemoteServers.FirstOrDefault(s => Services.PeerUrl.SameHost(s.BaseUrl, attributedUrl));
+            peerId = peerMatch?.Id;
         }
+
+        var qd = quota.CheckInbound(peerMatch);
+        if (!qd.Allowed)
+        {
+            audit.Record("content-request", "throttled", peerUrl: attributedUrl, peerId: peerId, reason: qd.Reason);
+            if (qd.RetryAfterSeconds.HasValue) Response.Headers["Retry-After"] = qd.RetryAfterSeconds.Value.ToString();
+            return StatusCode(429, new { reason = qd.Reason });
+        }
+        audit.Record("content-request", "ok", peerUrl: attributedUrl, peerId: peerId);
 
         var id = requests.Insert(new Services.FederationRequest
         {
@@ -1115,7 +1127,9 @@ h1{{font-weight:400;font-size:1.2rem}}
     [AllowAnonymous]
     [HttpPost("AccessRequest")]
     public IActionResult ReceiveAccessRequest([FromBody] AccessRequestPayload payload,
-        [FromServices] Services.PeerAccessStore store)
+        [FromServices] Services.PeerAccessStore store,
+        [FromServices] Services.InboundAuditStore audit,
+        [FromServices] Services.WebhookDispatcher webhook)
     {
         if (payload is null || string.IsNullOrWhiteSpace(payload.FromUrl) || string.IsNullOrWhiteSpace(payload.Nonce))
             return BadRequest("FromUrl and Nonce required");
@@ -1189,8 +1203,10 @@ h1{{font-weight:400;font-size:1.2rem}}
             Message = payload.Message,
             ClientIp = HttpContext.Connection.RemoteIpAddress?.ToString()
         });
-        // Stash the requester's basic auth into Message field with a tag so admin can see.
-        // Could also break out into dedicated columns but Message handles it for v1.
+        audit.Record("access-request", "pending",
+            ip: HttpContext.Connection.RemoteIpAddress?.ToString(),
+            peerUrl: fromCanon, reason: $"auth={authMode}");
+        webhook.Fire("access-request", $"{fromCanon} is asking for access ({authMode})", new { id, fromCanon, mutual = payload.Mutual });
         _logger.LogInformation("AccessRequest from {From} (auth={Auth}, mutual={Mutual}) -> pending #{Id}", fromCanon, authMode, payload.Mutual, id);
         return Accepted(new { id, status = "pending-approval" });
     }
@@ -1478,7 +1494,9 @@ h1{{font-weight:400;font-size:1.2rem}}
     [AllowAnonymous]
     [HttpPost("InviteOffer")]
     public IActionResult ReceiveInviteOffer([FromBody] InviteOfferPayload payload,
-        [FromServices] Services.PeerAccessStore store)
+        [FromServices] Services.PeerAccessStore store,
+        [FromServices] Services.InboundAuditStore audit,
+        [FromServices] Services.WebhookDispatcher webhook)
     {
         if (payload is null || string.IsNullOrWhiteSpace(payload.OurBaseUrl)
             || string.IsNullOrWhiteSpace(payload.ApiKey) || string.IsNullOrWhiteSpace(payload.Nonce))
@@ -1519,7 +1537,10 @@ h1{{font-weight:400;font-size:1.2rem}}
             Message = payload.Message,
             ClientIp = HttpContext.Connection.RemoteIpAddress?.ToString()
         });
-        // Stash basic auth in a side-channel: append to message. v2 can normalise.
+        audit.Record("invite-offer", "pending",
+            ip: HttpContext.Connection.RemoteIpAddress?.ToString(),
+            peerUrl: fromCanon);
+        webhook.Fire("invite-offer", $"{fromCanon} offered an invite (mutual={payload.Mutual})", new { id, fromCanon, mutual = payload.Mutual });
         _logger.LogInformation("InviteOffer from {From} (mutual={Mutual}) -> pending #{Id}", fromCanon, payload.Mutual, id);
         return Accepted(new { id, status = "pending-approval" });
     }
@@ -1675,6 +1696,166 @@ h1{{font-weight:400;font-size:1.2rem}}
         }
         if (row.Status == "pending") store.UpdateStatus(id, "denied", completedNow: true);
         return Ok(new { blocked = row.TargetUrl });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("PendingCounts")]
+    public IActionResult GetPendingCounts(
+        [FromServices] Services.PeerAccessStore access,
+        [FromServices] Services.RequestStore requests,
+        [FromServices] Services.IntroductionStore intros)
+    {
+        // Lightweight count probe for the UI badge. Sums all distinct queues admin must triage.
+        var pendingAccess = access.List("in", "pending").Count;
+        var pendingInvites = pendingAccess; // intentionally folded into accessRequests; admin sees both in one list
+        var pendingContentReq = requests.List("in", "pending").Count;
+        var pendingIntros = intros.ListByRole("receiver", "pending").Count
+            + intros.ListByRole("issuer", "pending").Count;
+        var total = pendingAccess + pendingContentReq + pendingIntros;
+        return Ok(new { accessRequests = pendingAccess, contentRequests = pendingContentReq, introductions = pendingIntros, total });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Audit/Inbound")]
+    public IActionResult GetInboundAudit([FromQuery] int limit, [FromQuery] string? mode, [FromQuery] string? outcome,
+        [FromServices] Services.InboundAuditStore audit)
+    {
+        var lim = limit > 0 && limit <= 1000 ? limit : 200;
+        return Ok(audit.List(lim, mode, outcome));
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Health/{peerId}/Stats")]
+    public IActionResult GetHealthStats(string peerId, [FromQuery] int hours,
+        [FromServices] Services.PeerHealthHistoryStore history)
+    {
+        if (!Guid.TryParse(peerId, out var pid)) return BadRequest("peerId invalid");
+        var window = TimeSpan.FromHours(hours > 0 && hours <= 720 ? hours : 24);
+        return Ok(history.Stats(pid, window));
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Health/{peerId}/Series")]
+    public IActionResult GetHealthSeries(string peerId, [FromQuery] int hours,
+        [FromServices] Services.PeerHealthHistoryStore history)
+    {
+        if (!Guid.TryParse(peerId, out var pid)) return BadRequest("peerId invalid");
+        var window = TimeSpan.FromHours(hours > 0 && hours <= 720 ? hours : 24);
+        return Ok(history.Samples(pid, window));
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Diff/{peerId}")]
+    public async Task<IActionResult> DiffWithPeer(string peerId, [FromQuery] string? direction,
+        [FromServices] Services.RemoteItemStore store, CancellationToken ct)
+    {
+        if (!Guid.TryParse(peerId, out var pid)) return BadRequest("peerId invalid");
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        var peer = config.RemoteServers.FirstOrDefault(s => s.Id == pid);
+        if (peer is null) return NotFound("unknown peer");
+
+        // Peer-side items: from our cached remote_items for this server_id.
+        var peerItems = store.GetAllItems().Where(i => i.ServerId == pid).ToList();
+        var peerTmdb = new HashSet<string>(peerItems.Where(i => i.ProviderIds.ContainsKey("Tmdb")).Select(i => i.ProviderIds["Tmdb"]));
+
+        // Local items via Jellyfin: fetch our own /Items?IncludeItemTypes=Movie,Episode&Fields=ProviderIds.
+        // Reusing the federation client w/ self - but easier: pull from local catalog via library manager later.
+        // For v1 we use the RemoteItemStore round-trip placeholder: count and titles only.
+        var weLack = peerItems.Where(i => !LocalHasTmdb(i.ProviderIds.GetValueOrDefault("Tmdb"))).ToList();
+        // 'theyLack' would require a roundtrip to the peer's full item list - reserved for v2.
+        await Task.CompletedTask;
+
+        var dirLower = direction?.ToLowerInvariant();
+        return Ok(new
+        {
+            peerId = pid,
+            peerName = peer.Name,
+            weLack = dirLower == "they-lack" ? null : weLack.Select(i => new { i.RemoteItemId, i.Name, i.ProductionYear, tmdb = i.ProviderIds.GetValueOrDefault("Tmdb") }),
+            theyLack = dirLower == "we-lack" ? null : (object?)"v2: requires a full pull of peer's catalog"
+        });
+    }
+
+    private bool LocalHasTmdb(string? tmdb)
+    {
+        if (string.IsNullOrEmpty(tmdb)) return false;
+        // Cheap probe via the library manager isn't available here without DI plumbing. Push
+        // this through FriendsLibraryChannel's cached set on the next pass; for now return false
+        // so 'we lack' includes every peer item (admin reads as "all peer titles we don't track").
+        return false;
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Graph")]
+    public IActionResult GetGraph([FromServices] Services.PeerHealthRegistry health,
+        [FromServices] Services.IntroductionStore intros)
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        var us = new
+        {
+            id = "self",
+            label = string.IsNullOrEmpty(config.PublicBaseUrl) ? "us" : config.PublicBaseUrl,
+            online = true,
+            self = true
+        };
+        var nodes = new System.Collections.Generic.List<object> { us };
+        var edges = new System.Collections.Generic.List<object>();
+        foreach (var p in config.RemoteServers)
+        {
+            nodes.Add(new { id = p.Id.ToString("N"), label = p.Name, online = health.IsOnline(p.Id), tags = p.Tags });
+            edges.Add(new { source = "self", target = p.Id.ToString("N"), kind = "peer", enabled = p.Enabled });
+        }
+        // Issuer-side introductions surface as edges from us to the introduced URL.
+        foreach (var i in intros.ListByRole("issuer", "active"))
+        {
+            edges.Add(new { source = "self", target = i.ForUrlCanonical, kind = "introduced" });
+        }
+        return Ok(new { nodes, edges });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Config/Export")]
+    public IActionResult ExportConfig()
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        // Sanitize: redact raw ApiKey / FederationShareKey / BasicAuthPass / InviteToken values.
+        // The export is meant for migration, not for credentials transfer (peers re-issue on the new host).
+        var sanitized = new
+        {
+            ExportedUtc = DateTime.UtcNow.ToString("O"),
+            Version = Plugin.Instance?.Version?.ToString(),
+            Settings = new
+            {
+                config.SyncIntervalMinutes, config.EnableDedup, config.MatchPriority,
+                config.ShowRemoteOnlyItems, config.EnableWatchStateSync, config.PublicBaseUrl,
+                config.PushDebounceSeconds, config.OutboundBitrateCapBps,
+                config.AcceptOpenAccessRequests, config.AccessRequestAllowlist,
+                config.AcceptInboundAccessRequests, config.AcceptInboundInvites, config.AcceptInboundIntroductions,
+                config.BlockedPeerUrls, config.RetentionDays,
+                config.WebhookUrl, config.WebhookEvents, config.WebhookDiscordFormat,
+                config.DashboardLanguage
+            },
+            RemoteServers = config.RemoteServers.Select(p => new
+            {
+                p.Name, p.BaseUrl, p.Enabled, p.Tags,
+                p.InboundReqPerHourLimit, p.OutboundBytesPerDayLimit,
+                p.AllowedLibraryIds,
+                ApiKey = "[redacted]",
+                FederationShareKey = "[redacted]",
+                BasicAuthUser = string.IsNullOrEmpty(p.BasicAuthUser) ? "" : "[redacted]",
+                BasicAuthPass = string.IsNullOrEmpty(p.BasicAuthPass) ? "" : "[redacted]"
+            }),
+            Shares = config.Shares.Select(s => new
+            {
+                s.Label, s.LibraryIds, s.BlockedTags, s.MaxOfficialRating, s.StrictUnknownRating,
+                s.AllowedHoursStart, s.AllowedHoursEnd, s.ScheduleTimeZoneId,
+                s.BoundPeerUrl, s.CanRequestIntroductions, s.MintMode, s.Enabled,
+                ApiKey = "[redacted]"
+            })
+        };
+        return Ok(sanitized);
     }
 
     [Authorize(Policy = Policies.RequiresElevation)]

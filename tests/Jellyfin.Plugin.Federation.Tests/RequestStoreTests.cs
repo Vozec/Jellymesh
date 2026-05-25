@@ -68,8 +68,8 @@ public class RequestStoreTests : IDisposable
         _store.UpdateStatus(id, "dismissed");
         var again = _store.Insert(new FederationRequest { Direction = "in", PeerUrl = "https://a", TmdbId = "9", Title = "Y" });
         Assert.NotNull(again);
-        Assert.Equal(1, _store.List("in", "pending").Count);
-        Assert.Equal(1, _store.List("in", "dismissed").Count);
+        Assert.Single(_store.List("in", "pending"));
+        Assert.Single(_store.List("in", "dismissed"));
     }
 
     [Fact]

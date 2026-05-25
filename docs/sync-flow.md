@@ -58,7 +58,7 @@ sequenceDiagram
     Player->>JFCore: PlaybackProgress (50%)
     JFCore->>JFCore: SaveUserData
     JFCore-->>WSS: UserDataSaved event
-    WSS->>WSS: tmdb=Item.ProviderIds["Tmdb"]
+    WSS->>WSS: tmdb=Item.ProviderIds.Tmdb
     WSS->>Peer: GET /Items?AnyProviderIdEquals=tmdb.X&Limit=1
     Peer-->>WSS: { Id: "remote-uuid" }
     WSS->>Peer: POST /Users/{u}/Items/remote-uuid/UserData

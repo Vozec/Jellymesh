@@ -23,6 +23,11 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IntroductionStore>();
         serviceCollection.AddSingleton<IntroductionService>();
         serviceCollection.AddSingleton<PeerAccessStore>();
+        serviceCollection.AddSingleton<InboundAuditStore>();
+        serviceCollection.AddSingleton<PeerHealthHistoryStore>();
+        serviceCollection.AddSingleton<QuotaService>();
+        serviceCollection.AddSingleton<WebhookDispatcher>();
+        serviceCollection.AddHostedService<RetentionCleanupService>();
         serviceCollection.AddSingleton<DiagnosticsService>();
         serviceCollection.AddHostedService<StartupReportService>();
         serviceCollection.AddSingleton<IMediaSourceProvider, FederatedMediaSourceProvider>();
