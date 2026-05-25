@@ -209,11 +209,16 @@
         // uses class="itemAction" + data-action="link"; the SPA's global click hook will
         // route to #/details?id=. localId is the federated channel item Jellyfin already
         // ingested via FriendsLibraryChannel.
+        const apiKey = token();
         row.innerHTML = items.map((it) => {
             const localId = it.localId || '';
             const clickable = !!localId;
             const href = clickable ? `#/details?id=${localId}` : '#';
-            const aOpen = `<a class="cardImageContainer coveredImage cardContent itemAction" href="${href}" data-action="${clickable ? 'link' : 'none'}" data-id="${localId}" data-type="${escapeHtml(it.type || 'Movie')}" data-mediatype="Video" style="position:relative;">`;
+            // background-image URLs are fetched by the browser without any Jellyfin auth
+            // header, so we tack on ?api_key= which Jellyfin's auth pipeline accepts as
+            // an equivalent to X-Emby-Token.
+            const imageUrl = `${it.imageUrl}?api_key=${encodeURIComponent(apiKey)}`;
+            const aOpen = `<a class="cardImageContainer coveredImage cardContent itemAction" href="${href}" data-action="${clickable ? 'link' : 'none'}" data-id="${localId}" data-type="${escapeHtml(it.type || 'Movie')}" data-mediatype="Video" style="position:relative;display:block;">`;
             return `
                 <div class="card overflowPortraitCard card-hoverable" data-id="${localId}" data-serverid="" data-type="${escapeHtml(it.type || 'Movie')}" data-prefix="" style="display:inline-block;white-space:normal;">
                     <div class="cardBox cardBox-bottompadded">
@@ -221,7 +226,7 @@
                             <div class="cardPadder cardPadder-overflowPortrait"></div>
                             ${aOpen}
                                 <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
-                                <div class="cardImage" style="background-image:url('${escapeHtml(it.imageUrl)}');background-size:cover;background-position:center;"></div>
+                                <div class="cardImage" style="background-image:url('${imageUrl}');background-size:cover;background-position:center;"></div>
                             </a>
                         </div>
                         <div class="cardText cardTextCentered cardText-first">
