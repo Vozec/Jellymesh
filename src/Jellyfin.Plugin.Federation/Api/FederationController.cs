@@ -1043,6 +1043,30 @@ h1{{font-weight:400;font-size:1.2rem}}
     }
 
     [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Sync/Progress")]
+    public IActionResult GetSyncProgress([FromServices] Services.SyncProgressTracker tracker)
+    {
+        return Ok(new
+        {
+            running = tracker.IsRunning,
+            startedUtc = tracker.RunStartedUtc,
+            completedUtc = tracker.RunCompletedUtc,
+            peers = tracker.Snapshot().Select(s => new
+            {
+                peerId = s.PeerId,
+                peerName = s.PeerName,
+                phase = s.Phase.ToString(),
+                percent = s.Percent,
+                itemsSeen = s.ItemsSeen,
+                itemsTotal = s.ItemsTotal,
+                detail = s.Detail,
+                startedUtc = s.StartedUtc,
+                updatedUtc = s.UpdatedUtc
+            })
+        });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Peers/Status")]
     public IActionResult PeersStatus([FromServices] Services.PeerHealthRegistry health)
     {

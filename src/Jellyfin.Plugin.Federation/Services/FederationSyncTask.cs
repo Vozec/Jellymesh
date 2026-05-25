@@ -19,6 +19,7 @@ public class FederationSyncTask : IScheduledTask
     private readonly ILibraryManager _libraryManager;
     private readonly IUserDataManager _userDataManager;
     private readonly IUserManager _userManager;
+    private readonly SyncProgressTracker _progress;
     private readonly ILogger<FederationSyncTask> _logger;
 
     public FederationSyncTask(
@@ -27,6 +28,7 @@ public class FederationSyncTask : IScheduledTask
         ILibraryManager libraryManager,
         IUserDataManager userDataManager,
         IUserManager userManager,
+        SyncProgressTracker progress,
         ILogger<FederationSyncTask> logger)
     {
         _client = client;
@@ -34,6 +36,7 @@ public class FederationSyncTask : IScheduledTask
         _libraryManager = libraryManager;
         _userDataManager = userDataManager;
         _userManager = userManager;
+        _progress = progress;
         _logger = logger;
     }
 
@@ -58,17 +61,21 @@ public class FederationSyncTask : IScheduledTask
         var total = config.RemoteServers.Count;
         var done = 0;
 
+        _progress.BeginRound(config.RemoteServers.Select(s => (s.Id, s.Name)));
+
         foreach (var server in config.RemoteServers)
         {
             if (cancellationToken.IsCancellationRequested) break;
-            if (!server.Enabled) { done++; continue; }
+            if (!server.Enabled) { done++; _progress.Update(server.Id, SyncProgressTracker.Phase.Skipped, 100, detail: "disabled"); continue; }
 
             try
             {
+                _progress.Update(server.Id, SyncProgressTracker.Phase.Pinging, 5);
                 if (!await _client.PingAsync(server, cancellationToken).ConfigureAwait(false))
                 {
                     _logger.LogWarning("Peer {Name} offline, skipping", server.Name);
-                    continue; // finally increments done + reports progress
+                    _progress.Update(server.Id, SyncProgressTracker.Phase.Skipped, 100, detail: "offline");
+                    continue;
                 }
 
                 // Gossip step: ask peer for catalog digest. If it matches our cached one,
@@ -81,18 +88,28 @@ public class FederationSyncTask : IScheduledTask
                     if (cached == d.Hash)
                     {
                         _logger.LogDebug("Peer {Name} digest unchanged ({Hash}), skipping pull", server.Name, d.Hash);
-                        continue; // finally still increments done + reports progress
+                        _progress.Update(server.Id, SyncProgressTracker.Phase.Skipped, 100, detail: "cache hit (digest unchanged)");
+                        continue;
                     }
                 }
 
                 var seenIds = new HashSet<string>(StringComparer.Ordinal);
                 var count = 0;
+                var expected = digest?.Count ?? 0;
+                _progress.Update(server.Id, SyncProgressTracker.Phase.Pulling, 10, total: expected, detail: "fetching items");
                 await foreach (var item in _client.FetchItemsAsync(server, cancellationToken))
                 {
                     _store.Upsert(item);
                     seenIds.Add(item.RemoteItemId);
                     count++;
+                    // Report progress every 20 items to avoid hammering the tracker on huge libs.
+                    if (count % 20 == 0)
+                    {
+                        var pct = expected > 0 ? 10 + (int)(80.0 * count / expected) : Math.Min(80, 10 + count);
+                        _progress.Update(server.Id, SyncProgressTracker.Phase.Pulling, pct, seen: count, total: expected);
+                    }
                 }
+                _progress.Update(server.Id, SyncProgressTracker.Phase.Saving, 92, seen: count, total: expected, detail: "saving");
 
                 // Delete detection: anything we had cached for this peer but didn't see this round is gone.
                 var previousIds = _store.GetItemIdsForPeer(server.Id);
@@ -111,6 +128,7 @@ public class FederationSyncTask : IScheduledTask
                     _store.SaveDigest(server.Id, pd.Count, pd.Hash, null);
 
                 _logger.LogInformation("Synced {Count} items from {Name}", count, server.Name);
+                _progress.Update(server.Id, SyncProgressTracker.Phase.Done, 100, seen: count, total: expected);
 
                 // Pull peer's user data into a configured local user (if any).
                 if (!string.IsNullOrEmpty(server.LocalUserIdForSync) && Guid.TryParse(server.LocalUserIdForSync, out var localUid))
@@ -124,6 +142,7 @@ public class FederationSyncTask : IScheduledTask
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Sync failed for {Name}", server.Name);
+                _progress.Update(server.Id, SyncProgressTracker.Phase.Failed, 100, detail: ex.Message);
             }
             finally
             {
@@ -131,6 +150,8 @@ public class FederationSyncTask : IScheduledTask
                 progress.Report(100.0 * done / total);
             }
         }
+
+        _progress.CompleteRound();
     }
 
     private async Task<int> PullWatchStateAsync(Configuration.RemoteServer server, Guid localUserId, CancellationToken ct)

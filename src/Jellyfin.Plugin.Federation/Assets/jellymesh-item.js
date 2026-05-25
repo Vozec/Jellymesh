@@ -75,6 +75,17 @@
             #jm-dashlibs .jm-toggle { display: inline-flex; align-items: center; gap: 0.35em; color: #bbb; font-size: 0.88em; cursor: pointer; user-select: none; }
             #jm-dashlibs .jm-toggle input { accent-color: #4a87c0; width: 1.05em; height: 1.05em; cursor: pointer; }
             #jm-dashlibs .jm-empty { padding: 1em; color: #888; font-style: italic; text-align: center; }
+            .jm-progress-host { display: flex; flex-direction: column; gap: 0.4em; padding: 0.6em 0.9em; background: #1c1c1c; border: 1px solid #2e2e2e; border-radius: 0.4em; margin: 0.6em 0; }
+            .jm-progress-host[hidden] { display: none; }
+            .jm-progress-row { display: grid; grid-template-columns: 1fr auto auto; gap: 0.5em; align-items: center; font-size: 0.88em; }
+            .jm-progress-name { font-weight: 600; color: #ddd; }
+            .jm-progress-detail { color: #888; font-size: 0.78em; }
+            .jm-progress-pct { color: #9bc5ee; font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
+            .jm-progress-bar { grid-column: 1 / -1; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden; position: relative; }
+            .jm-progress-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #3b6fa4, #4a87c0); transition: width 0.4s ease; }
+            .jm-progress-bar.done > i { background: #4a8c52; }
+            .jm-progress-bar.failed > i { background: #c44; }
+            .jm-progress-bar.skipped > i { background: #666; }
 
             /* Item details source badge */
             .jm-source-badge { display: inline-flex; align-items: center; gap: 0.35em; background: rgba(59,111,164,0.18); border: 1px solid rgba(59,111,164,0.55); color: #9bc5ee; padding: 0.2em 0.6em; border-radius: 0.4em; font-size: 0.78em; margin: 0.4em 0.4em 0 0; }
@@ -207,41 +218,31 @@
         }).catch(() => { delete homeView.dataset.jmInjected; });
     }
 
-    // Reproduce Jellyfin's home-page section markup so our injected sections inherit every
-    // built-in style + the horizontal scroller behaviour automatically. Skips peers whose
-    // libs are all disabled/hidden or whose lib listing fails.
+    // One section per peer, rendered as a row of LIBRARY cards (one tile per shared lib).
+    // Clicking a library card opens an in-Jellymesh items modal. Mirrors how Jellyfin's
+    // 'My Media' row shows one card per local library, not one per item.
     function renderPeerSection(host, peer) {
         jApi(`/Federation/Peers/${peer.Id}/Libraries?onlyEnabled=true`).then((libs) => {
             const visible = (libs || []).filter((l) => !l.hideFromHomepage);
-            if (visible.length === 0) return; // skip section entirely - user asked
-            visible.forEach((lib) => {
-                const section = buildSection(`${escapeHtml(lib.name || 'Library')} <span style="opacity:0.65;font-weight:400;">&middot; ${escapeHtml(peer.Name || 'Peer')}</span>`);
-                host.appendChild(section);
-                jApi(`/Federation/Peers/${peer.Id}/Libraries/${encodeURIComponent(lib.id)}/Items?limit=18`)
-                    .then((data) => fillSectionCards(section, peer, data.items || []))
-                    .catch(() => { section.querySelector('.jm-placeholder').textContent = 'Cannot load items.'; });
-            });
-        }).catch(() => { /* peer offline mid-render */ });
+            if (visible.length === 0) return;
+            const section = buildSection(`Peer: ${escapeHtml(peer.Name || 'Peer')}`);
+            host.appendChild(section);
+            fillLibraryCards(section, peer, visible);
+        }).catch(() => {});
     }
 
-    // Single combined 'From your friends' section that pools items from every enabled+visible
-    // lib across all peers.
+    // Single combined section. Same logic but every peer's libs in one row.
     function renderCombinedSection(host, peers) {
         const section = buildSection('From your friends');
         host.appendChild(section);
         const pool = [];
         Promise.all(peers.map((peer) =>
             jApi(`/Federation/Peers/${peer.Id}/Libraries?onlyEnabled=true`).then((libs) => {
-                const visible = (libs || []).filter((l) => !l.hideFromHomepage);
-                return Promise.all(visible.map((lib) =>
-                    jApi(`/Federation/Peers/${peer.Id}/Libraries/${encodeURIComponent(lib.id)}/Items?limit=12`)
-                        .then((data) => (data.items || []).forEach((it) => pool.push({ peer, it })))
-                        .catch(() => {})
-                ));
+                (libs || []).filter((l) => !l.hideFromHomepage).forEach((lib) => pool.push({ peer, lib }));
             }).catch(() => {})
         )).then(() => {
             if (pool.length === 0) { section.remove(); return; }
-            fillSectionCardsMixed(section, pool);
+            fillLibraryCardsMixed(section, pool);
         });
     }
 
@@ -259,28 +260,101 @@
         return section;
     }
 
-    function fillSectionCardsMixed(section, pool) {
+    // Library-level cards (My Media style): one card per shared lib. Click opens an items
+    // browse overlay. Mirrors Jellyfin's home 'My Media' row, which is what users actually
+    // expect after the 'My libraries / Their libraries' mental model.
+    function fillLibraryCards(section, peer, libs) {
         const row = section.querySelector('.itemsContainer');
         if (!row) return;
         const apiKey = token();
-        const ourServerId = (window.ApiClient && (ApiClient.serverId ? ApiClient.serverId() : (ApiClient.serverInfo() || {}).Id)) || '';
-        const cards = pool.map(({ peer, it }) => buildCard(it, peer, apiKey, ourServerId));
-        row.innerHTML = cards.length ? cards.join('') : '<div class="jm-placeholder" style="padding:1em;color:#777;">No items.</div>';
+        row.innerHTML = libs.map((lib) => buildLibraryCard(lib, peer, apiKey)).join('');
     }
-
-    function fillSectionCards(section, peer, items) {
+    function fillLibraryCardsMixed(section, pool) {
         const row = section.querySelector('.itemsContainer');
         if (!row) return;
         const apiKey = token();
-        const ourServerId = (window.ApiClient && (ApiClient.serverId ? ApiClient.serverId() : (ApiClient.serverInfo() || {}).Id)) || '';
-        row.innerHTML = items.length
-            ? items.map((it) => buildCard(it, peer, apiKey, ourServerId)).join('')
-            : '<div class="jm-placeholder" style="padding:1em;color:#777;">Empty.</div>';
+        row.innerHTML = pool.map(({ peer, lib }) => buildLibraryCard(lib, peer, apiKey)).join('');
     }
 
-    // Always render a card. Items not yet matched to a local channel/movie are still shown
-    // (image + badge + name) so the user sees what the peer has even before our sync round
-    // runs - the card is just non-clickable until the sync establishes a localId.
+    // Library card uses backdrop aspect (16:9) per Jellyfin's My Media style. Image falls
+    // back to a coloured gradient when the peer has no library cover. Click opens the items
+    // overlay defined below.
+    function buildLibraryCard(lib, peer, apiKey) {
+        const peerId = peer.Id;
+        const libId = lib.id;
+        // Peer library Primary image. Many Jellyfin installs don't set a library cover so we
+        // include a CSS gradient fallback via the onerror-style alternative: omit the URL
+        // when missing; for simplicity we always include it and let the browser show empty
+        // on 404, with a coloured background underneath.
+        const imageUrl = `/Federation/Image/${peerId}/${libId}/Primary?api_key=${encodeURIComponent(apiKey)}`;
+        const colorIdx = (libId.charCodeAt(0) + libId.charCodeAt(libId.length - 1)) % 6;
+        const palette = ['#2b4d72', '#5a3a72', '#724a3a', '#3a724f', '#723a3a', '#3a6072'];
+        const fallback = palette[colorIdx];
+        return `
+            <div class="card backdropCard backdropCard-scalable card-hoverable" data-jm-peer="${peerId}" data-jm-lib="${escapeHtml(libId)}" style="display:inline-block;white-space:normal;vertical-align:top;margin:0.3em;width:280px;">
+                <div class="cardBox cardBox-bottompadded">
+                    <div class="cardScalable">
+                        <div class="cardPadder cardPadder-backdrop"></div>
+                        <a class="cardImageContainer coveredImage cardContent jm-library-open" href="#" style="background:${fallback};">
+                            <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
+                            <div class="cardImage" style="background-image:url('${imageUrl}');background-size:cover;background-position:center;"></div>
+                        </a>
+                    </div>
+                    <div class="cardText cardTextCentered cardText-first"><bdi>${escapeHtml(lib.name || 'Library')}</bdi></div>
+                    <div class="cardText cardTextCentered cardText-secondary"><bdi>${escapeHtml(lib.type || 'mixed')}</bdi></div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Library-card click → open items overlay. Listener delegated on document so it survives
+    // SPA view swaps.
+    document.addEventListener('click', (e) => {
+        const link = e.target.closest && e.target.closest('.jm-library-open');
+        if (!link) return;
+        const card = link.closest('[data-jm-peer]');
+        if (!card) return;
+        e.preventDefault();
+        openLibraryOverlay(card.dataset.jmPeer, card.dataset.jmLib);
+    });
+
+    function openLibraryOverlay(peerId, libId) {
+        document.getElementById('jm-lib-overlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'jm-lib-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;overflow-y:auto;padding:3vh 2vw;';
+        overlay.innerHTML = `
+            <div style="max-width:1400px;margin:0 auto;">
+                <div style="display:flex;align-items:center;gap:0.6em;margin-bottom:1em;">
+                    <button type="button" id="jm-lib-close" style="background:#2a2a2a;color:#fff;border:1px solid #555;border-radius:50%;width:2.4em;height:2.4em;font-size:1.3em;cursor:pointer;">&times;</button>
+                    <h2 id="jm-lib-title" style="margin:0;color:#fff;">Library</h2>
+                </div>
+                <div class="itemsContainer focuscontainer-x" id="jm-lib-items" style="display:flex;flex-wrap:wrap;gap:0.4em;"><em style="color:#888;">Loading...</em></div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.id === 'jm-lib-close') overlay.remove(); });
+        document.addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', esc); } });
+
+        const apiKey = token();
+        const ourServerId = (window.ApiClient && (ApiClient.serverId ? ApiClient.serverId() : (ApiClient.serverInfo() || {}).Id)) || '';
+        jApi(`/Federation/Peers/${peerId}/Libraries`).then((libs) => {
+            const lib = (libs || []).find((l) => l.id === libId);
+            if (lib) document.getElementById('jm-lib-title').textContent = lib.name || 'Library';
+        }).catch(() => {});
+        jApi(`/Federation/Peers/${peerId}/Libraries/${encodeURIComponent(libId)}/Items?limit=100`).then((data) => {
+            const target = document.getElementById('jm-lib-items');
+            const peer = { Id: peerId, Name: (data && data.peerName) || 'Peer' };
+            const items = (data && data.items) || [];
+            target.innerHTML = items.length
+                ? items.map((it) => buildCard(it, peer, apiKey, ourServerId)).join('')
+                : '<em style="color:#888;">No items.</em>';
+        }).catch(() => { document.getElementById('jm-lib-items').innerHTML = '<em style="color:#c88;">Cannot load items.</em>'; });
+    }
+
+    // Per-item card (used inside the library overlay + by the dashboard libraries panel for
+    // previews). Items not yet matched to a local channel/movie are still shown (image +
+    // badge + name) so the user sees what the peer has even before our sync round runs.
     function buildCard(it, peer, apiKey, ourServerId) {
         const localId = it.localId || '';
         const clickable = !!localId;
@@ -317,6 +391,60 @@
 
     function escapeHtml(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Polls /Federation/Sync/Progress every 800ms while a sync round is active, rendering a
+    // per-peer progress bar inside the supplied host. Calls onDone() once the round ends
+    // (running=false). Multiple callers can poll concurrently; we attach a polling state
+    // per host element to avoid duplicate intervals.
+    function pollSyncProgress(host, onDone) {
+        if (!host) return;
+        if (host.dataset.jmPolling === 'yes') return;
+        host.dataset.jmPolling = 'yes';
+        let tickCount = 0;
+        const interval = setInterval(() => {
+            jApi('/Federation/Sync/Progress').then((p) => {
+                tickCount++;
+                if (!p.peers || p.peers.length === 0) {
+                    // Nothing to show. If we've polled a few times and there's still no run,
+                    // stop quietly.
+                    if (!p.running && tickCount > 2) { stop(); }
+                    host.hidden = true;
+                    return;
+                }
+                host.hidden = false;
+                host.innerHTML = renderProgressRows(p.peers);
+                if (!p.running) {
+                    // Linger 2s on the completed state so the user sees the green bars,
+                    // then hide + call back to refresh whatever surface owns the host.
+                    setTimeout(() => { host.hidden = true; stop(); }, 2000);
+                }
+            }).catch(() => {});
+        }, 800);
+        function stop() {
+            clearInterval(interval);
+            delete host.dataset.jmPolling;
+            if (typeof onDone === 'function') onDone();
+        }
+    }
+
+    function renderProgressRows(peers) {
+        return peers.map((p) => {
+            const cls = ['Done', 'Failed', 'Skipped'].includes(p.phase) ? p.phase.toLowerCase() : '';
+            const itemsStr = p.itemsTotal > 0 ? `${p.itemsSeen} / ${p.itemsTotal}` : (p.itemsSeen ? String(p.itemsSeen) : '');
+            const detail = [p.phase, p.detail, itemsStr].filter(Boolean).join(' · ');
+            return `
+                <div class="jm-progress-row">
+                    <div>
+                        <div class="jm-progress-name">${escapeHtml(p.peerName)}</div>
+                        <div class="jm-progress-detail">${escapeHtml(detail)}</div>
+                    </div>
+                    <div></div>
+                    <div class="jm-progress-pct">${p.percent}%</div>
+                    <div class="jm-progress-bar ${cls}"><i style="width:${p.percent}%;"></i></div>
+                </div>
+            `;
+        }).join('');
     }
 
     // ----- 3. Item details source badge --------------------------------------
@@ -400,6 +528,7 @@
                 <button type="button" class="jm-btn" id="jm-libs-refresh" style="margin-left:auto;"><span class="material-icons">refresh</span>Refresh peers</button>
                 <button type="button" class="jm-btn primary" id="jm-libs-sync"><span class="material-icons">sync</span>Sync now</button>
             </div>
+            <div id="jm-dashlibs-progress" class="jm-progress-host" hidden></div>
             <div id="jm-dashlibs-body"><div class="jm-empty">Loading...</div></div>
         `;
         host.appendChild(panel);
@@ -408,10 +537,12 @@
             const btn = e.currentTarget;
             btn.disabled = true;
             jApi('/Federation/Sync/Trigger', { method: 'POST' })
-                .then(() => { toast('Sync started.'); setTimeout(() => loadDashlibs(true), 4000); })
-                .catch((err) => toast(`Sync failed: ${err.message}`, 'error'))
-                .finally(() => setTimeout(() => { btn.disabled = false; }, 1500));
+                .then(() => { toast('Sync started.'); pollSyncProgress(document.getElementById('jm-dashlibs-progress'), () => { loadDashlibs(true); btn.disabled = false; }); })
+                .catch((err) => { toast(`Sync failed: ${err.message}`, 'error'); btn.disabled = false; });
         });
+
+        // Auto-show progress if a sync is already running when the panel opens.
+        pollSyncProgress(document.getElementById('jm-dashlibs-progress'), null);
         document.getElementById('jm-layout').addEventListener('change', (e) => {
             jApi('/Federation/PeerLibraryConfig', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Layout: e.target.value }) })
                 .then(() => toast('Saved.'))

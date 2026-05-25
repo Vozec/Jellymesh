@@ -59,6 +59,15 @@
     #FederationConfigPage .jm-toast { position: fixed; left: 50%; bottom: 5vh; transform: translateX(-50%); background: #2f7c4a; color: #fff; padding: 0.7em 1.3em; border-radius: 0.4em; box-shadow: 0 6px 20px rgba(0,0,0,0.4); z-index: 10001; opacity: 0; transition: opacity 0.25s; pointer-events: none; }
     #FederationConfigPage .jm-toast.show { opacity: 1; }
     #FederationConfigPage .jm-toast.error { background: #a23333; }
+    #FederationConfigPage .jm-progress-row { display: grid; grid-template-columns: 1fr auto; gap: 0.5em; align-items: center; font-size: 0.88em; margin: 0.35em 0; }
+    #FederationConfigPage .jm-progress-name { font-weight: 600; color: #ddd; }
+    #FederationConfigPage .jm-progress-detail { color: #888; font-size: 0.78em; }
+    #FederationConfigPage .jm-progress-pct { color: #9bc5ee; font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
+    #FederationConfigPage .jm-progress-bar { grid-column: 1 / -1; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden; }
+    #FederationConfigPage .jm-progress-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #3b6fa4, #4a87c0); transition: width 0.4s ease; }
+    #FederationConfigPage .jm-progress-bar.done > i { background: #4a8c52; }
+    #FederationConfigPage .jm-progress-bar.failed > i { background: #c44; }
+    #FederationConfigPage .jm-progress-bar.skipped > i { background: #666; }
 </style>
     <div data-role="content">
         <div class="content-primary">
@@ -196,6 +205,7 @@
                         <span data-i18n="diag.sync">Sync peer libraries now</span>
                     </button>
                 </div>
+                <div id="SyncProgress" style="margin-top:0.6em;display:none;background:#1c1c1c;border:1px solid #2e2e2e;border-radius:0.4em;padding:0.6em 0.9em;"></div>
                 <div id="DiagOutput" style="font-family:monospace;font-size:0.85em;white-space:pre-wrap;padding:0.5em;margin-top:0.5em;background:#0f0f0f;border:1px solid #333;display:none;"></div>
                 <h4 style="margin-top:1em;" data-i18n="diag.audit">Recent inbound activity</h4>
                 <div id="InboundAuditList" style="font-family:monospace;font-size:0.85em;"></div>
@@ -803,10 +813,43 @@
             var btn = this;
             btn.disabled = true;
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Sync/Trigger'), type: 'POST' })
-                .then(function () { jmToast(t('diag.sync.started')); })
-                .catch(function (err) { jmToast(t('diag.sync.failed', { code: (err && err.status) || '?' }), 'error'); })
-                .finally(function () { setTimeout(function () { btn.disabled = false; }, 1500); });
+                .then(function () { jmToast(t('diag.sync.started')); pollPluginSyncProgress(function () { btn.disabled = false; }); })
+                .catch(function (err) { jmToast(t('diag.sync.failed', { code: (err && err.status) || '?' }), 'error'); btn.disabled = false; });
         });
+
+        function pollPluginSyncProgress(onDone) {
+            var host = document.getElementById('SyncProgress');
+            if (!host || host.dataset.jmPolling === 'yes') return;
+            host.dataset.jmPolling = 'yes';
+            var ticks = 0;
+            var interval = setInterval(function () {
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/Sync/Progress'), type: 'GET', dataType: 'json' }).then(function (p) {
+                    ticks++;
+                    if (!p.peers || p.peers.length === 0) {
+                        if (!p.running && ticks > 2) { stop(); }
+                        host.style.display = 'none';
+                        return;
+                    }
+                    host.style.display = 'block';
+                    host.innerHTML = p.peers.map(function (pr) {
+                        var cls = (pr.phase === 'Done' || pr.phase === 'Failed' || pr.phase === 'Skipped') ? pr.phase.toLowerCase() : '';
+                        var items = pr.itemsTotal > 0 ? pr.itemsSeen + ' / ' + pr.itemsTotal : (pr.itemsSeen ? String(pr.itemsSeen) : '');
+                        var detail = [pr.phase, pr.detail, items].filter(Boolean).join(' · ');
+                        return '<div class="jm-progress-row">'
+                            + '<div><div class="jm-progress-name">' + esc(pr.peerName) + '</div><div class="jm-progress-detail">' + esc(detail) + '</div></div>'
+                            + '<div class="jm-progress-pct">' + pr.percent + '%</div>'
+                            + '<div class="jm-progress-bar ' + cls + '"><i style="width:' + pr.percent + '%;"></i></div>'
+                            + '</div>';
+                    }).join('');
+                    if (!p.running) setTimeout(function () { host.style.display = 'none'; stop(); }, 2000);
+                }).catch(function () {});
+            }, 800);
+            function stop() {
+                clearInterval(interval);
+                delete host.dataset.jmPolling;
+                if (typeof onDone === 'function') onDone();
+            }
+        }
 
         document.getElementById('RunDiagnostics').addEventListener('click', function () {
             var btn = this;
