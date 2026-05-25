@@ -206,31 +206,36 @@
             return;
         }
         // Standard portrait card markup pulled from Jellyfin's cardBuilder output. The link
-        // uses class="itemAction" + data-action="link"; the SPA's global click hook will
-        // route to #/details?id=. localId is the federated channel item Jellyfin already
-        // ingested via FriendsLibraryChannel.
+        // uses class="itemAction" + data-action="link"; Jellyfin's global click delegate
+        // calls appRouter.showItem(id, serverId). serverId is REQUIRED - without it the
+        // handler bails silently and the card looks unresponsive. Pull it from ApiClient.
         const apiKey = token();
+        const ourServerId = (window.ApiClient && (ApiClient.serverId ? ApiClient.serverId() : (ApiClient.serverInfo() || {}).Id)) || '';
         row.innerHTML = items.map((it) => {
             const localId = it.localId || '';
             const clickable = !!localId;
-            const href = clickable ? `#/details?id=${localId}` : '#';
+            const href = clickable ? `#/details?id=${localId}&serverId=${ourServerId}` : '#';
             // background-image URLs are fetched by the browser without any Jellyfin auth
             // header, so we tack on ?api_key= which Jellyfin's auth pipeline accepts as
             // an equivalent to X-Emby-Token.
             const imageUrl = `${it.imageUrl}?api_key=${encodeURIComponent(apiKey)}`;
-            const aOpen = `<a class="cardImageContainer coveredImage cardContent itemAction" href="${href}" data-action="${clickable ? 'link' : 'none'}" data-id="${localId}" data-type="${escapeHtml(it.type || 'Movie')}" data-mediatype="Video" style="position:relative;display:block;">`;
+            const dataAttrs = `data-action="${clickable ? 'link' : 'none'}" data-id="${localId}" data-serverid="${ourServerId}" data-type="${escapeHtml(it.type || 'Movie')}" data-mediatype="Video" data-isfolder="false"`;
+            // No inline style on cardImageContainer: Jellyfin's CSS positions it absolute
+            // inside .cardScalable, which also makes it the containing block for the badge.
+            // Overriding position:relative breaks the layout and the image stays 0x0.
+            const aOpen = `<a class="cardImageContainer coveredImage cardContent itemAction" href="${href}" ${dataAttrs}>`;
             return `
-                <div class="card overflowPortraitCard card-hoverable" data-id="${localId}" data-serverid="" data-type="${escapeHtml(it.type || 'Movie')}" data-prefix="" style="display:inline-block;white-space:normal;">
+                <div class="card overflowPortraitCard card-hoverable" data-id="${localId}" data-serverid="${ourServerId}" data-type="${escapeHtml(it.type || 'Movie')}" data-prefix="" style="display:inline-block;white-space:normal;vertical-align:top;margin:0.3em;width:150px;">
                     <div class="cardBox cardBox-bottompadded">
                         <div class="cardScalable">
                             <div class="cardPadder cardPadder-overflowPortrait"></div>
                             ${aOpen}
                                 <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
-                                <div class="cardImage" style="background-image:url('${imageUrl}');background-size:cover;background-position:center;"></div>
+                                <div class="cardImage" style="background-image:url('${imageUrl}');"></div>
                             </a>
                         </div>
                         <div class="cardText cardTextCentered cardText-first">
-                            ${clickable ? `<a class="itemAction" href="${href}" data-action="link" data-id="${localId}" style="color:inherit;text-decoration:none;"><bdi>${escapeHtml(it.name || '')}</bdi></a>`
+                            ${clickable ? `<a class="itemAction" href="${href}" ${dataAttrs} style="color:inherit;text-decoration:none;"><bdi>${escapeHtml(it.name || '')}</bdi></a>`
                                         : `<bdi>${escapeHtml(it.name || '')}</bdi>`}
                         </div>
                         <div class="cardText cardTextCentered cardText-secondary"><bdi>${it.year || ''}${it.version ? ' &middot; ' + escapeHtml(it.version) : ''}</bdi></div>
