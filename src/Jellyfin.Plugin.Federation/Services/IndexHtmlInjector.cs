@@ -95,19 +95,28 @@ public class IndexHtmlInjector : IHostedService
     {
         var html = File.ReadAllText(indexPath);
         var version = ComputeAssetVersion();
-        var snippet = MarkerStart + "\n<script defer src=\"/Federation/Asset/jellymesh-item.js?v=" + version + "\"></script>\n" + MarkerEnd + "\n";
+        // No 'defer' so the script runs synchronously as soon as parser hits it. Inserted
+        // RIGHT AT THE TOP OF <head> so our window.fetch monkey-patch + ApiClient image-url
+        // patch land before any of Jellyfin's bundles execute. This eliminates the race
+        // where the SPA emits /Items/fed_X URLs before we can rewrite them.
+        var snippet = MarkerStart + "\n<script src=\"/Federation/Asset/jellymesh-item.js?v=" + version + "\"></script>\n" + MarkerEnd + "\n";
+
+        // Always strip any prior marker block (may live in body from older versions) and
+        // re-insert at the head. Idempotent: same html → no write.
+        var stripped = MarkerBlock.Replace(html, string.Empty);
 
         string updated;
-        if (MarkerBlock.IsMatch(html))
+        var headOpen = stripped.IndexOf("<head>", StringComparison.OrdinalIgnoreCase);
+        if (headOpen >= 0)
         {
-            updated = MarkerBlock.Replace(html, snippet);
-            if (updated == html) return; // identical -> no I/O, no log spam
+            updated = stripped.Insert(headOpen + "<head>".Length, "\n" + snippet);
         }
         else
         {
-            var bodyClose = html.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
-            updated = bodyClose >= 0 ? html.Insert(bodyClose, snippet) : html + "\n" + snippet;
+            var bodyClose = stripped.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
+            updated = bodyClose >= 0 ? stripped.Insert(bodyClose, snippet) : stripped + "\n" + snippet;
         }
+        if (updated == html) return;
         File.WriteAllText(indexPath, updated);
         _logger.LogInformation("Jellymesh: item-page script tag updated in {Path} (asset v{Version})", indexPath, version);
     }

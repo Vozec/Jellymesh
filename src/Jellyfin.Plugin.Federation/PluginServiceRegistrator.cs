@@ -31,6 +31,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<WebhookDispatcher>();
         serviceCollection.AddHostedService<RetentionCleanupService>();
         serviceCollection.AddHostedService<IndexHtmlInjector>();
+        serviceCollection.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, FederationStartupFilter>();
         serviceCollection.AddSingleton<DiagnosticsService>();
         serviceCollection.AddHostedService<StartupReportService>();
         serviceCollection.AddSingleton<IMediaSourceProvider, FederatedMediaSourceProvider>();
