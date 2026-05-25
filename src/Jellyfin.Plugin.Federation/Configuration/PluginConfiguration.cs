@@ -98,6 +98,11 @@ public class PluginConfiguration : BasePluginConfiguration
     /// rules still apply when on).</summary>
     public bool AcceptInboundIntroductions { get; set; } = true;
 
+    /// <summary>Let other peers query /Federation/PeerDirectory to discover our list of
+    /// configured peers (name + URL only, no keys). Allows admin on the other side to pick
+    /// who to be introduced to instead of typing a URL blindly. Off by default for privacy.</summary>
+    public bool PublishPeerDirectory { get; set; } = false;
+
     /// <summary>Canonical URLs blocked from any inbound contact. Applied to AccessRequest
     /// (direct), InviteOffer (direct), and Introduced (forwarded via intermediary). A blocked
     /// URL cannot reach us even via a trusted introducer.</summary>

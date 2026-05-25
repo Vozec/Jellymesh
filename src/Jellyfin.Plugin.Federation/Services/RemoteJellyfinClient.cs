@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -434,6 +435,41 @@ public class RemoteJellyfinClient
         http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", token);
     }
 
+    /// <summary>Ask a peer for their published peer-directory (name + url + tags only).</summary>
+    public async Task<List<PeerDirectoryRow>> FetchPeerDirectoryAsync(RemoteServer peer, CancellationToken ct)
+    {
+        var list = new List<PeerDirectoryRow>();
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            AddBasicAuth(http, peer);
+            http.Timeout = TimeSpan.FromSeconds(10);
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{peer.BaseUrl.TrimEnd('/')}/Federation/PeerDirectory");
+            if (!string.IsNullOrEmpty(peer.FederationShareKey))
+                req.Headers.Add("X-Federation-Share", peer.FederationShareKey);
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return list;
+            using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                list.Add(new PeerDirectoryRow
+                {
+                    Name = el.TryGetProperty("name", out var n) ? n.GetString() : null,
+                    Url = el.TryGetProperty("url", out var u) ? u.GetString() : null,
+                    Tags = el.TryGetProperty("tags", out var t) && t.ValueKind == JsonValueKind.Array
+                        ? t.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList()
+                        : new List<string>()
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "PeerDirectory fetch failed for {Peer}", peer.Name);
+        }
+        return list;
+    }
+
     // === Direct handshake (request access + invite) ===
 
     public async Task<HandshakeCallResult> CallAccessRequestAsync(string targetUrl,
@@ -585,4 +621,11 @@ public class HandshakeCallResult
     public int HttpStatus { get; set; }
     public string? Body { get; set; }
     public bool Ok => HttpStatus >= 200 && HttpStatus < 300;
+}
+
+public class PeerDirectoryRow
+{
+    public string? Name { get; set; }
+    public string? Url { get; set; }
+    public List<string> Tags { get; set; } = new();
 }

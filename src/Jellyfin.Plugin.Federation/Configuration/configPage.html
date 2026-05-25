@@ -16,17 +16,49 @@
     #FederationConfigPage .jm-tile-label { font-weight: 600; display: block; }
     #FederationConfigPage .jm-tile-hint { color: #888; font-size: 0.8em; margin-top: 0.2em; }
     #FederationConfigPage .jm-tile-badge { display: inline-block; background: #c93; color: #111; border-radius: 0.8em; padding: 0.05em 0.5em; font-size: 0.75em; font-weight: 700; margin-left: 0.4em; }
-    #FederationConfigPage .jm-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 9999; align-items: flex-start; justify-content: center; padding: 4vh 2vw; overflow-y: auto; }
+    #FederationConfigPage .jm-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 9999; align-items: flex-start; justify-content: center; padding: 4vh 2vw; overflow-y: auto; }
     #FederationConfigPage .jm-modal-overlay.open { display: flex; }
-    #FederationConfigPage .jm-modal-card { background: #181818; color: #ddd; border: 1px solid #3a3a3a; border-radius: 0.5em; max-width: 900px; width: 100%; max-height: 92vh; overflow-y: auto; box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
-    #FederationConfigPage .jm-modal-head { position: sticky; top: 0; background: #1c1c1c; border-bottom: 1px solid #3a3a3a; padding: 0.8em 1em; display: flex; justify-content: space-between; align-items: center; z-index: 1; }
+    #FederationConfigPage .jm-modal-card { background: #181818; color: #ddd; border: 1px solid #3a3a3a; border-radius: 0.5em; max-width: 900px; width: 100%; max-height: 92vh; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.6); display: flex; flex-direction: column; }
+    #FederationConfigPage .jm-modal-head { background: #1c1c1c; border-bottom: 1px solid #3a3a3a; padding: 0.9em 1.1em; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.5); }
     #FederationConfigPage .jm-modal-head h3 { margin: 0; }
-    #FederationConfigPage .jm-modal-body { padding: 1em; }
-    #FederationConfigPage .jm-modal-close { background: transparent; border: none; color: #aaa; font-size: 1.4em; cursor: pointer; padding: 0 0.4em; }
+    #FederationConfigPage .jm-modal-body { padding: 1em 1.2em; overflow-y: auto; flex: 1 1 auto; }
+    #FederationConfigPage .jm-modal-close { background: transparent; border: none; color: #aaa; font-size: 1.6em; cursor: pointer; padding: 0 0.4em; line-height: 1; }
     #FederationConfigPage .jm-modal-close:hover { color: #fff; }
     #FederationConfigPage .jm-status-bar { display: flex; gap: 1em; align-items: center; flex-wrap: wrap; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 0.6em 0.8em; margin: 0.6em 0; }
     #FederationConfigPage .jm-brand-row { display: flex; align-items: center; gap: 0.8em; }
     #FederationConfigPage .jm-brand-row img { width: 56px; height: 56px; }
+    /* Dark-themed inputs: matches Jellyfin admin chrome instead of UA defaults. */
+    #FederationConfigPage .jm-modal-body input[type="text"],
+    #FederationConfigPage .jm-modal-body input[type="number"],
+    #FederationConfigPage .jm-modal-body input[type="password"],
+    #FederationConfigPage .jm-modal-body input[type="url"],
+    #FederationConfigPage .jm-modal-body input[type="time"],
+    #FederationConfigPage .jm-modal-body input[type="datetime-local"],
+    #FederationConfigPage .jm-modal-body select,
+    #FederationConfigPage .jm-modal-body textarea {
+        background: #222; color: #f0f0f0; border: 1px solid #444; border-radius: 0.3em;
+        padding: 0.45em 0.65em; font-size: 0.95em; font-family: inherit; box-sizing: border-box;
+        transition: border-color 0.12s, box-shadow 0.12s;
+    }
+    #FederationConfigPage .jm-modal-body input:focus,
+    #FederationConfigPage .jm-modal-body select:focus,
+    #FederationConfigPage .jm-modal-body textarea:focus {
+        outline: none; border-color: #3b6fa4; box-shadow: 0 0 0 2px rgba(59,111,164,0.25);
+    }
+    #FederationConfigPage .jm-modal-body input[type="checkbox"] { width: 1.05em; height: 1.05em; vertical-align: middle; margin-right: 0.4em; accent-color: #3b6fa4; }
+    #FederationConfigPage .jm-modal-body label > span:first-child { color: #bbb; font-size: 0.85em; }
+    /* Themed buttons / chips reused across the modals. */
+    #FederationConfigPage .jm-btn { background: #2a2a2a; color: #ddd; border: 1px solid #555; border-radius: 0.3em; padding: 0.5em 1em; cursor: pointer; font: inherit; }
+    #FederationConfigPage .jm-btn:hover { background: #333; }
+    #FederationConfigPage .jm-btn.primary { background: #3b6fa4; border-color: #3b6fa4; color: #fff; }
+    #FederationConfigPage .jm-btn.primary:hover { background: #4682c0; }
+    #FederationConfigPage .jm-btn.danger { color: #f88; border-color: #844; }
+    #FederationConfigPage .jm-btn.danger:hover { background: #3a1818; color: #fcc; }
+    #FederationConfigPage .jm-chip { display: inline-block; padding: 0.1em 0.5em; border-radius: 0.7em; font-size: 0.78em; background: #333; color: #ccc; margin: 0 0.2em 0.2em 0; }
+    /* Toast + confirm modal (jm-* utilities). */
+    #FederationConfigPage .jm-toast { position: fixed; left: 50%; bottom: 5vh; transform: translateX(-50%); background: #2f7c4a; color: #fff; padding: 0.7em 1.3em; border-radius: 0.4em; box-shadow: 0 6px 20px rgba(0,0,0,0.4); z-index: 10001; opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+    #FederationConfigPage .jm-toast.show { opacity: 1; }
+    #FederationConfigPage .jm-toast.error { background: #a23333; }
 </style>
     <div data-role="content">
         <div class="content-primary">
@@ -109,15 +141,15 @@
                     <label class="inputLabel inputLabelUnfocused" for="PublicBaseUrl" data-i18n="public.url">Our public base URL (advertised to peers; may differ from this server's bind URL)</label>
                     <input is="emby-input" type="url" id="PublicBaseUrl" placeholder="https://my-jellyfin.example.com" />
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:60em;">
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="PublicBaseUrlBasicAuthUser" data-i18n="public.basic.user">Public URL HTTP Basic user (if behind reverse proxy with Basic auth)</label>
-                        <input is="emby-input" type="text" id="PublicBaseUrlBasicAuthUser" placeholder="optional" />
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="PublicBaseUrlBasicAuthPass" data-i18n="public.basic.pass">Public URL HTTP Basic password</label>
-                        <input is="emby-input" type="password" id="PublicBaseUrlBasicAuthPass" placeholder="optional" />
-                    </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;align-items:start;max-width:60em;">
+                    <label style="display:block;">
+                        <span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="public.basic.user">Basic auth user</span>
+                        <input type="text" id="PublicBaseUrlBasicAuthUser" placeholder="optional" style="width:100%;" title="Set only if your public URL is behind a reverse proxy that requires HTTP Basic" />
+                    </label>
+                    <label style="display:block;">
+                        <span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="public.basic.pass">Basic auth password</span>
+                        <input type="password" id="PublicBaseUrlBasicAuthPass" placeholder="optional" style="width:100%;" />
+                    </label>
                 </div>
 
                 <div class="inputContainer">
@@ -181,16 +213,24 @@
                 <p>Ask an existing peer to introduce you a new contact, or triage incoming introduction requests.</p>
 
                 <h4 style="margin:0.5em 0 0.2em 0;">Send an introduction</h4>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:60em;">
-                    <select id="IntroPeerSelect"><option value="">- pick a peer (introducer) -</option></select>
-                    <input type="url" id="IntroForUrl" placeholder="New peer URL (https://newpeer.example)" />
+                <ol style="margin:0.4em 0 0.8em 1.2em;color:#aaa;font-size:0.9em;line-height:1.5;">
+                    <li>Pick which existing peer will act as introducer (they must trust us).</li>
+                    <li>Browse <em>their</em> peers to choose who to be introduced to.</li>
+                </ol>
+                <div style="display:grid;grid-template-columns:1fr auto;gap:0.6em 1em;align-items:end;">
+                    <label><span style="display:block;font-size:0.85em;color:#bbb;">Introducer peer</span>
+                        <select id="IntroPeerSelect" style="width:100%;"><option value="">- pick a peer -</option></select>
+                    </label>
+                    <button type="button" class="jm-btn" id="IntroFetchDirectory">Browse their peers</button>
                 </div>
-                <input type="text" id="IntroNote" placeholder="Note (optional)" style="margin-top:0.4em;width:100%;max-width:60em;" />
+                <div id="IntroDirectoryList" style="margin-top:0.6em;"></div>
+                <input type="hidden" id="IntroForUrl" />
+                <label style="display:block;margin-top:0.6em;"><span style="display:block;font-size:0.85em;color:#bbb;">Note (optional)</span><input type="text" id="IntroNote" style="width:100%;" /></label>
                 <label style="margin-top:0.4em;display:block;">
                     <input type="checkbox" id="IntroAlsoForward" checked />
                     Also forward the issued key to the new peer (if we have a share key with them)
                 </label>
-                <button is="emby-button" type="button" id="SendIntroduction" class="raised" style="margin-top:0.3em;"><span>Send</span></button>
+                <button is="emby-button" type="button" id="SendIntroduction" class="jm-btn primary" style="margin-top:0.6em;"><span>Send introduction</span></button>
 
                 <h4 style="margin:1em 0 0.2em 0;">Pending peers (want to add us)</h4>
                 <div id="IntroPendingReceiver"></div>
@@ -235,13 +275,37 @@
                     <summary style="cursor:pointer;">Mint new share key</summary>
                     <div style="margin-top:0.6em;display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;">
                         <label><span style="display:block;font-size:0.85em;color:#bbb;">Label</span><input type="text" id="NewShareLabel" placeholder="e.g. Movies for Alice" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Library ids (comma-separated, empty = all)</span><input type="text" id="NewShareLibraries" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Allowed hours start (HH:mm, optional)</span><input type="text" id="NewShareHoursStart" placeholder="18:00" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Allowed hours end (HH:mm, optional)</span><input type="text" id="NewShareHoursEnd" placeholder="23:00" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Schedule timezone id (optional)</span><input type="text" id="NewShareTimeZone" placeholder="Europe/Paris" style="width:100%;" /></label>
+                        <div>
+                            <span style="display:block;font-size:0.85em;color:#bbb;">Libraries</span>
+                            <button type="button" class="jm-btn" id="NewShareLibrariesPick" style="width:100%;text-align:left;">All libraries</button>
+                            <input type="hidden" id="NewShareLibraries" />
+                        </div>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Allowed hours start (optional)</span><input type="time" id="NewShareHoursStart" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Allowed hours end (optional)</span><input type="time" id="NewShareHoursEnd" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Schedule timezone (optional)</span>
+                            <select id="NewShareTimeZone" style="width:100%;">
+                                <option value="">Server local</option>
+                                <option value="UTC">UTC</option>
+                                <option value="Europe/Paris">Europe/Paris</option>
+                                <option value="Europe/London">Europe/London</option>
+                                <option value="Europe/Berlin">Europe/Berlin</option>
+                                <option value="America/New_York">America/New_York</option>
+                                <option value="America/Los_Angeles">America/Los_Angeles</option>
+                                <option value="Asia/Tokyo">Asia/Tokyo</option>
+                            </select>
+                        </label>
                         <label><span style="display:block;font-size:0.85em;color:#bbb;">Blocked tags (comma-separated)</span><input type="text" id="NewShareBlockedTags" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Max official rating (G/PG/PG-13/R/NC-17, optional)</span><input type="text" id="NewShareMaxRating" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Bind to peer URL (optional, anti-spoof)</span><input type="text" id="NewShareBoundPeerUrl" placeholder="https://alice.example" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Max official rating</span>
+                            <select id="NewShareMaxRating" style="width:100%;">
+                                <option value="">No limit</option>
+                                <option value="G">G</option>
+                                <option value="PG">PG</option>
+                                <option value="PG-13">PG-13</option>
+                                <option value="R">R</option>
+                                <option value="NC-17">NC-17</option>
+                            </select>
+                        </label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Bind to peer URL (anti-spoof, optional)</span><input type="url" id="NewShareBoundPeerUrl" placeholder="https://alice.example" style="width:100%;" /></label>
                     </div>
                     <label style="margin-top:0.5em;display:block;">
                         <input type="checkbox" id="NewShareStrictUnknown" />
@@ -278,6 +342,9 @@
                 </div>
                 <div class="checkboxContainer">
                     <label><input is="emby-checkbox" type="checkbox" id="AcceptInboundIntroductions" /><span data-i18n="privacy.intro">Accept inbound /Federation/Introduce + /Introduced (peer-mediated introductions)</span></label>
+                </div>
+                <div class="checkboxContainer">
+                    <label><input is="emby-checkbox" type="checkbox" id="PublishPeerDirectory" /><span data-i18n="privacy.directory">Publish our peer list (name + URL only) to trusted peers so they can browse who to be introduced to. Off = peers must type the URL themselves.</span></label>
                 </div>
                     </div>
                 </div></div>
@@ -360,6 +427,62 @@
     <script type="text/javascript">
         var FederationPluginId = '9f3c2a8e-6b1d-4f7a-b3c5-1e2d9a8b7c6e';
 
+        // Themed toast + alert + confirm helpers; drop-in replacements for the browser-native popups.
+        function jmToast(msg, kind) {
+            var t = document.createElement('div');
+            t.className = 'jm-toast' + (kind === 'error' ? ' error' : '');
+            t.textContent = msg;
+            (document.getElementById('FederationConfigPage') || document.body).appendChild(t);
+            requestAnimationFrame(function () { t.classList.add('show'); });
+            setTimeout(function () { t.classList.remove('show'); setTimeout(function () { t.remove(); }, 300); }, 2800);
+        }
+        function jmDialog(opts) {
+            return new Promise(function (resolve) {
+                var overlay = document.createElement('div');
+                overlay.className = 'jm-modal-overlay open';
+                overlay.style.zIndex = 10000;
+                var body = opts.bodyHtml || ('<p style="margin:0;">' + (opts.body || '').replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</p>');
+                var ok = '<button type="button" class="jm-btn primary" data-result="ok">' + (opts.okLabel || 'OK') + '</button>';
+                var cancel = opts.kind === 'alert' ? '' : '<button type="button" class="jm-btn" data-result="cancel">' + (opts.cancelLabel || 'Cancel') + '</button>';
+                overlay.innerHTML = '<div class="jm-modal-card" style="max-width:480px;">'
+                    + '<div class="jm-modal-head"><h3>' + (opts.title || '') + '</h3><button type="button" class="jm-modal-close" data-result="cancel">&times;</button></div>'
+                    + '<div class="jm-modal-body">' + body + '</div>'
+                    + '<div style="padding:0.7em 1.1em;border-top:1px solid #333;display:flex;justify-content:flex-end;gap:0.5em;background:#1c1c1c;">' + cancel + ok + '</div>'
+                    + '</div>';
+                document.body.appendChild(overlay);
+                overlay.addEventListener('click', function (e) {
+                    if (e.target === overlay || e.target.hasAttribute('data-result')) {
+                        var r = e.target.getAttribute('data-result') || 'cancel';
+                        overlay.remove();
+                        resolve(r === 'ok');
+                    }
+                });
+            });
+        }
+        function jmAlert(title, body) { return jmDialog({ title: title, body: body, kind: 'alert' }); }
+        function jmConfirm(title, body) { return jmDialog({ title: title, body: body, okLabel: 'Confirm' }); }
+
+        function jmPickLibraries(currentIds, onConfirm) {
+            ApiClient.fetch({ url: ApiClient.getUrl('Library/VirtualFolders'), type: 'GET', dataType: 'json' }).then(function (folders) {
+                var selected = new Set((currentIds || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean));
+                var rows = (folders || []).map(function (f) {
+                    var checked = selected.has(f.ItemId) ? 'checked' : '';
+                    return '<label style="display:flex;align-items:center;gap:0.5em;padding:0.4em;border-bottom:1px solid #2a2a2a;">'
+                        + '<input type="checkbox" data-libid="' + f.ItemId + '" ' + checked + ' />'
+                        + '<span><strong>' + (f.Name || '(unnamed)') + '</strong> <span style="color:#888;font-size:0.85em;">' + (f.CollectionType || 'mixed') + '</span></span>'
+                        + '</label>';
+                }).join('');
+                var body = '<p style="margin:0 0 0.6em 0;color:#aaa;">Uncheck all to share every library.</p>'
+                    + '<div style="max-height:50vh;overflow-y:auto;border:1px solid #333;border-radius:0.3em;">' + (rows || '<em style="display:block;padding:0.6em;">No libraries found.</em>') + '</div>';
+                jmDialog({ title: 'Pick libraries to share', bodyHtml: body, okLabel: 'Apply' }).then(function (ok) {
+                    if (!ok) return;
+                    var picked = [];
+                    document.querySelectorAll('.jm-modal-overlay [data-libid]:checked').forEach(function (cb) { picked.push(cb.dataset.libid); });
+                    onConfirm(picked);
+                });
+            }).catch(function () { jmAlert('Cannot load libraries', 'Library API returned an error.'); });
+        }
+
         // Event delegation on the page container so handlers stay bound whether the script
         // runs before or after the SPA injects this page. Direct addEventListener bindings to
         // individual buttons silently lose elements when the SPA tears down + reinjects the view.
@@ -420,8 +543,8 @@
                 'lang.label': 'Dashboard language',
                 'sync.interval': 'Sync interval (minutes)',
                 'public.url': "Our public base URL (advertised to peers; may differ from this server's bind URL)",
-                'public.basic.user': 'Public URL HTTP Basic user (if behind reverse proxy with Basic auth)',
-                'public.basic.pass': 'Public URL HTTP Basic password',
+                'public.basic.user': 'Basic auth user',
+                'public.basic.pass': 'Basic auth password',
                 'privacy.title': 'Privacy: who can contact us',
                 'privacy.desc': 'Master switches for unsolicited inbound contact. Turn off to refuse all new requests regardless of any per-key or per-token rule.',
                 'privacy.access': 'Accept inbound /Federation/AccessRequest (peers asking for access)',
@@ -461,8 +584,8 @@
                 'lang.label': 'Langue du tableau de bord',
                 'sync.interval': 'Intervalle de sync (minutes)',
                 'public.url': 'Notre URL publique (annoncée aux pairs; peut différer de l\'URL de bind du serveur)',
-                'public.basic.user': 'Utilisateur HTTP Basic de l\'URL publique (si reverse proxy avec Basic auth)',
-                'public.basic.pass': 'Mot de passe HTTP Basic de l\'URL publique',
+                'public.basic.user': 'Utilisateur Basic auth',
+                'public.basic.pass': 'Mot de passe Basic auth',
                 'privacy.title': 'Confidentialité : qui peut nous contacter',
                 'privacy.desc': 'Interrupteurs maîtres pour les contacts entrants non sollicités. Désactiver refuse toute nouvelle demande, peu importe les règles par clé ou par token.',
                 'privacy.access': 'Accepter les /Federation/AccessRequest entrants (pairs demandant l\'accès)',
@@ -626,10 +749,10 @@
 
         document.getElementById('SendRequest').addEventListener('click', function () {
             var peerId = document.getElementById('ReqPeerSelect').value;
-            if (!peerId) { alert('Pick a peer'); return; }
+            if (!peerId) { jmToast('Pick a peer'); return; }
             var tmdb = document.getElementById('ReqTmdb').value.trim() || null;
             var title = document.getElementById('ReqTitle').value.trim() || null;
-            if (!tmdb && !title) { alert('Provide either a TMDB id or a title'); return; }
+            if (!tmdb && !title) { jmToast('Provide either a TMDB id or a title'); return; }
             var year = parseInt(document.getElementById('ReqYear').value, 10);
             var note = document.getElementById('ReqNote').value.trim() || null;
             ApiClient.fetch({
@@ -650,7 +773,7 @@
                 else if (status === 404) msg = 'Unknown peer - refresh the peer list and try again.';
                 else if (status === 400) msg = 'Send failed - your FederationShareKey for this peer or your PublicBaseUrl is unset.';
                 else msg = 'Send failed (HTTP ' + (status || '?') + ').';
-                alert(msg);
+                jmToast(msg);
             });
         });
 
@@ -798,23 +921,53 @@
             });
         }
 
+        document.getElementById('IntroFetchDirectory').addEventListener('click', function () {
+            var peerId = document.getElementById('IntroPeerSelect').value;
+            if (!peerId) { jmToast('Pick an introducer peer first'); return; }
+            var list = document.getElementById('IntroDirectoryList');
+            list.innerHTML = '<em>Loading…</em>';
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Peers/' + peerId + '/Directory'), type: 'GET', dataType: 'json' })
+                .then(function (rows) {
+                    if (!rows || rows.length === 0) {
+                        list.innerHTML = '<em>This peer publishes no directory (PublishPeerDirectory off on their side).</em>';
+                        return;
+                    }
+                    var html = '<div style="max-height:30vh;overflow-y:auto;border:1px solid #333;border-radius:0.3em;">';
+                    rows.forEach(function (r) {
+                        var tags = (r.tags || []).map(function (t) { return '<span class="jm-chip">' + t + '</span>'; }).join('');
+                        html += '<label style="display:flex;align-items:center;gap:0.6em;padding:0.5em;border-bottom:1px solid #2a2a2a;cursor:pointer;">'
+                            + '<input type="radio" name="intro-target" value="' + esc(r.url) + '" />'
+                            + '<span><strong>' + esc(r.name || r.url) + '</strong> <span style="color:#888;font-size:0.85em;">' + esc(r.url) + '</span> ' + tags + '</span>'
+                            + '</label>';
+                    });
+                    html += '</div>';
+                    list.innerHTML = html;
+                    list.querySelectorAll('input[name="intro-target"]').forEach(function (r) {
+                        r.addEventListener('change', function () {
+                            document.getElementById('IntroForUrl').value = r.value;
+                        });
+                    });
+                })
+                .catch(function (err) { list.innerHTML = '<em>Cannot fetch (HTTP ' + (err && err.status) + ').</em>'; });
+        });
+
         document.getElementById('SendIntroduction').addEventListener('click', function () {
             var peerId = document.getElementById('IntroPeerSelect').value;
             var forUrl = document.getElementById('IntroForUrl').value.trim();
             var note = document.getElementById('IntroNote').value.trim() || null;
             var alsoFwd = document.getElementById('IntroAlsoForward').checked;
-            if (!peerId || !forUrl) { alert('Pick a peer and enter the new peer URL'); return; }
+            if (!peerId || !forUrl) { jmToast('Pick a peer and enter the new peer URL'); return; }
             ApiClient.fetch({
                 url: ApiClient.getUrl('Federation/IntroducePeer'),
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ PeerId: peerId, ForUrl: forUrl, Note: note, AlsoForward: alsoFwd })
             }).then(function (r) {
-                alert('Result: ' + JSON.stringify(r, null, 2));
+                jmToast('Result: ' + JSON.stringify(r, null, 2));
                 ['IntroForUrl','IntroNote'].forEach(function (id) { document.getElementById(id).value = ''; });
                 renderIntroductions();
             }).catch(function (err) {
-                alert('Introduce failed: HTTP ' + (err && err.status || '?'));
+                jmToast('Introduce failed: HTTP ' + (err && err.status || '?'));
             });
         });
 
@@ -873,6 +1026,7 @@
                 document.getElementById('AcceptInboundAccessRequests').checked = config.AcceptInboundAccessRequests !== false;
                 document.getElementById('AcceptInboundInvites').checked = config.AcceptInboundInvites !== false;
                 document.getElementById('AcceptInboundIntroductions').checked = config.AcceptInboundIntroductions !== false;
+                document.getElementById('PublishPeerDirectory').checked = !!config.PublishPeerDirectory;
                 document.getElementById('AcceptOpenAccessRequests').checked = !!config.AcceptOpenAccessRequests;
                 document.getElementById('AccessRequestPerIpHourLimit').value = config.AccessRequestPerIpHourLimit || 5;
                 document.getElementById('AccessRequestAllowlist').value = (config.AccessRequestAllowlist || []).join(', ');
@@ -904,6 +1058,14 @@
             if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
         });
 
+        document.getElementById('NewShareLibrariesPick').addEventListener('click', function () {
+            var current = document.getElementById('NewShareLibraries').value;
+            jmPickLibraries(current, function (picked) {
+                document.getElementById('NewShareLibraries').value = picked.join(',');
+                document.getElementById('NewShareLibrariesPick').textContent = picked.length === 0 ? 'All libraries' : (picked.length + ' selected');
+            });
+        });
+
         document.getElementById('CreateShare').addEventListener('click', function () {
             var splitCsv = function (id) { return document.getElementById(id).value.split(',').map(function (s) { return s.trim(); }).filter(Boolean); };
             var pick = function (id) { return document.getElementById(id).value.trim() || null; };
@@ -925,7 +1087,7 @@
                     MintMode: document.getElementById('NewShareMintMode').value
                 })
             }).then(function (resp) {
-                alert('Share key generated:\n\n' + resp.ApiKey + '\n\nHand it to your friend.');
+                jmToast('Share key generated:\n\n' + resp.ApiKey + '\n\nHand it to your friend.');
                 ['NewShareLabel','NewShareLibraries','NewShareHoursStart','NewShareHoursEnd','NewShareTimeZone','NewShareBlockedTags','NewShareMaxRating','NewShareBoundPeerUrl']
                     .forEach(function (id) { document.getElementById(id).value = ''; });
                 document.getElementById('NewShareStrictUnknown').checked = false;
@@ -935,14 +1097,16 @@
 
         document.getElementById('SharesList').addEventListener('click', function (e) {
             if (e.target.classList.contains('delete-share')) {
-                if (!confirm('Revoke this share key?')) return;
                 var id = e.target.dataset.id;
-                ApiClient.fetch({ url: ApiClient.getUrl('Federation/Shares/' + id), type: 'DELETE' }).then(renderShares);
+                jmConfirm('Revoke share key?', 'The friend using this key will lose access immediately.').then(function (ok) {
+                    if (!ok) return;
+                    ApiClient.fetch({ url: ApiClient.getUrl('Federation/Shares/' + id), type: 'DELETE' }).then(renderShares);
+                });
             }
             if (e.target.classList.contains('copy-share')) {
                 ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
                     var k = (config.Shares || []).find(function (x) { return x.Id === e.target.dataset.id; });
-                    if (k) { navigator.clipboard.writeText(k.ApiKey); alert('Copied to clipboard.'); }
+                    if (k) { navigator.clipboard.writeText(k.ApiKey); jmToast('Copied to clipboard.'); }
                 });
             }
         });
@@ -1019,7 +1183,7 @@
                     document.getElementById('NewInviteTokenLabel').value = '';
                     document.getElementById('NewInviteTokenMaxUses').value = '';
                     document.getElementById('NewInviteTokenExpiry').value = '';
-                    alert('Invite token:\n\n' + token + '\n\nHand it to the peer.');
+                    jmToast('Invite token:\n\n' + token + '\n\nHand it to the peer.');
                 });
             });
         });
@@ -1027,14 +1191,16 @@
         document.getElementById('AccessInviteTokensList').addEventListener('click', function (e) {
             if (e.target.classList.contains('copy-invite-token')) {
                 navigator.clipboard.writeText(e.target.dataset.token);
-                alert('Copied.');
+                jmToast('Copied.');
             }
             if (e.target.classList.contains('delete-invite-token')) {
-                if (!confirm('Delete this invite token?')) return;
                 var tok = e.target.dataset.token;
-                ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
-                    config.AccessRequestInviteTokens = (config.AccessRequestInviteTokens || []).filter(function (t) { return t.Token !== tok; });
-                    ApiClient.updatePluginConfiguration(FederationPluginId, config).then(function () { renderInviteTokens(config.AccessRequestInviteTokens); });
+                jmConfirm('Delete invite token?', 'Anyone who already received it can no longer request access with it.').then(function (ok) {
+                    if (!ok) return;
+                    ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
+                        config.AccessRequestInviteTokens = (config.AccessRequestInviteTokens || []).filter(function (t) { return t.Token !== tok; });
+                        ApiClient.updatePluginConfiguration(FederationPluginId, config).then(function () { renderInviteTokens(config.AccessRequestInviteTokens); });
+                    });
                 });
             }
         });
@@ -1089,7 +1255,7 @@
 
         document.getElementById('AddToBlocklist').addEventListener('click', function () {
             var url = document.getElementById('NewBlockedUrl').value.trim();
-            if (!url) { alert('URL required'); return; }
+            if (!url) { jmToast('URL required'); return; }
             ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
                 config.BlockedPeerUrls = (config.BlockedPeerUrls || []).concat([url]);
                 ApiClient.updatePluginConfiguration(FederationPluginId, config).then(function () {
@@ -1109,8 +1275,8 @@
         document.querySelector('#FederationConfigPage').addEventListener('click', function (e) {
             if (e.target.classList.contains('handshake-approve')) {
                 ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Approve'), type: 'POST' })
-                    .then(function () { renderHandshakeLists(); alert('Approved + granted callback sent.'); })
-                    .catch(function (err) { alert('Approve failed: HTTP ' + (err && err.status)); });
+                    .then(function () { renderHandshakeLists(); jmToast('Approved + granted callback sent.'); })
+                    .catch(function (err) { jmToast('Approve failed: HTTP ' + (err && err.status)); });
             }
             if (e.target.classList.contains('handshake-deny')) {
                 ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Deny'), type: 'POST' })
@@ -1118,23 +1284,26 @@
             }
             if (e.target.classList.contains('handshake-accept')) {
                 ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Accept'), type: 'POST' })
-                    .then(function () { renderHandshakeLists(); alert('Accepted + peer added.'); })
-                    .catch(function (err) { alert('Accept failed: HTTP ' + (err && err.status)); });
+                    .then(function () { renderHandshakeLists(); jmToast('Accepted + peer added.'); })
+                    .catch(function (err) { jmToast('Accept failed: HTTP ' + (err && err.status)); });
             }
             if (e.target.classList.contains('handshake-decline')) {
                 ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Decline'), type: 'POST' })
                     .then(renderHandshakeLists);
             }
             if (e.target.classList.contains('handshake-block')) {
-                if (!confirm('Block this peer? They will not be able to contact us anymore, even via intermediaries.')) return;
-                ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Block'), type: 'POST' })
-                    .then(function () { renderHandshakeLists(); renderBlocklist(); });
+                var id = e.target.dataset.id;
+                jmConfirm('Block this peer?', 'They will not be able to contact us anymore, even via intermediaries.').then(function (ok) {
+                    if (!ok) return;
+                    ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + id + '/Block'), type: 'POST' })
+                        .then(function () { renderHandshakeLists(); renderBlocklist(); });
+                });
             }
         });
 
         document.getElementById('SendAccessRequest').addEventListener('click', function () {
             var url = document.getElementById('ReqAccessTargetUrl').value.trim();
-            if (!url) { alert('Target URL required'); return; }
+            if (!url) { jmToast('Target URL required'); return; }
             ApiClient.fetch({
                 url: ApiClient.getUrl('Federation/RequestAccess'),
                 type: 'POST', contentType: 'application/json',
@@ -1146,13 +1315,13 @@
                     TargetBasicAuthUser: document.getElementById('ReqAccessTargetBasicUser').value.trim() || null,
                     TargetBasicAuthPass: document.getElementById('ReqAccessTargetBasicPass').value.trim() || null
                 })
-            }).then(function () { renderHandshakeLists(); alert('Access request sent. Wait for the peer admin to approve.'); })
-              .catch(function (err) { alert('Send failed: HTTP ' + (err && err.status)); });
+            }).then(function () { renderHandshakeLists(); jmToast('Access request sent. Wait for the peer admin to approve.'); })
+              .catch(function (err) { jmToast('Send failed: HTTP ' + (err && err.status)); });
         });
 
         document.getElementById('SendInvite').addEventListener('click', function () {
             var url = document.getElementById('InviteTargetUrl').value.trim();
-            if (!url) { alert('Target URL required'); return; }
+            if (!url) { jmToast('Target URL required'); return; }
             ApiClient.fetch({
                 url: ApiClient.getUrl('Federation/Invite'),
                 type: 'POST', contentType: 'application/json',
@@ -1163,8 +1332,8 @@
                     TargetBasicAuthUser: document.getElementById('InviteTargetBasicUser').value.trim() || null,
                     TargetBasicAuthPass: document.getElementById('InviteTargetBasicPass').value.trim() || null
                 })
-            }).then(function () { renderHandshakeLists(); alert('Invite sent. The peer admin will accept on their dashboard.'); })
-              .catch(function (err) { alert('Invite failed: HTTP ' + (err && err.status)); });
+            }).then(function () { renderHandshakeLists(); jmToast('Invite sent. The peer admin will accept on their dashboard.'); })
+              .catch(function (err) { jmToast('Invite failed: HTTP ' + (err && err.status)); });
         });
 
         document.getElementById('DashboardLanguage').addEventListener('change', function () {
@@ -1187,6 +1356,7 @@
                 config.AcceptInboundAccessRequests = document.getElementById('AcceptInboundAccessRequests').checked;
                 config.AcceptInboundInvites = document.getElementById('AcceptInboundInvites').checked;
                 config.AcceptInboundIntroductions = document.getElementById('AcceptInboundIntroductions').checked;
+                config.PublishPeerDirectory = document.getElementById('PublishPeerDirectory').checked;
                 config.AcceptOpenAccessRequests = document.getElementById('AcceptOpenAccessRequests').checked;
                 config.AccessRequestPerIpHourLimit = parseInt(document.getElementById('AccessRequestPerIpHourLimit').value, 10) || 5;
                 config.AccessRequestAllowlist = document.getElementById('AccessRequestAllowlist').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);

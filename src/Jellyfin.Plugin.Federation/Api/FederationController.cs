@@ -1858,6 +1858,43 @@ h1{{font-weight:400;font-size:1.2rem}}
         return Ok(sanitized);
     }
 
+    [HttpGet("PeerDirectory")]
+    public IActionResult GetPeerDirectory([FromHeader(Name = "X-Federation-Share")] string? shareKey)
+    {
+        // Two callers: the local admin (auth via X-Emby-Token, no share key required) and
+        // remote peers (must present a share key OR we have to opt in to public listing).
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        var isLocal = User?.Identity?.IsAuthenticated ?? false;
+        if (!isLocal)
+        {
+            var key = ResolveShareKey(shareKey);
+            if (key is null) return Unauthorized();
+            if (!config.PublishPeerDirectory) return StatusCode(403, new { reason = "peer directory not published" });
+        }
+        return Ok(config.RemoteServers.Where(p => p.Enabled).Select(p => new
+        {
+            name = p.Name,
+            url = p.BaseUrl,
+            tags = p.Tags
+        }));
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Peers/{peerId}/Directory")]
+    public async Task<IActionResult> FetchPeerDirectory(string peerId,
+        [FromServices] Services.RemoteJellyfinClient client,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(peerId, out var pid)) return BadRequest("peerId invalid");
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        var peer = config.RemoteServers.FirstOrDefault(p => p.Id == pid);
+        if (peer is null) return NotFound();
+        var rows = await client.FetchPeerDirectoryAsync(peer, ct).ConfigureAwait(false);
+        return Ok(rows);
+    }
+
     [AllowAnonymous]
     [HttpGet("Asset/{name}")]
     public IActionResult GetAsset(string name)
