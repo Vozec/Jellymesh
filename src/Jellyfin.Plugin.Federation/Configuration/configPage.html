@@ -144,26 +144,31 @@
                 <h3>Public video share links</h3>
                 <p>Generate a single-video URL anyone can open without a Jellyfin account. Optional expiry and use cap.</p>
                 <div id="PublicSharesList"></div>
-                <div style="margin-top:0.5em;display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5em;max-width:60em;">
-                    <input type="text" id="NewPublicItemId" placeholder="Jellyfin item id (uuid)" />
-                    <input type="datetime-local" id="NewPublicExpiry" placeholder="Expires (optional)" />
-                    <input type="number" id="NewPublicMaxUses" placeholder="Max uses (optional)" min="1" />
-                </div>
-                <button is="emby-button" type="button" id="CreatePublicShare" class="raised" style="margin-top:0.5em;">
-                    <span>Generate public link</span>
-                </button>
+                <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
+                    <summary style="cursor:pointer;">New public link</summary>
+                    <div style="margin-top:0.6em;display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.6em 1em;">
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Jellyfin item id (uuid)</span><input type="text" id="NewPublicItemId" placeholder="local item id" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Expires (optional)</span><input type="datetime-local" id="NewPublicExpiry" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Max uses (optional)</span><input type="number" id="NewPublicMaxUses" min="1" style="width:100%;" /></label>
+                    </div>
+                    <button is="emby-button" type="button" id="CreatePublicShare" class="raised" style="margin-top:0.5em;">
+                        <span>Generate public link</span>
+                    </button>
+                </details>
 
                 <h3>Requests</h3>
                 <p>Ask peers to add a film, or triage what peers asked from you.</p>
-                <h4 style="margin:0.5em 0 0.2em 0;">Send a request</h4>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.5em;max-width:60em;">
-                    <select id="ReqPeerSelect"><option value="">- pick a peer -</option></select>
-                    <input type="text" id="ReqTmdb" placeholder="TMDB id (or title below)" />
-                    <input type="text" id="ReqTitle" placeholder="Title" />
-                    <input type="number" id="ReqYear" placeholder="Year" min="1900" max="2100" />
-                </div>
-                <input type="text" id="ReqNote" placeholder="Note (optional)" style="margin-top:0.4em;width:100%;max-width:60em;" />
-                <button is="emby-button" type="button" id="SendRequest" class="raised" style="margin-top:0.3em;"><span>Send</span></button>
+                <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
+                    <summary style="cursor:pointer;">Send a request to a peer</summary>
+                    <div style="margin-top:0.6em;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.6em 1em;">
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Peer</span><select id="ReqPeerSelect" style="width:100%;"><option value="">- pick a peer -</option></select></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">TMDB id (optional)</span><input type="text" id="ReqTmdb" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Title (optional if TMDB)</span><input type="text" id="ReqTitle" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Year (optional)</span><input type="number" id="ReqYear" min="1900" max="2100" style="width:100%;" /></label>
+                    </div>
+                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;">Note (optional)</span><input type="text" id="ReqNote" style="width:100%;max-width:60em;" /></label>
+                    <button is="emby-button" type="button" id="SendRequest" class="raised" style="margin-top:0.3em;"><span>Send</span></button>
+                </details>
 
                 <h4 style="margin:1em 0 0.2em 0;">Inbound (peers asked you)</h4>
                 <div id="ReqInList"></div>
@@ -173,35 +178,38 @@
                 <h3>Share keys</h3>
                 <p>Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
                 <div id="SharesList"></div>
-                <div style="margin-top:0.5em;display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:60em;">
-                    <input type="text" id="NewShareLabel" placeholder="Label (e.g. Movies for Alice)" />
-                    <input type="text" id="NewShareLibraries" placeholder="Library ids (comma-sep, empty = all)" />
-                    <input type="text" id="NewShareHoursStart" placeholder="Allowed hours start HH:mm (optional)" />
-                    <input type="text" id="NewShareHoursEnd" placeholder="Allowed hours end HH:mm (optional)" />
-                    <input type="text" id="NewShareTimeZone" placeholder="Schedule TZ id (e.g. Europe/Paris)" />
-                    <input type="text" id="NewShareBlockedTags" placeholder="Blocked tags (comma-sep, optional)" />
-                    <input type="text" id="NewShareMaxRating" placeholder="Max rating (G/PG/PG-13/R/NC-17, optional)" />
-                </div>
-                <input type="text" id="NewShareBoundPeerUrl" placeholder="Bind to peer URL (optional, e.g. https://alice.example, anti-spoofing)" style="margin-top:0.4em;width:100%;max-width:60em;" />
-                <label style="margin-top:0.4em;display:block;">
-                    <input type="checkbox" id="NewShareStrictUnknown" />
-                    Strict mode: also hide items with unrated or regional ratings (e.g. FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.
-                </label>
-                <label style="margin-top:0.4em;display:block;">
-                    <input type="checkbox" id="NewShareCanIntro" />
-                    Allow this key to request introductions on me
-                </label>
-                <div class="inputContainer" style="max-width:30em;">
-                    <label class="inputLabel inputLabelUnfocused" for="NewShareMintMode">Mint mode (what to do when this key asks me to introduce)</label>
-                    <select is="emby-select" id="NewShareMintMode">
-                        <option value="Request">Request (queue for admin approval, safe default)</option>
-                        <option value="AutoAccept">Auto-accept (mint immediately)</option>
-                        <option value="Reject">Reject</option>
-                    </select>
-                </div>
-                <button is="emby-button" type="button" id="CreateShare" class="raised" style="margin-top:0.5em;">
-                    <span>Generate share key</span>
-                </button>
+                <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
+                    <summary style="cursor:pointer;">Mint new share key</summary>
+                    <div style="margin-top:0.6em;display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;">
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Label</span><input type="text" id="NewShareLabel" placeholder="e.g. Movies for Alice" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Library ids (comma-separated, empty = all)</span><input type="text" id="NewShareLibraries" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Allowed hours start (HH:mm, optional)</span><input type="text" id="NewShareHoursStart" placeholder="18:00" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Allowed hours end (HH:mm, optional)</span><input type="text" id="NewShareHoursEnd" placeholder="23:00" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Schedule timezone id (optional)</span><input type="text" id="NewShareTimeZone" placeholder="Europe/Paris" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Blocked tags (comma-separated)</span><input type="text" id="NewShareBlockedTags" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Max official rating (G/PG/PG-13/R/NC-17, optional)</span><input type="text" id="NewShareMaxRating" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Bind to peer URL (optional, anti-spoof)</span><input type="text" id="NewShareBoundPeerUrl" placeholder="https://alice.example" style="width:100%;" /></label>
+                    </div>
+                    <label style="margin-top:0.5em;display:block;">
+                        <input type="checkbox" id="NewShareStrictUnknown" />
+                        <span>Strict mode: also hide items with unrated or regional ratings (FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.</span>
+                    </label>
+                    <label style="margin-top:0.4em;display:block;">
+                        <input type="checkbox" id="NewShareCanIntro" />
+                        <span>Allow this key to request introductions on me</span>
+                    </label>
+                    <label style="display:block;margin-top:0.5em;max-width:30em;">
+                        <span style="display:block;font-size:0.85em;color:#bbb;">Mint mode (when this key asks me to introduce)</span>
+                        <select is="emby-select" id="NewShareMintMode">
+                            <option value="Request">Request (queue for admin approval, safe default)</option>
+                            <option value="AutoAccept">Auto-accept (mint immediately)</option>
+                            <option value="Reject">Reject</option>
+                        </select>
+                    </label>
+                    <button is="emby-button" type="button" id="CreateShare" class="raised" style="margin-top:0.5em;">
+                        <span>Generate share key</span>
+                    </button>
+                </details>
 
                 <h3 data-i18n="privacy.title">Privacy: who can contact us</h3>
                 <p data-i18n="privacy.desc">Master switches for unsolicited inbound contact. Turn off to refuse all new requests regardless of any per-key or per-token rule.</p>
@@ -232,33 +240,40 @@
                 </div>
                 <h5 style="margin:0.5em 0 0.2em 0;" data-i18n="handshake.access.tokens">Invite tokens (one-time)</h5>
                 <div id="AccessInviteTokensList"></div>
-                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.5em;max-width:60em;margin-top:0.3em;">
-                    <input type="text" id="NewInviteTokenLabel" placeholder="Label (who is this for?)" />
-                    <input type="number" id="NewInviteTokenMaxUses" placeholder="Max uses (optional)" min="1" />
-                    <input type="datetime-local" id="NewInviteTokenExpiry" />
-                </div>
-                <button is="emby-button" type="button" id="MintInviteToken" class="raised" style="margin-top:0.3em;"><span data-i18n="handshake.access.tokens.mint">Mint invite token</span></button>
+                <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.4em 0;padding:0.6em 0.8em;">
+                    <summary style="cursor:pointer;" data-i18n="handshake.access.tokens.mint">Mint invite token</summary>
+                    <div style="margin-top:0.6em;display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.6em 1em;">
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Label</span><input type="text" id="NewInviteTokenLabel" placeholder="who is this for?" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Max uses (optional)</span><input type="number" id="NewInviteTokenMaxUses" min="1" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Expires (optional)</span><input type="datetime-local" id="NewInviteTokenExpiry" style="width:100%;" /></label>
+                    </div>
+                    <button is="emby-button" type="button" id="MintInviteToken" class="raised" style="margin-top:0.4em;"><span data-i18n="handshake.access.tokens.mint">Mint invite token</span></button>
+                </details>
 
-                <h4 style="margin:1em 0 0.2em 0;" data-i18n="handshake.request.send">Request access from a peer</h4>
-                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.5em;max-width:60em;">
-                    <input type="url" id="ReqAccessTargetUrl" placeholder="https://target.example" />
-                    <input type="text" id="ReqAccessTargetBasicUser" placeholder="Target Basic user (optional)" />
-                    <input type="password" id="ReqAccessTargetBasicPass" placeholder="Target Basic password (optional)" />
-                </div>
-                <input type="text" id="ReqAccessInviteToken" placeholder="Their invite token (if they gave you one)" style="margin-top:0.4em;width:100%;max-width:60em;" />
-                <input type="text" id="ReqAccessMessage" placeholder="Message (optional)" style="margin-top:0.4em;width:100%;max-width:60em;" />
-                <label style="margin-top:0.4em;display:block;"><input type="checkbox" id="ReqAccessMutual" /><span data-i18n="handshake.request.mutual">Request mutual access (they grant + we grant back)</span></label>
-                <button is="emby-button" type="button" id="SendAccessRequest" class="raised" style="margin-top:0.3em;"><span data-i18n="handshake.request.button">Send access request</span></button>
+                <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
+                    <summary style="cursor:pointer;" data-i18n="handshake.request.send">Request access from a peer</summary>
+                    <div style="margin-top:0.6em;display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.6em 1em;">
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target URL</span><input type="url" id="ReqAccessTargetUrl" placeholder="https://target.example" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target Basic user (optional)</span><input type="text" id="ReqAccessTargetBasicUser" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target Basic password (optional)</span><input type="password" id="ReqAccessTargetBasicPass" style="width:100%;" /></label>
+                    </div>
+                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;">Their invite token (if they gave you one)</span><input type="text" id="ReqAccessInviteToken" style="width:100%;max-width:60em;" /></label>
+                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;">Message (optional)</span><input type="text" id="ReqAccessMessage" style="width:100%;max-width:60em;" /></label>
+                    <label style="margin-top:0.4em;display:block;"><input type="checkbox" id="ReqAccessMutual" /><span data-i18n="handshake.request.mutual">Request mutual access (they grant + we grant back)</span></label>
+                    <button is="emby-button" type="button" id="SendAccessRequest" class="raised" style="margin-top:0.4em;"><span data-i18n="handshake.request.button">Send access request</span></button>
+                </details>
 
-                <h4 style="margin:1em 0 0.2em 0;" data-i18n="handshake.invite.send">Invite a peer (push a pre-minted key)</h4>
-                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.5em;max-width:60em;">
-                    <input type="url" id="InviteTargetUrl" placeholder="https://target.example" />
-                    <input type="text" id="InviteTargetBasicUser" placeholder="Target Basic user (optional)" />
-                    <input type="password" id="InviteTargetBasicPass" placeholder="Target Basic password (optional)" />
-                </div>
-                <input type="text" id="InviteMessage" placeholder="Message (optional)" style="margin-top:0.4em;width:100%;max-width:60em;" />
-                <label style="margin-top:0.4em;display:block;"><input type="checkbox" id="InviteMutual" /><span data-i18n="handshake.invite.mutual">Mutual invite (they accept and grant back)</span></label>
-                <button is="emby-button" type="button" id="SendInvite" class="raised" style="margin-top:0.3em;"><span data-i18n="handshake.invite.button">Send invite</span></button>
+                <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
+                    <summary style="cursor:pointer;" data-i18n="handshake.invite.send">Invite a peer (push a pre-minted key)</summary>
+                    <div style="margin-top:0.6em;display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.6em 1em;">
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target URL</span><input type="url" id="InviteTargetUrl" placeholder="https://target.example" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target Basic user (optional)</span><input type="text" id="InviteTargetBasicUser" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target Basic password (optional)</span><input type="password" id="InviteTargetBasicPass" style="width:100%;" /></label>
+                    </div>
+                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;">Message (optional)</span><input type="text" id="InviteMessage" style="width:100%;max-width:60em;" /></label>
+                    <label style="margin-top:0.4em;display:block;"><input type="checkbox" id="InviteMutual" /><span data-i18n="handshake.invite.mutual">Mutual invite (they accept and grant back)</span></label>
+                    <button is="emby-button" type="button" id="SendInvite" class="raised" style="margin-top:0.4em;"><span data-i18n="handshake.invite.button">Send invite</span></button>
+                </details>
 
                 <h4 style="margin:1em 0 0.2em 0;" data-i18n="handshake.inbound">Inbound handshake (waiting for our approval)</h4>
                 <div id="HandshakeInboundList"></div>
@@ -360,22 +375,67 @@
             });
         }
 
+        function fieldRow(label, input, hint) {
+            var hintHtml = hint ? '<small style="color:#888;display:block;margin-top:0.1em;">' + esc(hint) + '</small>' : '';
+            return '<label style="display:block;margin:0.4em 0;">'
+                + '<span style="display:block;font-size:0.85em;color:#bbb;margin-bottom:0.15em;">' + esc(label) + '</span>'
+                + input
+                + hintHtml
+                + '</label>';
+        }
+
         function renderServers(servers) {
             var html = '';
             (servers || []).forEach(function (s, i) {
-                html += '<div class="paperList" data-idx="' + i + '" style="padding:1em;margin:0.5em 0;border:1px solid #444;display:grid;grid-template-columns:1fr 1fr;gap:0.4em;">';
-                html += '<input type="text" placeholder="Name" value="' + esc(s.Name || '') + '" data-field="Name" />';
-                html += '<input type="text" placeholder="https://peer.example.com" value="' + esc(s.BaseUrl || '') + '" data-field="BaseUrl" />';
-                html += '<input type="text" placeholder="Jellyfin API key" value="' + esc(s.ApiKey || '') + '" data-field="ApiKey" />';
-                html += '<input type="text" placeholder="Federation share key (from peer)" value="' + esc(s.FederationShareKey || '') + '" data-field="FederationShareKey" />';
-                html += '<input type="text" placeholder="Remote user id on peer (for watch sync)" value="' + esc(s.RemoteUserId || '') + '" data-field="RemoteUserId" />';
-                html += '<input type="text" placeholder="Local user id receiving peer watch state (optional)" value="' + esc(s.LocalUserIdForSync || '') + '" data-field="LocalUserIdForSync" />';
-                html += '<input type="text" placeholder="HTTP Basic auth username (optional)" value="' + esc(s.BasicAuthUser || '') + '" data-field="BasicAuthUser" />';
-                html += '<input type="password" placeholder="HTTP Basic auth password (optional)" value="' + esc(s.BasicAuthPass || '') + '" data-field="BasicAuthPass" />';
-                html += '<label style="grid-column:span 2;"><input type="checkbox" data-field="Enabled" ' + (s.Enabled ? 'checked' : '') + ' /> Enabled <button type="button" class="remove-server" style="float:right;">Remove</button></label>';
+                var headerName = s.Name || s.BaseUrl || '(unnamed peer)';
+                var enabledChip = s.Enabled
+                    ? '<span style="background:#1e5631;color:#dfd;padding:0.1em 0.5em;border-radius:0.4em;font-size:0.8em;">enabled</span>'
+                    : '<span style="background:#5e2222;color:#fdd;padding:0.1em 0.5em;border-radius:0.4em;font-size:0.8em;">disabled</span>';
+                var tagChips = (s.Tags || []).map(function (t) {
+                    return '<span style="background:#333;color:#ccc;padding:0.1em 0.4em;border-radius:0.3em;font-size:0.75em;margin-right:0.2em;">' + esc(t) + '</span>';
+                }).join('');
+
+                html += '<details data-idx="' + i + '" style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">';
+                html += '<summary style="cursor:pointer;font-weight:600;outline:none;">'
+                    + esc(headerName) + ' ' + enabledChip + ' ' + tagChips + '</summary>';
+
+                html += '<div style="margin-top:0.6em;display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;">';
+                html += '<div>';
+                html += '<h5 style="margin:0.3em 0 0.3em 0;color:#9cd;">Basic</h5>';
+                html += fieldRow('Display name', '<input type="text" value="' + esc(s.Name || '') + '" data-field="Name" placeholder="Friendly label" />');
+                html += fieldRow('Base URL', '<input type="url" value="' + esc(s.BaseUrl || '') + '" data-field="BaseUrl" placeholder="https://peer.example.com" />', 'Where this server can reach the peer (LAN IP / hostname).');
+                html += '<label style="display:block;margin:0.4em 0;"><input type="checkbox" data-field="Enabled" ' + (s.Enabled ? 'checked' : '') + ' /> <span>Enabled</span></label>';
+                html += fieldRow('Tags (comma-separated)', '<input type="text" value="' + esc((s.Tags || []).join(", ")) + '" data-field="Tags" placeholder="family, friends, public" />', 'Free-form labels for grouping.');
                 html += '</div>';
+
+                html += '<div>';
+                html += '<h5 style="margin:0.3em 0 0.3em 0;color:#9cd;">Authentication</h5>';
+                html += fieldRow('Jellyfin API key', '<input type="text" value="' + esc(s.ApiKey || '') + '" data-field="ApiKey" placeholder="X-Emby-Token used on /Items, /Videos" />');
+                html += fieldRow('Federation share key (from peer)', '<input type="text" value="' + esc(s.FederationShareKey || '') + '" data-field="FederationShareKey" placeholder="What the peer issued for us" />');
+                html += fieldRow('HTTP Basic user (optional)', '<input type="text" value="' + esc(s.BasicAuthUser || '') + '" data-field="BasicAuthUser" placeholder="for reverse-proxy auth" />');
+                html += fieldRow('HTTP Basic password (optional)', '<input type="password" value="' + esc(s.BasicAuthPass || '') + '" data-field="BasicAuthPass" placeholder="kept server-side" />');
+                html += '</div>';
+                html += '</div>';
+
+                html += '<div style="margin-top:0.4em;display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;">';
+                html += '<div>';
+                html += '<h5 style="margin:0.5em 0 0.3em 0;color:#9cd;">Watch sync</h5>';
+                html += fieldRow('Remote user id on peer', '<input type="text" value="' + esc(s.RemoteUserId || '') + '" data-field="RemoteUserId" placeholder="Peer''s user id we push UserData to" />');
+                html += fieldRow('Local user receiving peer watch state', '<input type="text" value="' + esc(s.LocalUserIdForSync || '') + '" data-field="LocalUserIdForSync" placeholder="Our user id we mirror peer''s state into" />', 'Leave empty to disable pull-direction sync for this peer.');
+                html += '</div>';
+                html += '<div>';
+                html += '<h5 style="margin:0.5em 0 0.3em 0;color:#9cd;">Quotas (soft-block)</h5>';
+                html += fieldRow('Inbound req per hour (0 = unlimited)', '<input type="number" min="0" value="' + (s.InboundReqPerHourLimit || 0) + '" data-field="InboundReqPerHourLimit" />', 'When exceeded we respond 429 with Retry-After.');
+                html += fieldRow('Outbound bytes per day (0 = unlimited)', '<input type="number" min="0" value="' + (s.OutboundBytesPerDayLimit || 0) + '" data-field="OutboundBytesPerDayLimit" />');
+                html += '</div>';
+                html += '</div>';
+
+                html += '<div style="margin-top:0.6em;text-align:right;">';
+                html += '<button type="button" class="remove-server raised" style="color:#f88;">Remove peer</button>';
+                html += '</div>';
+                html += '</details>';
             });
-            document.getElementById('RemoteServersList').innerHTML = html;
+            document.getElementById('RemoteServersList').innerHTML = html || '<em>No peer servers configured. Add one or send/receive an access request.</em>';
         }
 
         function statusBadge(status) {
@@ -834,7 +894,17 @@
             document.querySelectorAll('#RemoteServersList [data-idx]').forEach(function (row) {
                 var entry = {};
                 row.querySelectorAll('[data-field]').forEach(function (inp) {
-                    entry[inp.dataset.field] = inp.type === 'checkbox' ? inp.checked : inp.value;
+                    var name = inp.dataset.field;
+                    if (inp.type === 'checkbox') {
+                        entry[name] = inp.checked;
+                    } else if (name === 'Tags') {
+                        entry[name] = inp.value.split(',').map(function (t) { return t.trim(); }).filter(Boolean);
+                    } else if (name === 'InboundReqPerHourLimit' || name === 'OutboundBytesPerDayLimit') {
+                        var n = parseInt(inp.value, 10);
+                        entry[name] = isNaN(n) ? 0 : n;
+                    } else {
+                        entry[name] = inp.value;
+                    }
                 });
                 out.push(entry);
             });
