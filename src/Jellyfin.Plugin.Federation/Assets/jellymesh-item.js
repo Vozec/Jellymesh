@@ -45,6 +45,37 @@
             /* Peer-source chip overlaid on otherwise-native Jellyfin cards. */
             .jm-card-badge { position: absolute; top: 0.35em; right: 0.35em; background: rgba(59,111,164,0.92); color: #fff; padding: 0.1em 0.5em; border-radius: 0.7em; font-size: 0.7em; font-weight: 600; z-index: 1; pointer-events: none; }
 
+            /* Dashboard libraries panel */
+            #jm-dashlibs { margin: 1.5em 0; padding: 1.3em 1.4em; background: linear-gradient(180deg, #1a1a1a 0%, #161616 100%); border: 1px solid #2e2e2e; border-radius: 0.6em; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset; }
+            #jm-dashlibs h2 { margin: 0 0 0.2em; font-size: 1.4em; }
+            #jm-dashlibs h2 .material-icons { vertical-align: middle; margin-right: 0.3em; color: #6aa6db; }
+            #jm-dashlibs .jm-dashlibs-sub { color: #999; margin: 0 0 1.1em; font-size: 0.95em; }
+            #jm-dashlibs .jm-toolbar { display: flex; align-items: center; gap: 0.8em; flex-wrap: wrap; margin-bottom: 1em; padding: 0.7em 0.9em; background: #1f1f1f; border: 1px solid #2e2e2e; border-radius: 0.4em; }
+            #jm-dashlibs .jm-field { display: flex; align-items: center; gap: 0.5em; }
+            #jm-dashlibs .jm-field-label { color: #aaa; font-size: 0.9em; }
+            #jm-dashlibs select.jm-select { background: #222; color: #eee; border: 1px solid #3a3a3a; padding: 0.45em 2em 0.45em 0.7em; border-radius: 0.35em; appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, #888 50%), linear-gradient(135deg, #888 50%, transparent 50%); background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; cursor: pointer; }
+            #jm-dashlibs select.jm-select:focus, #jm-dashlibs select.jm-select:hover { border-color: #4a87c0; outline: none; }
+            #jm-dashlibs .jm-btn { display: inline-flex; align-items: center; gap: 0.4em; background: #2a2a2a; color: #ddd; border: 1px solid #4a4a4a; border-radius: 0.35em; padding: 0.45em 1em; cursor: pointer; font: inherit; font-size: 0.92em; transition: background 0.15s, border-color 0.15s, transform 0.05s; }
+            #jm-dashlibs .jm-btn:hover { background: #353535; border-color: #5a5a5a; }
+            #jm-dashlibs .jm-btn:active { transform: scale(0.97); }
+            #jm-dashlibs .jm-btn.primary { background: #3b6fa4; border-color: #3b6fa4; color: #fff; }
+            #jm-dashlibs .jm-btn.primary:hover { background: #4682c0; border-color: #4682c0; }
+            #jm-dashlibs .jm-btn .material-icons { font-size: 1.15em; }
+            #jm-dashlibs .jm-peer-block { background: #1c1c1c; border: 1px solid #2e2e2e; border-radius: 0.5em; margin: 0.6em 0; overflow: hidden; }
+            #jm-dashlibs .jm-peer-header { display: flex; align-items: center; gap: 0.6em; padding: 0.75em 1em; background: #232323; border-bottom: 1px solid #2e2e2e; }
+            #jm-dashlibs .jm-peer-header h3 { margin: 0; font-size: 1.05em; flex: 1; }
+            #jm-dashlibs .jm-peer-status { font-size: 0.78em; padding: 0.15em 0.6em; border-radius: 0.8em; font-weight: 600; }
+            #jm-dashlibs .jm-peer-status.online { background: rgba(74,144,80,0.25); color: #b6e0ba; border: 1px solid rgba(74,144,80,0.5); }
+            #jm-dashlibs .jm-peer-status.offline { background: rgba(180,60,60,0.2); color: #f0b0b0; border: 1px solid rgba(180,60,60,0.5); }
+            #jm-dashlibs .jm-lib-table { padding: 0.4em 0.8em; }
+            #jm-dashlibs .jm-lib-row { display: grid; grid-template-columns: 2fr repeat(3, auto) 1.5fr auto; gap: 0.9em; align-items: center; padding: 0.6em 0.4em; border-bottom: 1px solid #262626; }
+            #jm-dashlibs .jm-lib-row:last-child { border-bottom: none; }
+            #jm-dashlibs .jm-lib-name strong { display: block; }
+            #jm-dashlibs .jm-lib-name small { color: #888; font-size: 0.8em; }
+            #jm-dashlibs .jm-toggle { display: inline-flex; align-items: center; gap: 0.35em; color: #bbb; font-size: 0.88em; cursor: pointer; user-select: none; }
+            #jm-dashlibs .jm-toggle input { accent-color: #4a87c0; width: 1.05em; height: 1.05em; cursor: pointer; }
+            #jm-dashlibs .jm-empty { padding: 1em; color: #888; font-style: italic; text-align: center; }
+
             /* Item details source badge */
             .jm-source-badge { display: inline-flex; align-items: center; gap: 0.35em; background: rgba(59,111,164,0.18); border: 1px solid rgba(59,111,164,0.55); color: #9bc5ee; padding: 0.2em 0.6em; border-radius: 0.4em; font-size: 0.78em; margin: 0.4em 0.4em 0 0; }
             .jm-source-badge .material-icons { font-size: 0.95em; }
@@ -233,7 +264,7 @@
         if (!row) return;
         const apiKey = token();
         const ourServerId = (window.ApiClient && (ApiClient.serverId ? ApiClient.serverId() : (ApiClient.serverInfo() || {}).Id)) || '';
-        const cards = pool.map(({ peer, it }) => buildCard(it, peer, apiKey, ourServerId)).filter(Boolean);
+        const cards = pool.map(({ peer, it }) => buildCard(it, peer, apiKey, ourServerId));
         row.innerHTML = cards.length ? cards.join('') : '<div class="jm-placeholder" style="padding:1em;color:#777;">No items.</div>';
     }
 
@@ -242,34 +273,41 @@
         if (!row) return;
         const apiKey = token();
         const ourServerId = (window.ApiClient && (ApiClient.serverId ? ApiClient.serverId() : (ApiClient.serverInfo() || {}).Id)) || '';
-        const cards = items.map((it) => buildCard(it, peer, apiKey, ourServerId)).filter(Boolean);
-        row.innerHTML = cards.length
-            ? cards.join('')
-            : '<div class="jm-placeholder" style="padding:1em;color:#777;">No playable items (waiting for sync).</div>';
+        row.innerHTML = items.length
+            ? items.map((it) => buildCard(it, peer, apiKey, ourServerId)).join('')
+            : '<div class="jm-placeholder" style="padding:1em;color:#777;">Empty.</div>';
     }
 
-    // Returns null when the peer item has no local equivalent yet (channel sync hasn't run
-    // or dedup hid it). Skipping the card is better than rendering a dead href='#'.
+    // Always render a card. Items not yet matched to a local channel/movie are still shown
+    // (image + badge + name) so the user sees what the peer has even before our sync round
+    // runs - the card is just non-clickable until the sync establishes a localId.
     function buildCard(it, peer, apiKey, ourServerId) {
         const localId = it.localId || '';
-        if (!localId) return null;
-        const href = `#/details?id=${localId}&serverId=${ourServerId}`;
+        const clickable = !!localId;
+        const href = clickable ? `#/details?id=${localId}&serverId=${ourServerId}` : '#';
         // background-image URLs are fetched by the browser without any Jellyfin auth header,
         // so we tack on ?api_key which Jellyfin's auth pipeline accepts equivalent.
         const imageUrl = `${it.imageUrl}?api_key=${encodeURIComponent(apiKey)}`;
-        const dataAttrs = `data-action="link" data-id="${localId}" data-serverid="${ourServerId}" data-type="${escapeHtml(it.type || 'Movie')}" data-mediatype="Video" data-isfolder="false"`;
+        const dataAttrs = clickable
+            ? `data-action="link" data-id="${localId}" data-serverid="${ourServerId}" data-type="${escapeHtml(it.type || 'Movie')}" data-mediatype="Video" data-isfolder="false"`
+            : `data-action="none" title="Not synced yet - run the federation sync task to make this clickable"`;
+        const dimStyle = clickable ? '' : 'opacity:0.55;cursor:default;';
+        const pendingBadge = clickable ? '' : '<span class="jm-card-badge jm-pending" style="left:0.35em;right:auto;background:rgba(180,140,40,0.9);">Not synced</span>';
         return `
-            <div class="card overflowPortraitCard card-hoverable" data-id="${localId}" data-serverid="${ourServerId}" data-type="${escapeHtml(it.type || 'Movie')}" data-prefix="" style="display:inline-block;white-space:normal;vertical-align:top;margin:0.3em;width:150px;">
+            <div class="card overflowPortraitCard card-hoverable" data-id="${localId}" data-serverid="${ourServerId}" data-type="${escapeHtml(it.type || 'Movie')}" data-prefix="" style="display:inline-block;white-space:normal;vertical-align:top;margin:0.3em;width:150px;${dimStyle}">
                 <div class="cardBox cardBox-bottompadded">
                     <div class="cardScalable">
                         <div class="cardPadder cardPadder-overflowPortrait"></div>
                         <a class="cardImageContainer coveredImage cardContent itemAction" href="${href}" ${dataAttrs}>
                             <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
+                            ${pendingBadge}
                             <div class="cardImage" style="background-image:url('${imageUrl}');"></div>
                         </a>
                     </div>
                     <div class="cardText cardTextCentered cardText-first">
-                        <a class="itemAction" href="${href}" ${dataAttrs} style="color:inherit;text-decoration:none;"><bdi>${escapeHtml(it.name || '')}</bdi></a>
+                        ${clickable
+                            ? `<a class="itemAction" href="${href}" ${dataAttrs} style="color:inherit;text-decoration:none;"><bdi>${escapeHtml(it.name || '')}</bdi></a>`
+                            : `<bdi>${escapeHtml(it.name || '')}</bdi>`}
                     </div>
                     <div class="cardText cardTextCentered cardText-secondary"><bdi>${it.year || ''}${it.version ? ' &middot; ' + escapeHtml(it.version) : ''}</bdi></div>
                 </div>
@@ -347,22 +385,21 @@
         if (!host) return;
         const panel = document.createElement('div');
         panel.id = 'jm-dashlibs';
-        panel.style.cssText = 'margin-top:2em;padding-top:1em;border-top:1px solid #333;';
         panel.innerHTML = `
-            <h2 style="margin-bottom:0.3em;">Federated libraries</h2>
-            <p style="color:#aaa;margin:0 0 1em;">Libraries shared by your peers. Toggle visibility, hide from home, or merge into one of your local libraries.</p>
-            <div style="margin-bottom:0.8em;display:flex;align-items:center;gap:0.6em;flex-wrap:wrap;">
-                <label style="display:flex;align-items:center;gap:0.4em;">
-                    <span style="color:#bbb;">Home layout:</span>
-                    <select id="jm-layout" style="background:#222;color:#eee;border:1px solid #444;padding:0.3em 0.5em;border-radius:0.3em;">
+            <h2><span class="material-icons">hub</span>Federated libraries</h2>
+            <p class="jm-dashlibs-sub">Libraries shared by your peers. Toggle visibility, hide from the home page, or merge a peer library into one of your local libraries.</p>
+            <div class="jm-toolbar">
+                <div class="jm-field">
+                    <span class="jm-field-label">Home layout</span>
+                    <select id="jm-layout" class="jm-select">
                         <option value="SectionPerPeer">One section per peer</option>
                         <option value="OneSectionAllPeers">One section for all peers</option>
                         <option value="Off">Hide federated content from home</option>
                     </select>
-                </label>
-                <button type="button" class="raised" id="jm-libs-refresh" style="margin-left:auto;background:#2a2a2a;color:#ddd;border:1px solid #555;border-radius:0.3em;padding:0.4em 0.9em;cursor:pointer;">Refresh peer lists</button>
+                </div>
+                <button type="button" class="jm-btn" id="jm-libs-refresh" style="margin-left:auto;"><span class="material-icons">refresh</span>Refresh peers</button>
             </div>
-            <div id="jm-dashlibs-body"><em style="color:#777;">Loading...</em></div>
+            <div id="jm-dashlibs-body"><div class="jm-empty">Loading...</div></div>
         `;
         host.appendChild(panel);
         document.getElementById('jm-libs-refresh').addEventListener('click', () => loadDashlibs(true));
@@ -389,15 +426,22 @@
             body.innerHTML = '';
             peers.forEach((peer) => {
                 const block = document.createElement('div');
-                block.style.cssText = 'background:#1c1c1c;border:1px solid #333;border-radius:0.4em;margin:0.6em 0;padding:0.8em 1em;';
-                block.innerHTML = `<h3 style="margin:0 0 0.4em;">${escapeHtml(peer.Name)} <span style="font-size:0.85em;color:${peer.Online ? '#8c8' : '#c88'};">${peer.Online ? 'online' : 'offline'}</span></h3><div data-jm-libs><em style="color:#777;">Loading...</em></div>`;
+                block.className = 'jm-peer-block';
+                block.innerHTML = `
+                    <div class="jm-peer-header">
+                        <h3>${escapeHtml(peer.Name)}</h3>
+                        <span class="jm-peer-status ${peer.Online ? 'online' : 'offline'}">${peer.Online ? 'online' : 'offline'}</span>
+                    </div>
+                    <div class="jm-lib-table" data-jm-libs><div class="jm-empty">Loading...</div></div>
+                `;
                 body.appendChild(block);
                 jApi(`/Federation/Peers/${peer.Id}/Libraries${forceRefresh ? '?refresh=1' : ''}`).then((libs) => {
-                    if (!libs || libs.length === 0) { block.querySelector('[data-jm-libs]').innerHTML = '<em style="color:#777;">No libraries shared (or peer offline).</em>'; return; }
-                    block.querySelector('[data-jm-libs]').innerHTML = libs.map((lib) => renderLibRow(peer, lib, cfg.settings || [], localLibs || [])).join('');
-                }).catch(() => { block.querySelector('[data-jm-libs]').innerHTML = '<em style="color:#888;">Unreachable.</em>'; });
+                    const tbl = block.querySelector('[data-jm-libs]');
+                    if (!libs || libs.length === 0) { tbl.innerHTML = '<div class="jm-empty">No libraries shared (or peer offline).</div>'; return; }
+                    tbl.innerHTML = libs.map((lib) => renderLibRow(peer, lib, cfg.settings || [], localLibs || [])).join('');
+                }).catch(() => { block.querySelector('[data-jm-libs]').innerHTML = '<div class="jm-empty">Unreachable.</div>'; });
             });
-        }).catch(() => { body.innerHTML = '<em style="color:#c88;">Failed to load peer/library config.</em>'; });
+        }).catch(() => { body.innerHTML = '<div class="jm-empty" style="color:#e88;">Failed to load peer/library config.</div>'; });
     }
 
     function renderLibRow(peer, lib, settings, localLibs) {
@@ -405,19 +449,23 @@
         const enabled = setting.Enabled !== false;
         const hidden = !!setting.HideFromHomepage;
         const mergeTarget = setting.MergeWithLocalLibraryId || '';
-        const localOpts = ['<option value="">(no merge)</option>']
+        const localOpts = ['<option value="">No merge</option>']
             .concat((localLibs || []).map((ll) => `<option value="${escapeHtml(ll.ItemId)}" ${mergeTarget === ll.ItemId ? 'selected' : ''}>${escapeHtml(ll.Name)}</option>`))
             .join('');
         return `
-            <div style="display:grid;grid-template-columns:1.4fr auto auto 1.6fr auto;gap:0.6em;align-items:center;padding:0.4em 0;border-bottom:1px solid #2a2a2a;"
-                 data-jm-peer="${peer.Id}" data-jm-lib="${escapeHtml(lib.id)}">
-                <div><strong>${escapeHtml(lib.name)}</strong> <span style="color:#888;font-size:0.85em;">${escapeHtml(lib.type || 'mixed')}</span></div>
-                <label style="display:flex;align-items:center;gap:0.3em;color:#bbb;"><input type="checkbox" class="jm-lib-enabled" ${enabled ? 'checked' : ''} /> Enabled</label>
-                <label style="display:flex;align-items:center;gap:0.3em;color:#bbb;"><input type="checkbox" class="jm-lib-hide" ${hidden ? 'checked' : ''} /> Hide from home</label>
-                <label style="display:flex;align-items:center;gap:0.3em;color:#bbb;">Merge into:
-                    <select class="jm-lib-merge" style="background:#222;color:#eee;border:1px solid #444;border-radius:0.3em;padding:0.25em 0.4em;">${localOpts}</select>
+            <div class="jm-lib-row" data-jm-peer="${peer.Id}" data-jm-lib="${escapeHtml(lib.id)}">
+                <div class="jm-lib-name">
+                    <strong>${escapeHtml(lib.name)}</strong>
+                    <small>${escapeHtml(lib.type || 'mixed')}</small>
+                </div>
+                <label class="jm-toggle"><input type="checkbox" class="jm-lib-enabled" ${enabled ? 'checked' : ''} /> Enabled</label>
+                <label class="jm-toggle"><input type="checkbox" class="jm-lib-hide" ${hidden ? 'checked' : ''} /> Hide from home</label>
+                <span></span>
+                <label class="jm-toggle" style="gap:0.5em;">
+                    <span style="color:#aaa;font-size:0.88em;">Merge into</span>
+                    <select class="jm-select jm-lib-merge">${localOpts}</select>
                 </label>
-                <button type="button" class="jm-lib-save" style="background:#3b6fa4;color:#fff;border:none;border-radius:0.3em;padding:0.4em 0.8em;cursor:pointer;">Save</button>
+                <button type="button" class="jm-btn primary jm-lib-save"><span class="material-icons">check</span>Save</button>
             </div>
         `;
     }
