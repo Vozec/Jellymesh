@@ -9,11 +9,19 @@
     <div data-role="content">
         <div class="content-primary">
             <form id="FederationConfigForm">
-                <h2>Jellymesh</h2>
-                <p>Configure peer Jellyfin servers to federate libraries with.</p>
+                <h2 data-i18n="title">Jellymesh</h2>
+                <p data-i18n="subtitle">Configure peer Jellyfin servers to federate libraries with.</p>
 
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="SyncIntervalMinutes">Sync interval (minutes)</label>
+                    <label class="inputLabel inputLabelUnfocused" for="DashboardLanguage" data-i18n="lang.label">Dashboard language</label>
+                    <select is="emby-select" id="DashboardLanguage">
+                        <option value="en">English</option>
+                        <option value="fr">Français</option>
+                    </select>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="SyncIntervalMinutes" data-i18n="sync.interval">Sync interval (minutes)</label>
                     <input is="emby-input" type="number" id="SyncIntervalMinutes" min="5" max="1440" />
                 </div>
 
@@ -53,8 +61,18 @@
                 </div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="PublicBaseUrl">Our public base URL (for push invalidation, e.g. https://my-jellyfin.example.com)</label>
-                    <input is="emby-input" type="url" id="PublicBaseUrl" placeholder="https://… (leave blank to disable push)" />
+                    <label class="inputLabel inputLabelUnfocused" for="PublicBaseUrl" data-i18n="public.url">Our public base URL (advertised to peers; may differ from this server's bind URL)</label>
+                    <input is="emby-input" type="url" id="PublicBaseUrl" placeholder="https://my-jellyfin.example.com" />
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:60em;">
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="PublicBaseUrlBasicAuthUser" data-i18n="public.basic.user">Public URL HTTP Basic user (if behind reverse proxy with Basic auth)</label>
+                        <input is="emby-input" type="text" id="PublicBaseUrlBasicAuthUser" placeholder="optional" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="PublicBaseUrlBasicAuthPass" data-i18n="public.basic.pass">Public URL HTTP Basic password</label>
+                        <input is="emby-input" type="password" id="PublicBaseUrlBasicAuthPass" placeholder="optional" />
+                    </div>
                 </div>
 
                 <div class="inputContainer">
@@ -185,9 +203,78 @@
                     <span>Generate share key</span>
                 </button>
 
+                <h3 data-i18n="privacy.title">Privacy: who can contact us</h3>
+                <p data-i18n="privacy.desc">Master switches for unsolicited inbound contact. Turn off to refuse all new requests regardless of any per-key or per-token rule.</p>
+                <div class="checkboxContainer">
+                    <label><input is="emby-checkbox" type="checkbox" id="AcceptInboundAccessRequests" /><span data-i18n="privacy.access">Accept inbound /Federation/AccessRequest (peers asking for access)</span></label>
+                </div>
+                <div class="checkboxContainer">
+                    <label><input is="emby-checkbox" type="checkbox" id="AcceptInboundInvites" /><span data-i18n="privacy.invites">Accept inbound /Federation/InviteOffer (peers pushing pre-minted keys)</span></label>
+                </div>
+                <div class="checkboxContainer">
+                    <label><input is="emby-checkbox" type="checkbox" id="AcceptInboundIntroductions" /><span data-i18n="privacy.intro">Accept inbound /Federation/Introduce + /Introduced (peer-mediated introductions)</span></label>
+                </div>
+
+                <h3 data-i18n="handshake.title">Direct peer handshake (request access + invite)</h3>
+                <p data-i18n="handshake.desc">Bootstrap a peering without going through a third party. The other side's admin approves before any key crosses the wire.</p>
+
+                <h4 data-i18n="handshake.access.gating">Access request gating (inbound, when admin enables them above)</h4>
+                <div class="checkboxContainer">
+                    <label><input is="emby-checkbox" type="checkbox" id="AcceptOpenAccessRequests" /><span data-i18n="handshake.access.open">Open: accept access requests from any origin (rate-limited per IP)</span></label>
+                </div>
+                <div class="inputContainer" style="max-width:30em;">
+                    <label class="inputLabel inputLabelUnfocused" for="AccessRequestPerIpHourLimit" data-i18n="handshake.access.ratelimit">Per-IP rate limit per hour</label>
+                    <input is="emby-input" type="number" id="AccessRequestPerIpHourLimit" min="1" />
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="AccessRequestAllowlist" data-i18n="handshake.access.allowlist">Allowed origins (comma-separated URLs; bypasses rate limit)</label>
+                    <input is="emby-input" type="text" id="AccessRequestAllowlist" placeholder="https://alice.example, https://bob.example" />
+                </div>
+                <h5 style="margin:0.5em 0 0.2em 0;" data-i18n="handshake.access.tokens">Invite tokens (one-time)</h5>
+                <div id="AccessInviteTokensList"></div>
+                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.5em;max-width:60em;margin-top:0.3em;">
+                    <input type="text" id="NewInviteTokenLabel" placeholder="Label (who is this for?)" />
+                    <input type="number" id="NewInviteTokenMaxUses" placeholder="Max uses (optional)" min="1" />
+                    <input type="datetime-local" id="NewInviteTokenExpiry" />
+                </div>
+                <button is="emby-button" type="button" id="MintInviteToken" class="raised" style="margin-top:0.3em;"><span data-i18n="handshake.access.tokens.mint">Mint invite token</span></button>
+
+                <h4 style="margin:1em 0 0.2em 0;" data-i18n="handshake.request.send">Request access from a peer</h4>
+                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.5em;max-width:60em;">
+                    <input type="url" id="ReqAccessTargetUrl" placeholder="https://target.example" />
+                    <input type="text" id="ReqAccessTargetBasicUser" placeholder="Target Basic user (optional)" />
+                    <input type="password" id="ReqAccessTargetBasicPass" placeholder="Target Basic password (optional)" />
+                </div>
+                <input type="text" id="ReqAccessInviteToken" placeholder="Their invite token (if they gave you one)" style="margin-top:0.4em;width:100%;max-width:60em;" />
+                <input type="text" id="ReqAccessMessage" placeholder="Message (optional)" style="margin-top:0.4em;width:100%;max-width:60em;" />
+                <label style="margin-top:0.4em;display:block;"><input type="checkbox" id="ReqAccessMutual" /><span data-i18n="handshake.request.mutual">Request mutual access (they grant + we grant back)</span></label>
+                <button is="emby-button" type="button" id="SendAccessRequest" class="raised" style="margin-top:0.3em;"><span data-i18n="handshake.request.button">Send access request</span></button>
+
+                <h4 style="margin:1em 0 0.2em 0;" data-i18n="handshake.invite.send">Invite a peer (push a pre-minted key)</h4>
+                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.5em;max-width:60em;">
+                    <input type="url" id="InviteTargetUrl" placeholder="https://target.example" />
+                    <input type="text" id="InviteTargetBasicUser" placeholder="Target Basic user (optional)" />
+                    <input type="password" id="InviteTargetBasicPass" placeholder="Target Basic password (optional)" />
+                </div>
+                <input type="text" id="InviteMessage" placeholder="Message (optional)" style="margin-top:0.4em;width:100%;max-width:60em;" />
+                <label style="margin-top:0.4em;display:block;"><input type="checkbox" id="InviteMutual" /><span data-i18n="handshake.invite.mutual">Mutual invite (they accept and grant back)</span></label>
+                <button is="emby-button" type="button" id="SendInvite" class="raised" style="margin-top:0.3em;"><span data-i18n="handshake.invite.button">Send invite</span></button>
+
+                <h4 style="margin:1em 0 0.2em 0;" data-i18n="handshake.inbound">Inbound handshake (waiting for our approval)</h4>
+                <div id="HandshakeInboundList"></div>
+                <h4 style="margin:1em 0 0.2em 0;" data-i18n="handshake.outbound">Outbound handshake</h4>
+                <div id="HandshakeOutboundList"></div>
+
+                <h4 style="margin:1em 0 0.2em 0;" data-i18n="handshake.blocklist">Blocked peers</h4>
+                <div id="HandshakeBlocklist"></div>
+                <div style="display:flex;gap:0.5em;max-width:60em;margin-top:0.3em;">
+                    <input type="url" id="NewBlockedUrl" placeholder="https://blocked.example" style="flex:1;" />
+                    <button is="emby-button" type="button" id="AddToBlocklist" class="raised"><span data-i18n="handshake.blocklist.add">Block this URL</span></button>
+                </div>
+
                 <br /><br />
                 <button is="emby-button" type="submit" class="raised button-submit block">
-                    <span>Save</span>
+                    <span data-i18n="save">Save</span>
                 </button>
             </form>
         </div>
@@ -195,6 +282,83 @@
 
     <script type="text/javascript">
         var FederationPluginId = '9f3c2a8e-6b1d-4f7a-b3c5-1e2d9a8b7c6e';
+
+        var i18n = {
+            en: {
+                'title': 'Jellymesh',
+                'subtitle': 'Configure peer Jellyfin servers to federate libraries with.',
+                'lang.label': 'Dashboard language',
+                'sync.interval': 'Sync interval (minutes)',
+                'public.url': "Our public base URL (advertised to peers; may differ from this server's bind URL)",
+                'public.basic.user': 'Public URL HTTP Basic user (if behind reverse proxy with Basic auth)',
+                'public.basic.pass': 'Public URL HTTP Basic password',
+                'privacy.title': 'Privacy: who can contact us',
+                'privacy.desc': 'Master switches for unsolicited inbound contact. Turn off to refuse all new requests regardless of any per-key or per-token rule.',
+                'privacy.access': 'Accept inbound /Federation/AccessRequest (peers asking for access)',
+                'privacy.invites': 'Accept inbound /Federation/InviteOffer (peers pushing pre-minted keys)',
+                'privacy.intro': 'Accept inbound /Federation/Introduce + /Introduced (peer-mediated introductions)',
+                'handshake.title': 'Direct peer handshake (request access + invite)',
+                'handshake.desc': "Bootstrap a peering without going through a third party. The other side's admin approves before any key crosses the wire.",
+                'handshake.access.gating': 'Access request gating (inbound, when admin enables them above)',
+                'handshake.access.open': 'Open: accept access requests from any origin (rate-limited per IP)',
+                'handshake.access.ratelimit': 'Per-IP rate limit per hour',
+                'handshake.access.allowlist': 'Allowed origins (comma-separated URLs; bypasses rate limit)',
+                'handshake.access.tokens': 'Invite tokens (one-time)',
+                'handshake.access.tokens.mint': 'Mint invite token',
+                'handshake.request.send': 'Request access from a peer',
+                'handshake.request.mutual': 'Request mutual access (they grant + we grant back)',
+                'handshake.request.button': 'Send access request',
+                'handshake.invite.send': 'Invite a peer (push a pre-minted key)',
+                'handshake.invite.mutual': 'Mutual invite (they accept and grant back)',
+                'handshake.invite.button': 'Send invite',
+                'handshake.inbound': 'Inbound handshake (waiting for our approval)',
+                'handshake.outbound': 'Outbound handshake',
+                'handshake.blocklist': 'Blocked peers',
+                'handshake.blocklist.add': 'Block this URL',
+                'save': 'Save'
+            },
+            fr: {
+                'title': 'Jellymesh',
+                'subtitle': 'Configurez des serveurs Jellyfin pairs avec qui fédérer vos bibliothèques.',
+                'lang.label': 'Langue du tableau de bord',
+                'sync.interval': 'Intervalle de sync (minutes)',
+                'public.url': 'Notre URL publique (annoncée aux pairs; peut différer de l\'URL de bind du serveur)',
+                'public.basic.user': 'Utilisateur HTTP Basic de l\'URL publique (si reverse proxy avec Basic auth)',
+                'public.basic.pass': 'Mot de passe HTTP Basic de l\'URL publique',
+                'privacy.title': 'Confidentialité : qui peut nous contacter',
+                'privacy.desc': 'Interrupteurs maîtres pour les contacts entrants non sollicités. Désactiver refuse toute nouvelle demande, peu importe les règles par clé ou par token.',
+                'privacy.access': 'Accepter les /Federation/AccessRequest entrants (pairs demandant l\'accès)',
+                'privacy.invites': 'Accepter les /Federation/InviteOffer entrants (pairs poussant des clés pré-générées)',
+                'privacy.intro': 'Accepter les /Federation/Introduce + /Introduced entrants (introductions médiatisées par un pair)',
+                'handshake.title': 'Handshake direct entre pairs (demande d\'accès + invitation)',
+                'handshake.desc': 'Initier un peering sans passer par un tiers. L\'admin du destinataire valide avant qu\'aucune clé ne soit échangée.',
+                'handshake.access.gating': 'Filtrage des demandes d\'accès (entrant, si activé plus haut)',
+                'handshake.access.open': 'Ouvert : accepter les demandes d\'accès de toute origine (rate-limit par IP)',
+                'handshake.access.ratelimit': 'Limite de débit par IP par heure',
+                'handshake.access.allowlist': 'Origines autorisées (URLs séparées par virgule; bypass du rate limit)',
+                'handshake.access.tokens': 'Tokens d\'invitation (one-time)',
+                'handshake.access.tokens.mint': 'Générer un token d\'invitation',
+                'handshake.request.send': 'Demander l\'accès à un pair',
+                'handshake.request.mutual': 'Demander un accès mutuel (ils accordent + nous accordons en retour)',
+                'handshake.request.button': 'Envoyer la demande',
+                'handshake.invite.send': 'Inviter un pair (pousser une clé pré-générée)',
+                'handshake.invite.mutual': 'Invitation mutuelle (ils acceptent et accordent en retour)',
+                'handshake.invite.button': 'Envoyer l\'invitation',
+                'handshake.inbound': 'Handshake entrant (en attente de notre approbation)',
+                'handshake.outbound': 'Handshake sortant',
+                'handshake.blocklist': 'Pairs bloqués',
+                'handshake.blocklist.add': 'Bloquer cette URL',
+                'save': 'Enregistrer'
+            }
+        };
+
+        function applyI18n(lang) {
+            var dict = i18n[lang] || i18n.en;
+            document.querySelectorAll('[data-i18n]').forEach(function (el) {
+                var key = el.getAttribute('data-i18n');
+                if (dict[key]) el.textContent = dict[key];
+            });
+        }
 
         function renderServers(servers) {
             var html = '';
@@ -570,6 +734,19 @@
                 document.getElementById('IntroductionHopCap').value = config.IntroductionHopCap == null ? '' : config.IntroductionHopCap;
                 document.getElementById('IntroductionRatePerHour').value = config.IntroductionRatePerHour || 5;
                 document.getElementById('IntroductionRatePerDay').value = config.IntroductionRatePerDay || 50;
+                document.getElementById('DashboardLanguage').value = config.DashboardLanguage || 'en';
+                document.getElementById('PublicBaseUrlBasicAuthUser').value = config.PublicBaseUrlBasicAuthUser || '';
+                document.getElementById('PublicBaseUrlBasicAuthPass').value = config.PublicBaseUrlBasicAuthPass || '';
+                document.getElementById('AcceptInboundAccessRequests').checked = config.AcceptInboundAccessRequests !== false;
+                document.getElementById('AcceptInboundInvites').checked = config.AcceptInboundInvites !== false;
+                document.getElementById('AcceptInboundIntroductions').checked = config.AcceptInboundIntroductions !== false;
+                document.getElementById('AcceptOpenAccessRequests').checked = !!config.AcceptOpenAccessRequests;
+                document.getElementById('AccessRequestPerIpHourLimit').value = config.AccessRequestPerIpHourLimit || 5;
+                document.getElementById('AccessRequestAllowlist').value = (config.AccessRequestAllowlist || []).join(', ');
+                renderInviteTokens(config.AccessRequestInviteTokens || []);
+                renderHandshakeLists();
+                renderBlocklist();
+                applyI18n(config.DashboardLanguage || 'en');
                 renderServers(config.RemoteServers);
                 renderShares();
                 renderPublicShares();
@@ -664,6 +841,192 @@
             return out;
         }
 
+        function renderInviteTokens(tokens) {
+            var html = '';
+            (tokens || []).forEach(function (t) {
+                html += '<div style="padding:0.5em;margin:0.2em 0;border:1px solid #444;font-family:monospace;">'
+                    + esc(t.Label || '(no label)')
+                    + ' &middot; <code>' + esc(t.Token) + '</code>'
+                    + ' &middot; uses ' + (t.UsedCount || 0) + (t.MaxUses ? '/' + t.MaxUses : '')
+                    + (t.ExpiresUtc ? ' &middot; expires ' + esc(t.ExpiresUtc) : '')
+                    + ' <button type="button" class="copy-invite-token" data-token="' + esc(t.Token) + '">copy</button>'
+                    + ' <button type="button" class="delete-invite-token" data-token="' + esc(t.Token) + '" style="color:#f88;">delete</button>'
+                    + '</div>';
+            });
+            document.getElementById('AccessInviteTokensList').innerHTML = html || '<em>No invite tokens.</em>';
+        }
+
+        document.getElementById('MintInviteToken').addEventListener('click', function () {
+            var bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            var token = Array.from(bytes).map(function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+            var label = document.getElementById('NewInviteTokenLabel').value.trim() || 'unlabelled';
+            var maxUses = parseInt(document.getElementById('NewInviteTokenMaxUses').value, 10);
+            var expiryRaw = document.getElementById('NewInviteTokenExpiry').value;
+            var expiresUtc = expiryRaw ? new Date(expiryRaw).toISOString() : null;
+            ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
+                config.AccessRequestInviteTokens = (config.AccessRequestInviteTokens || []).concat([{
+                    Token: token, Label: label,
+                    MaxUses: isNaN(maxUses) ? null : maxUses,
+                    ExpiresUtc: expiresUtc, UsedCount: 0, CreatedUtc: new Date().toISOString()
+                }]);
+                ApiClient.updatePluginConfiguration(FederationPluginId, config).then(function () {
+                    renderInviteTokens(config.AccessRequestInviteTokens);
+                    document.getElementById('NewInviteTokenLabel').value = '';
+                    document.getElementById('NewInviteTokenMaxUses').value = '';
+                    document.getElementById('NewInviteTokenExpiry').value = '';
+                    alert('Invite token:\n\n' + token + '\n\nHand it to the peer.');
+                });
+            });
+        });
+
+        document.getElementById('AccessInviteTokensList').addEventListener('click', function (e) {
+            if (e.target.classList.contains('copy-invite-token')) {
+                navigator.clipboard.writeText(e.target.dataset.token);
+                alert('Copied.');
+            }
+            if (e.target.classList.contains('delete-invite-token')) {
+                if (!confirm('Delete this invite token?')) return;
+                var tok = e.target.dataset.token;
+                ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
+                    config.AccessRequestInviteTokens = (config.AccessRequestInviteTokens || []).filter(function (t) { return t.Token !== tok; });
+                    ApiClient.updatePluginConfiguration(FederationPluginId, config).then(function () { renderInviteTokens(config.AccessRequestInviteTokens); });
+                });
+            }
+        });
+
+        function renderHandshakeLists() {
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/in'), type: 'GET', dataType: 'json' }).then(function (rows) {
+                document.getElementById('HandshakeInboundList').innerHTML = fmtHandshakeRows(rows, true);
+            }).catch(function () {
+                document.getElementById('HandshakeInboundList').innerHTML = '<em>No inbound.</em>';
+            });
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/out'), type: 'GET', dataType: 'json' }).then(function (rows) {
+                document.getElementById('HandshakeOutboundList').innerHTML = fmtHandshakeRows(rows, false);
+            }).catch(function () {
+                document.getElementById('HandshakeOutboundList').innerHTML = '<em>No outbound.</em>';
+            });
+        }
+
+        function fmtHandshakeRows(rows, inbound) {
+            if (!rows || rows.length === 0) return '<em>(none)</em>';
+            return rows.map(function (r) {
+                var actions = '';
+                if (inbound && r.Status === 'pending') {
+                    if (r.Mode === 'request') {
+                        actions = ' <button type="button" class="handshake-approve" data-id="' + r.Id + '">Approve</button>'
+                            + ' <button type="button" class="handshake-deny" data-id="' + r.Id + '" style="color:#f88;">Deny</button>'
+                            + ' <button type="button" class="handshake-block" data-id="' + r.Id + '" style="color:#f00;">Block</button>';
+                    } else if (r.Mode === 'invite') {
+                        actions = ' <button type="button" class="handshake-accept" data-id="' + r.Id + '">Accept</button>'
+                            + ' <button type="button" class="handshake-decline" data-id="' + r.Id + '" style="color:#f88;">Decline</button>'
+                            + ' <button type="button" class="handshake-block" data-id="' + r.Id + '" style="color:#f00;">Block</button>';
+                    }
+                }
+                return '<div style="padding:0.5em;margin:0.2em 0;border:1px solid #444;font-family:monospace;">'
+                    + '<strong>' + esc(r.Mode) + '</strong> ' + esc(r.TargetUrl)
+                    + (r.Mutual ? ' [mutual]' : '')
+                    + ' &middot; ' + esc(r.Status)
+                    + (r.Message ? ' &middot; ' + esc(r.Message) : '')
+                    + actions
+                    + '</div>';
+            }).join('');
+        }
+
+        function renderBlocklist() {
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Blocklist'), type: 'GET', dataType: 'json' }).then(function (urls) {
+                var html = (urls || []).map(function (u) {
+                    return '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #444;font-family:monospace;">'
+                        + esc(u) + ' <button type="button" class="unblock" data-url="' + esc(u) + '" style="float:right;">Unblock</button></div>';
+                }).join('');
+                document.getElementById('HandshakeBlocklist').innerHTML = html || '<em>(nobody blocked.)</em>';
+            }).catch(function () { document.getElementById('HandshakeBlocklist').innerHTML = '<em>(blocklist API unreachable.)</em>'; });
+        }
+
+        document.getElementById('AddToBlocklist').addEventListener('click', function () {
+            var url = document.getElementById('NewBlockedUrl').value.trim();
+            if (!url) { alert('URL required'); return; }
+            ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
+                config.BlockedPeerUrls = (config.BlockedPeerUrls || []).concat([url]);
+                ApiClient.updatePluginConfiguration(FederationPluginId, config).then(function () {
+                    document.getElementById('NewBlockedUrl').value = '';
+                    renderBlocklist();
+                });
+            });
+        });
+
+        document.getElementById('HandshakeBlocklist').addEventListener('click', function (e) {
+            if (e.target.classList.contains('unblock')) {
+                var url = e.target.dataset.url;
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/Blocklist?url=' + encodeURIComponent(url)), type: 'DELETE' }).then(renderBlocklist);
+            }
+        });
+
+        document.querySelector('#FederationConfigPage').addEventListener('click', function (e) {
+            if (e.target.classList.contains('handshake-approve')) {
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Approve'), type: 'POST' })
+                    .then(function () { renderHandshakeLists(); alert('Approved + granted callback sent.'); })
+                    .catch(function (err) { alert('Approve failed: HTTP ' + (err && err.status)); });
+            }
+            if (e.target.classList.contains('handshake-deny')) {
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Deny'), type: 'POST' })
+                    .then(renderHandshakeLists);
+            }
+            if (e.target.classList.contains('handshake-accept')) {
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Accept'), type: 'POST' })
+                    .then(function () { renderHandshakeLists(); alert('Accepted + peer added.'); })
+                    .catch(function (err) { alert('Accept failed: HTTP ' + (err && err.status)); });
+            }
+            if (e.target.classList.contains('handshake-decline')) {
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Decline'), type: 'POST' })
+                    .then(renderHandshakeLists);
+            }
+            if (e.target.classList.contains('handshake-block')) {
+                if (!confirm('Block this peer? They will not be able to contact us anymore, even via intermediaries.')) return;
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Block'), type: 'POST' })
+                    .then(function () { renderHandshakeLists(); renderBlocklist(); });
+            }
+        });
+
+        document.getElementById('SendAccessRequest').addEventListener('click', function () {
+            var url = document.getElementById('ReqAccessTargetUrl').value.trim();
+            if (!url) { alert('Target URL required'); return; }
+            ApiClient.fetch({
+                url: ApiClient.getUrl('Federation/RequestAccess'),
+                type: 'POST', contentType: 'application/json',
+                data: JSON.stringify({
+                    TargetUrl: url,
+                    Mutual: document.getElementById('ReqAccessMutual').checked,
+                    Message: document.getElementById('ReqAccessMessage').value.trim() || null,
+                    InviteToken: document.getElementById('ReqAccessInviteToken').value.trim() || null,
+                    TargetBasicAuthUser: document.getElementById('ReqAccessTargetBasicUser').value.trim() || null,
+                    TargetBasicAuthPass: document.getElementById('ReqAccessTargetBasicPass').value.trim() || null
+                })
+            }).then(function () { renderHandshakeLists(); alert('Access request sent. Wait for the peer admin to approve.'); })
+              .catch(function (err) { alert('Send failed: HTTP ' + (err && err.status)); });
+        });
+
+        document.getElementById('SendInvite').addEventListener('click', function () {
+            var url = document.getElementById('InviteTargetUrl').value.trim();
+            if (!url) { alert('Target URL required'); return; }
+            ApiClient.fetch({
+                url: ApiClient.getUrl('Federation/Invite'),
+                type: 'POST', contentType: 'application/json',
+                data: JSON.stringify({
+                    TargetUrl: url,
+                    Mutual: document.getElementById('InviteMutual').checked,
+                    Message: document.getElementById('InviteMessage').value.trim() || null,
+                    TargetBasicAuthUser: document.getElementById('InviteTargetBasicUser').value.trim() || null,
+                    TargetBasicAuthPass: document.getElementById('InviteTargetBasicPass').value.trim() || null
+                })
+            }).then(function () { renderHandshakeLists(); alert('Invite sent. The peer admin will accept on their dashboard.'); })
+              .catch(function (err) { alert('Invite failed: HTTP ' + (err && err.status)); });
+        });
+
+        document.getElementById('DashboardLanguage').addEventListener('change', function () {
+            applyI18n(this.value);
+        });
+
         document.getElementById('FederationConfigForm').addEventListener('submit', function (e) {
             e.preventDefault();
             ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
@@ -674,6 +1037,15 @@
                 config.MatchPriority = document.getElementById('MatchPriority').value;
                 config.OutboundBitrateCapBps = parseInt(document.getElementById('OutboundBitrateCapBps').value);
                 config.PublicBaseUrl = document.getElementById('PublicBaseUrl').value.trim();
+                config.PublicBaseUrlBasicAuthUser = document.getElementById('PublicBaseUrlBasicAuthUser').value;
+                config.PublicBaseUrlBasicAuthPass = document.getElementById('PublicBaseUrlBasicAuthPass').value;
+                config.DashboardLanguage = document.getElementById('DashboardLanguage').value;
+                config.AcceptInboundAccessRequests = document.getElementById('AcceptInboundAccessRequests').checked;
+                config.AcceptInboundInvites = document.getElementById('AcceptInboundInvites').checked;
+                config.AcceptInboundIntroductions = document.getElementById('AcceptInboundIntroductions').checked;
+                config.AcceptOpenAccessRequests = document.getElementById('AcceptOpenAccessRequests').checked;
+                config.AccessRequestPerIpHourLimit = parseInt(document.getElementById('AccessRequestPerIpHourLimit').value, 10) || 5;
+                config.AccessRequestAllowlist = document.getElementById('AccessRequestAllowlist').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
                 var debounce = parseInt(document.getElementById('PushDebounceSeconds').value, 10);
                 config.PushDebounceSeconds = isNaN(debounce) ? 30 : debounce;
                 config.Reciprocity = document.getElementById('Reciprocity').value;

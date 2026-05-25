@@ -28,8 +28,17 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Our publicly reachable base URL (https://my-jellyfin.example.com). Sent to peers
     /// on push-invalidation calls so they can identify us in their RemoteServers list.
     /// If empty, push-invalidation is disabled (peers fall back to gossip-pull only).
+    /// Typically differs from the server's bind URL (LAN IP / container hostname) so this
+    /// is configured explicitly rather than auto-detected from the HTTP request.
     /// </summary>
     public string PublicBaseUrl { get; set; } = string.Empty;
+
+    /// <summary>HTTP Basic credentials a peer must include when calling OUR PublicBaseUrl
+    /// (when our Jellyfin sits behind a reverse proxy that requires Basic auth). Advertised
+    /// in handshake payloads (access request / invite) so peers can add us as a RemoteServer
+    /// without out-of-band coordination. Leave empty if our public URL is not Basic-gated.</summary>
+    public string PublicBaseUrlBasicAuthUser { get; set; } = string.Empty;
+    public string PublicBaseUrlBasicAuthPass { get; set; } = string.Empty;
 
     /// <summary>
     /// Debounce window for push-invalidation. We collect library mutations for N seconds
@@ -51,6 +60,58 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Per-introducer-key rate limits. Defaults: 5/h, 50/d.</summary>
     public int IntroductionRatePerHour { get; set; } = 5;
     public int IntroductionRatePerDay { get; set; } = 50;
+
+    // === Direct peer handshake (request access + invite, v0.11) ===
+
+    /// <summary>Accept anonymous /Federation/AccessRequest calls from any origin (still
+    /// admin-approval-gated before any key is minted). Combine with InviteTokens / Allowlist
+    /// for stricter gating.</summary>
+    public bool AcceptOpenAccessRequests { get; set; } = false;
+
+    /// <summary>Canonical URLs allowed to submit access requests. Empty + AcceptOpenAccessRequests=false + no valid InviteToken = all requests rejected.</summary>
+    public List<string> AccessRequestAllowlist { get; set; } = new();
+
+    /// <summary>One-time invite tokens. A request carrying a matching token is accepted (and the token is consumed).</summary>
+    public List<AccessInviteToken> AccessRequestInviteTokens { get; set; } = new();
+
+    /// <summary>Per-IP rate limit on the anonymous AccessRequest endpoint, per hour.</summary>
+    public int AccessRequestPerIpHourLimit { get; set; } = 5;
+
+    /// <summary>UI language for the plugin dashboard. "en" (default) or "fr".</summary>
+    public string DashboardLanguage { get; set; } = "en";
+
+    // === Master switches: unsolicited inbound contact ===
+    // Each of these endpoints accepts unsolicited calls from peers. Disabling the switch
+    // makes the endpoint refuse all traffic regardless of any per-key or per-token rule
+    // ("we are not currently accepting new contacts"). Default: on (backwards-compatible).
+
+    /// <summary>Accept inbound /Federation/AccessRequest at all. Off = endpoint returns 403
+    /// regardless of AcceptOpenAccessRequests, allowlist, or invite tokens.</summary>
+    public bool AcceptInboundAccessRequests { get; set; } = true;
+
+    /// <summary>Accept inbound /Federation/InviteOffer at all. Off = no peer can push an
+    /// invite key to us.</summary>
+    public bool AcceptInboundInvites { get; set; } = true;
+
+    /// <summary>Accept inbound /Federation/Introduce and /Federation/Introduced at all.
+    /// Off = no peer can request or forward introductions to us (existing per-key MintMode
+    /// rules still apply when on).</summary>
+    public bool AcceptInboundIntroductions { get; set; } = true;
+
+    /// <summary>Canonical URLs blocked from any inbound contact. Applied to AccessRequest
+    /// (direct), InviteOffer (direct), and Introduced (forwarded via intermediary). A blocked
+    /// URL cannot reach us even via a trusted introducer.</summary>
+    public List<string> BlockedPeerUrls { get; set; } = new();
+}
+
+public class AccessInviteToken
+{
+    public string Token { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public DateTime? ExpiresUtc { get; set; }
+    public int? MaxUses { get; set; }
+    public int UsedCount { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
 
 public enum ReciprocityMode { Off, AutoRequest, AutoAcceptReciprocal }

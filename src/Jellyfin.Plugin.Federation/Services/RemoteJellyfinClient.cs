@@ -426,4 +426,163 @@ public class RemoteJellyfinClient
         var token = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{server.BasicAuthUser}:{server.BasicAuthPass}"));
         http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", token);
     }
+
+    private static void AddBasicAuth(HttpClient http, string? user, string? pass)
+    {
+        if (string.IsNullOrEmpty(user) && string.IsNullOrEmpty(pass)) return;
+        var token = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{user}:{pass}"));
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", token);
+    }
+
+    // === Direct handshake (request access + invite) ===
+
+    public async Task<HandshakeCallResult> CallAccessRequestAsync(string targetUrl,
+        string fromUrl, string? fromName, string? message, string nonce, bool mutual,
+        string? inviteToken, string? targetBasicAuthUser, string? targetBasicAuthPass,
+        string? ourBasicAuthUser, string? ourBasicAuthPass,
+        CancellationToken ct)
+    {
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            AddBasicAuth(http, targetBasicAuthUser, targetBasicAuthPass);
+            http.Timeout = TimeSpan.FromSeconds(15);
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{targetUrl.TrimEnd('/')}/Federation/AccessRequest")
+            {
+                Content = JsonContent.Create(new
+                {
+                    FromUrl = fromUrl,
+                    FromName = fromName,
+                    Message = message,
+                    Nonce = nonce,
+                    Mutual = mutual,
+                    InviteToken = inviteToken,
+                    BasicAuthUser = ourBasicAuthUser,
+                    BasicAuthPass = ourBasicAuthPass
+                })
+            };
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            string? body = null;
+            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            return new HandshakeCallResult { HttpStatus = (int)resp.StatusCode, Body = body };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AccessRequest to {Target} threw", targetUrl);
+            return new HandshakeCallResult { HttpStatus = 0 };
+        }
+    }
+
+    public async Task<HandshakeCallResult> CallAccessGrantedAsync(string targetUrl,
+        string ourBaseUrl, string apiKey, string nonce, bool mutual,
+        string? targetBasicAuthUser, string? targetBasicAuthPass,
+        string? ourBasicAuthUser, string? ourBasicAuthPass,
+        CancellationToken ct)
+    {
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            AddBasicAuth(http, targetBasicAuthUser, targetBasicAuthPass);
+            http.Timeout = TimeSpan.FromSeconds(15);
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{targetUrl.TrimEnd('/')}/Federation/AccessGranted")
+            {
+                Content = JsonContent.Create(new
+                {
+                    OurBaseUrl = ourBaseUrl,
+                    ApiKey = apiKey,
+                    Nonce = nonce,
+                    Mutual = mutual,
+                    BasicAuthUser = ourBasicAuthUser,
+                    BasicAuthPass = ourBasicAuthPass
+                })
+            };
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            string? body = null;
+            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            return new HandshakeCallResult { HttpStatus = (int)resp.StatusCode, Body = body };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AccessGranted to {Target} threw", targetUrl);
+            return new HandshakeCallResult { HttpStatus = 0 };
+        }
+    }
+
+    public async Task<HandshakeCallResult> CallInviteOfferAsync(string targetUrl,
+        string ourBaseUrl, string apiKey, string nonce, bool mutual, string? message,
+        string? targetBasicAuthUser, string? targetBasicAuthPass,
+        string? ourBasicAuthUser, string? ourBasicAuthPass,
+        CancellationToken ct)
+    {
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            AddBasicAuth(http, targetBasicAuthUser, targetBasicAuthPass);
+            http.Timeout = TimeSpan.FromSeconds(15);
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{targetUrl.TrimEnd('/')}/Federation/InviteOffer")
+            {
+                Content = JsonContent.Create(new
+                {
+                    OurBaseUrl = ourBaseUrl,
+                    ApiKey = apiKey,
+                    Nonce = nonce,
+                    Mutual = mutual,
+                    Message = message,
+                    BasicAuthUser = ourBasicAuthUser,
+                    BasicAuthPass = ourBasicAuthPass
+                })
+            };
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            string? body = null;
+            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            return new HandshakeCallResult { HttpStatus = (int)resp.StatusCode, Body = body };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "InviteOffer to {Target} threw", targetUrl);
+            return new HandshakeCallResult { HttpStatus = 0 };
+        }
+    }
+
+    public async Task<HandshakeCallResult> CallInviteAcceptedAsync(string targetUrl,
+        string nonce, string? apiKey, bool mutual,
+        string? targetBasicAuthUser, string? targetBasicAuthPass,
+        string? ourBaseUrl, string? ourBasicAuthUser, string? ourBasicAuthPass,
+        CancellationToken ct)
+    {
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            AddBasicAuth(http, targetBasicAuthUser, targetBasicAuthPass);
+            http.Timeout = TimeSpan.FromSeconds(15);
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{targetUrl.TrimEnd('/')}/Federation/InviteAccepted")
+            {
+                Content = JsonContent.Create(new
+                {
+                    Nonce = nonce,
+                    ApiKey = apiKey,
+                    Mutual = mutual,
+                    OurBaseUrl = ourBaseUrl,
+                    BasicAuthUser = ourBasicAuthUser,
+                    BasicAuthPass = ourBasicAuthPass
+                })
+            };
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            string? body = null;
+            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            return new HandshakeCallResult { HttpStatus = (int)resp.StatusCode, Body = body };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "InviteAccepted to {Target} threw", targetUrl);
+            return new HandshakeCallResult { HttpStatus = 0 };
+        }
+    }
+}
+
+public class HandshakeCallResult
+{
+    public int HttpStatus { get; set; }
+    public string? Body { get; set; }
+    public bool Ok => HttpStatus >= 200 && HttpStatus < 300;
 }

@@ -239,6 +239,13 @@ public class FederationController : ControllerBase
         var config = Plugin.Instance?.Configuration;
         if (config is null) return StatusCode(500);
 
+        if (!config.AcceptInboundIntroductions)
+            return StatusCode(403, new { reason = "inbound introductions disabled by admin" });
+
+        var forCanonCheck = Services.PeerUrl.Canonicalize(payload.ForUrl);
+        if (forCanonCheck is not null && config.BlockedPeerUrls.Any(u => Services.PeerUrl.SameHost(u, forCanonCheck)))
+            return StatusCode(403, new { reason = "target peer is blocked" });
+
         var result = intro.TryMint(config, key, payload.ForUrl.Trim(), Math.Max(1, payload.HopCount), payload.Note);
         return result.Status switch
         {
@@ -267,10 +274,15 @@ public class FederationController : ControllerBase
         var config = Plugin.Instance?.Configuration;
         if (config is null) return StatusCode(500);
 
+        if (!config.AcceptInboundIntroductions)
+            return StatusCode(403, new { reason = "inbound introductions disabled by admin" });
+
         var newCanon = Services.PeerUrl.Canonicalize(payload.NewPeerUrl);
         if (newCanon is null) return BadRequest("NewPeerUrl must include http:// or https:// scheme");
         if (string.Equals(newCanon, Services.PeerUrl.Canonicalize(config.PublicBaseUrl), StringComparison.Ordinal))
             return BadRequest("would introduce ourselves");
+        if (config.BlockedPeerUrls.Any(u => Services.PeerUrl.SameHost(u, newCanon)))
+            return StatusCode(403, new { reason = "peer is blocked (introductions for this URL refused regardless of introducer)" });
         if (config.RemoteServers.Any(s => Services.PeerUrl.SameHost(s.BaseUrl, newCanon)))
             return Conflict("already a peer");
 
@@ -1097,6 +1109,597 @@ h1{{font-weight:400;font-size:1.2rem}}
         }
         return results;
     }
+
+    // === Direct peer handshake (request access + invite) ===
+
+    [AllowAnonymous]
+    [HttpPost("AccessRequest")]
+    public IActionResult ReceiveAccessRequest([FromBody] AccessRequestPayload payload,
+        [FromServices] Services.PeerAccessStore store)
+    {
+        if (payload is null || string.IsNullOrWhiteSpace(payload.FromUrl) || string.IsNullOrWhiteSpace(payload.Nonce))
+            return BadRequest("FromUrl and Nonce required");
+        if (payload.FromUrl.Length > 512 || payload.Nonce.Length > 128) return BadRequest("field too long");
+
+        var fromCanon = Services.PeerUrl.Canonicalize(payload.FromUrl);
+        if (fromCanon is null) return BadRequest("FromUrl must include http:// or https://");
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        if (!config.AcceptInboundAccessRequests)
+            return StatusCode(403, new { reason = "inbound access requests disabled by admin" });
+
+        if (config.BlockedPeerUrls.Any(u => Services.PeerUrl.SameHost(u, fromCanon)))
+            return StatusCode(403, new { reason = "peer is blocked" });
+
+        // Anti-spam: at most one pending inbound row per (mode, target). If they already have
+        // one pending, refuse the duplicate instead of growing the queue.
+        var existing = store.List("in", "pending").FirstOrDefault(r => r.Mode == "request" && Services.PeerUrl.SameHost(r.TargetUrl, fromCanon));
+        if (existing is not null)
+            return Conflict(new { reason = "you already have a pending request with us; wait for admin to respond before sending another", existingId = existing.Id });
+
+        var ourCanon = Services.PeerUrl.Canonicalize(config.PublicBaseUrl);
+        if (ourCanon is not null && string.Equals(ourCanon, fromCanon, StringComparison.Ordinal))
+            return BadRequest("cannot request access from self");
+
+        // Auth gates: token > allowlist > open. Reject if none allow.
+        string? authMode = null;
+        if (!string.IsNullOrEmpty(payload.InviteToken))
+        {
+            var token = config.AccessRequestInviteTokens.FirstOrDefault(t => t.Token == payload.InviteToken);
+            if (token is null) return Unauthorized(new { reason = "unknown invite token" });
+            if (token.ExpiresUtc.HasValue && token.ExpiresUtc < DateTime.UtcNow) return Unauthorized(new { reason = "token expired" });
+            if (token.MaxUses.HasValue && token.UsedCount >= token.MaxUses.Value) return Unauthorized(new { reason = "token exhausted" });
+            authMode = "invite-token";
+            lock (Plugin.ConfigWriteLock) { token.UsedCount++; Plugin.Instance?.SaveConfiguration(); }
+        }
+        else if (config.AccessRequestAllowlist.Any(u => Services.PeerUrl.SameHost(u, fromCanon)))
+        {
+            authMode = "allowlist";
+        }
+        else if (config.AcceptOpenAccessRequests)
+        {
+            authMode = "open";
+        }
+        else
+        {
+            return Unauthorized(new { reason = "no auth mode matched (open disabled, not in allowlist, no valid invite token)" });
+        }
+
+        // Per-IP rate limit. Skipped when allowlist/token authenticated (admin already vetted).
+        if (authMode == "open")
+        {
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var hits = store.HitRateBucket(ip);
+            if (hits > config.AccessRequestPerIpHourLimit)
+                return StatusCode(429, new { reason = $"rate limit {config.AccessRequestPerIpHourLimit}/hour hit" });
+        }
+
+        var id = store.Insert(new Services.PeerAccessRow
+        {
+            Direction = "in",
+            Mode = "request",
+            TargetUrl = fromCanon,
+            TargetName = payload.FromName,
+            Nonce = payload.Nonce,
+            Status = "pending",
+            Mutual = payload.Mutual,
+            TheirApiKey = null,
+            Message = payload.Message,
+            ClientIp = HttpContext.Connection.RemoteIpAddress?.ToString()
+        });
+        // Stash the requester's basic auth into Message field with a tag so admin can see.
+        // Could also break out into dedicated columns but Message handles it for v1.
+        _logger.LogInformation("AccessRequest from {From} (auth={Auth}, mutual={Mutual}) -> pending #{Id}", fromCanon, authMode, payload.Mutual, id);
+        return Accepted(new { id, status = "pending-approval" });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("RequestAccess")]
+    public async Task<IActionResult> RequestAccess([FromBody] RequestAccessPayload payload,
+        [FromServices] Services.PeerAccessStore store,
+        [FromServices] Services.RemoteJellyfinClient client,
+        CancellationToken ct)
+    {
+        if (payload is null || string.IsNullOrWhiteSpace(payload.TargetUrl)) return BadRequest("TargetUrl required");
+        var targetCanon = Services.PeerUrl.Canonicalize(payload.TargetUrl);
+        if (targetCanon is null) return BadRequest("TargetUrl must include http:// or https://");
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        if (string.IsNullOrEmpty(config.PublicBaseUrl)) return BadRequest("PublicBaseUrl must be set so the peer can call us back with the granted key");
+        if (config.RemoteServers.Any(s => Services.PeerUrl.SameHost(s.BaseUrl, targetCanon))) return Conflict("already a peer");
+
+        var nonce = Services.PeerAccessStore.GenerateNonce();
+        var rowId = store.Insert(new Services.PeerAccessRow
+        {
+            Direction = "out",
+            Mode = "request",
+            TargetUrl = targetCanon,
+            Nonce = nonce,
+            Status = "pending",
+            Mutual = payload.Mutual,
+            Message = payload.Message
+        });
+
+        var result = await client.CallAccessRequestAsync(targetCanon,
+            fromUrl: config.PublicBaseUrl,
+            fromName: payload.OurName,
+            message: payload.Message,
+            nonce: nonce,
+            mutual: payload.Mutual,
+            inviteToken: payload.InviteToken,
+            targetBasicAuthUser: payload.TargetBasicAuthUser,
+            targetBasicAuthPass: payload.TargetBasicAuthPass,
+            ourBasicAuthUser: config.PublicBaseUrlBasicAuthUser,
+            ourBasicAuthPass: config.PublicBaseUrlBasicAuthPass,
+            ct: ct).ConfigureAwait(false);
+
+        if (!result.Ok)
+        {
+            store.UpdateStatus(rowId, "failed");
+            return StatusCode(502, new { reason = $"peer responded {result.HttpStatus}", body = result.Body });
+        }
+        return Ok(new { id = rowId, nonce, status = "sent" });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("AccessRequests/{direction}")]
+    public IActionResult ListAccessRequests(string direction, [FromQuery] string? status,
+        [FromServices] Services.PeerAccessStore store)
+    {
+        if (direction != "in" && direction != "out") return BadRequest("direction must be 'in' or 'out'");
+        return Ok(store.List(direction, status));
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("AccessRequests/{id}/Approve")]
+    public async Task<IActionResult> ApproveAccessRequest(long id,
+        [FromServices] Services.PeerAccessStore store,
+        [FromServices] Services.RemoteJellyfinClient client,
+        CancellationToken ct)
+    {
+        var row = store.Get(id);
+        if (row is null) return NotFound();
+        if (row.Direction != "in" || row.Status != "pending") return BadRequest("only pending inbound requests can be approved");
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        if (string.IsNullOrEmpty(config.PublicBaseUrl)) return BadRequest("PublicBaseUrl must be set so the peer can call us back");
+
+        // Mint our key for the requester.
+        var apiKey = GenerateApiKey();
+        var keyId = Guid.NewGuid();
+        lock (Plugin.ConfigWriteLock)
+        {
+            config.Shares.Add(new Configuration.ShareKey
+            {
+                Id = keyId,
+                ApiKey = apiKey,
+                Label = $"Direct access for {row.TargetUrl}",
+                BoundPeerUrl = row.TargetUrl,
+                Enabled = true
+            });
+            Plugin.Instance?.SaveConfiguration();
+        }
+        store.UpdateStatus(id, "approved", ourKeyId: keyId.ToString());
+
+        var result = await client.CallAccessGrantedAsync(row.TargetUrl,
+            ourBaseUrl: config.PublicBaseUrl,
+            apiKey: apiKey,
+            nonce: row.Nonce,
+            mutual: row.Mutual,
+            targetBasicAuthUser: null, targetBasicAuthPass: null,
+            ourBasicAuthUser: config.PublicBaseUrlBasicAuthUser,
+            ourBasicAuthPass: config.PublicBaseUrlBasicAuthPass,
+            ct: ct).ConfigureAwait(false);
+
+        if (!result.Ok)
+        {
+            _logger.LogWarning("AccessGranted callback to {Peer} returned {Status}: {Body}", row.TargetUrl, result.HttpStatus, result.Body);
+            return StatusCode(502, new { reason = $"granted key but callback to peer failed: {result.HttpStatus}", body = result.Body, keyId, apiKey });
+        }
+
+        // If !Mutual, we don't add the peer to our RemoteServers (we just authorized them to call us).
+        // If Mutual, we wait for their /AccessGranted call back (with their own key) to flip status to 'completed'.
+        return Ok(new { id, keyId, mutual = row.Mutual, status = row.Mutual ? "approved-awaiting-reciprocal" : "approved" });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("AccessRequests/{id}/Deny")]
+    public IActionResult DenyAccessRequest(long id, [FromServices] Services.PeerAccessStore store)
+    {
+        var row = store.Get(id);
+        if (row is null) return NotFound();
+        if (row.Status != "pending") return BadRequest("not pending");
+        store.UpdateStatus(id, "denied", completedNow: true);
+        return NoContent();
+    }
+
+    [AllowAnonymous]
+    [HttpPost("AccessGranted")]
+    public IActionResult ReceiveAccessGranted([FromBody] AccessGrantedPayload payload,
+        [FromServices] Services.PeerAccessStore store,
+        [FromServices] Services.RemoteJellyfinClient client,
+        CancellationToken ct)
+    {
+        if (payload is null || string.IsNullOrWhiteSpace(payload.Nonce) || string.IsNullOrWhiteSpace(payload.ApiKey) || string.IsNullOrWhiteSpace(payload.OurBaseUrl))
+            return BadRequest("Nonce, ApiKey, OurBaseUrl required");
+
+        var row = store.GetByNonce(payload.Nonce);
+        if (row is null) return NotFound("unknown nonce");
+
+        var fromCanon = Services.PeerUrl.Canonicalize(payload.OurBaseUrl);
+        if (fromCanon is null) return BadRequest("OurBaseUrl invalid");
+        if (!Services.PeerUrl.SameHost(row.TargetUrl, fromCanon))
+            return BadRequest($"OurBaseUrl {fromCanon} does not match the row's peer ({row.TargetUrl})");
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        // Two cases:
+        //   out-row: we sent the original request, peer is granting us a key. Add them as peer.
+        //   in-row : we already approved their request; this POST is the peer completing the
+        //            mutual handshake by sending us THEIR key. Add them too.
+        // The same nonce is shared by both sides intentionally so a single channel covers both
+        // directions of mutual; the row's direction tells us which way this POST resolves.
+
+        if (config.RemoteServers.Any(s => Services.PeerUrl.SameHost(s.BaseUrl, fromCanon)))
+        {
+            store.UpdateStatus(row.Id, "completed", completedNow: true);
+            return Conflict(new { reason = "already a peer; nothing added" });
+        }
+
+        Guid peerGuid;
+        lock (Plugin.ConfigWriteLock)
+        {
+            peerGuid = Guid.NewGuid();
+            config.RemoteServers.Add(new Configuration.RemoteServer
+            {
+                Id = peerGuid,
+                Name = fromCanon,
+                BaseUrl = fromCanon,
+                FederationShareKey = payload.ApiKey,
+                BasicAuthUser = payload.BasicAuthUser ?? string.Empty,
+                BasicAuthPass = payload.BasicAuthPass ?? string.Empty,
+                Enabled = true
+            });
+            Plugin.Instance?.SaveConfiguration();
+        }
+        store.UpdateStatus(row.Id, "completed", theirApiKey: payload.ApiKey, completedNow: true);
+
+        // Mutual + we initiated (out-row): we ALSO mint a key for them and POST back. Skipped
+        // when row.Direction=='in' because we already minted on Approve, AND when row.OurKeyId
+        // is set (we already sent the reciprocal earlier).
+        if (row.Direction == "out" && payload.Mutual && row.Mutual && string.IsNullOrEmpty(row.OurKeyId))
+        {
+            var reciprocalKey = GenerateApiKey();
+            var reciprocalKeyId = Guid.NewGuid();
+            lock (Plugin.ConfigWriteLock)
+            {
+                config.Shares.Add(new Configuration.ShareKey
+                {
+                    Id = reciprocalKeyId,
+                    ApiKey = reciprocalKey,
+                    Label = $"Direct access for {fromCanon}",
+                    BoundPeerUrl = fromCanon,
+                    Enabled = true
+                });
+                Plugin.Instance?.SaveConfiguration();
+            }
+            store.UpdateStatus(row.Id, "completed", ourKeyId: reciprocalKeyId.ToString());
+
+            _ = Task.Run(async () =>
+            {
+                await client.CallAccessGrantedAsync(fromCanon,
+                    ourBaseUrl: config.PublicBaseUrl,
+                    apiKey: reciprocalKey,
+                    nonce: payload.Nonce,
+                    mutual: false,
+                    targetBasicAuthUser: payload.BasicAuthUser, targetBasicAuthPass: payload.BasicAuthPass,
+                    ourBasicAuthUser: config.PublicBaseUrlBasicAuthUser,
+                    ourBasicAuthPass: config.PublicBaseUrlBasicAuthPass,
+                    ct: CancellationToken.None).ConfigureAwait(false);
+            });
+        }
+
+        _logger.LogInformation("AccessGranted received from {Peer} (row direction={Dir}, mutual={Mu}) -> added peer {Id}",
+            fromCanon, row.Direction, row.Mutual, peerGuid);
+        return Ok(new { added = peerGuid, status = "completed" });
+    }
+
+    // === Invite flow (A pushes a pre-minted key to C) ===
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("Invite")]
+    public async Task<IActionResult> SendInvite([FromBody] SendInvitePayload payload,
+        [FromServices] Services.PeerAccessStore store,
+        [FromServices] Services.RemoteJellyfinClient client,
+        CancellationToken ct)
+    {
+        if (payload is null || string.IsNullOrWhiteSpace(payload.TargetUrl)) return BadRequest("TargetUrl required");
+        var targetCanon = Services.PeerUrl.Canonicalize(payload.TargetUrl);
+        if (targetCanon is null) return BadRequest("TargetUrl must include http:// or https://");
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        if (string.IsNullOrEmpty(config.PublicBaseUrl)) return BadRequest("PublicBaseUrl must be set");
+        if (config.RemoteServers.Any(s => Services.PeerUrl.SameHost(s.BaseUrl, targetCanon))) return Conflict("already a peer");
+
+        var apiKey = GenerateApiKey();
+        var keyId = Guid.NewGuid();
+        lock (Plugin.ConfigWriteLock)
+        {
+            config.Shares.Add(new Configuration.ShareKey
+            {
+                Id = keyId,
+                ApiKey = apiKey,
+                Label = $"Invite for {targetCanon}",
+                BoundPeerUrl = targetCanon,
+                Enabled = true
+            });
+            Plugin.Instance?.SaveConfiguration();
+        }
+
+        var nonce = Services.PeerAccessStore.GenerateNonce();
+        var rowId = store.Insert(new Services.PeerAccessRow
+        {
+            Direction = "out",
+            Mode = "invite",
+            TargetUrl = targetCanon,
+            Nonce = nonce,
+            Status = "pending",
+            Mutual = payload.Mutual,
+            OurKeyId = keyId.ToString(),
+            Message = payload.Message
+        });
+
+        var result = await client.CallInviteOfferAsync(targetCanon,
+            ourBaseUrl: config.PublicBaseUrl,
+            apiKey: apiKey,
+            nonce: nonce,
+            mutual: payload.Mutual,
+            message: payload.Message,
+            targetBasicAuthUser: payload.TargetBasicAuthUser,
+            targetBasicAuthPass: payload.TargetBasicAuthPass,
+            ourBasicAuthUser: config.PublicBaseUrlBasicAuthUser,
+            ourBasicAuthPass: config.PublicBaseUrlBasicAuthPass,
+            ct: ct).ConfigureAwait(false);
+
+        if (!result.Ok)
+        {
+            store.UpdateStatus(rowId, "failed");
+            return StatusCode(502, new { reason = $"peer responded {result.HttpStatus}", body = result.Body });
+        }
+        return Ok(new { id = rowId, keyId, nonce, status = "sent" });
+    }
+
+    [AllowAnonymous]
+    [HttpPost("InviteOffer")]
+    public IActionResult ReceiveInviteOffer([FromBody] InviteOfferPayload payload,
+        [FromServices] Services.PeerAccessStore store)
+    {
+        if (payload is null || string.IsNullOrWhiteSpace(payload.OurBaseUrl)
+            || string.IsNullOrWhiteSpace(payload.ApiKey) || string.IsNullOrWhiteSpace(payload.Nonce))
+            return BadRequest("OurBaseUrl, ApiKey, Nonce required");
+
+        var fromCanon = Services.PeerUrl.Canonicalize(payload.OurBaseUrl);
+        if (fromCanon is null) return BadRequest("OurBaseUrl invalid");
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        if (!config.AcceptInboundInvites)
+            return StatusCode(403, new { reason = "inbound invites disabled by admin" });
+
+        if (config.BlockedPeerUrls.Any(u => Services.PeerUrl.SameHost(u, fromCanon)))
+            return StatusCode(403, new { reason = "peer is blocked" });
+
+        var existing = store.List("in", "pending").FirstOrDefault(r => r.Mode == "invite" && Services.PeerUrl.SameHost(r.TargetUrl, fromCanon));
+        if (existing is not null)
+            return Conflict(new { reason = "you already have a pending invite with us", existingId = existing.Id });
+
+        var ourCanon = Services.PeerUrl.Canonicalize(config.PublicBaseUrl);
+        if (ourCanon is not null && string.Equals(ourCanon, fromCanon, StringComparison.Ordinal))
+            return BadRequest("cannot invite self");
+
+        if (config.RemoteServers.Any(s => Services.PeerUrl.SameHost(s.BaseUrl, fromCanon)))
+            return Conflict("already a peer");
+
+        var id = store.Insert(new Services.PeerAccessRow
+        {
+            Direction = "in",
+            Mode = "invite",
+            TargetUrl = fromCanon,
+            Nonce = payload.Nonce,
+            Status = "pending",
+            Mutual = payload.Mutual,
+            TheirApiKey = payload.ApiKey,
+            Message = payload.Message,
+            ClientIp = HttpContext.Connection.RemoteIpAddress?.ToString()
+        });
+        // Stash basic auth in a side-channel: append to message. v2 can normalise.
+        _logger.LogInformation("InviteOffer from {From} (mutual={Mutual}) -> pending #{Id}", fromCanon, payload.Mutual, id);
+        return Accepted(new { id, status = "pending-approval" });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("AccessRequests/{id}/Accept")]
+    public async Task<IActionResult> AcceptInvite(long id,
+        [FromServices] Services.PeerAccessStore store,
+        [FromServices] Services.RemoteJellyfinClient client,
+        CancellationToken ct)
+    {
+        var row = store.Get(id);
+        if (row is null) return NotFound();
+        if (row.Direction != "in" || row.Mode != "invite" || row.Status != "pending")
+            return BadRequest("only pending inbound invites can be accepted");
+        if (string.IsNullOrEmpty(row.TheirApiKey)) return BadRequest("invite missing api key");
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        if (config.RemoteServers.Any(s => Services.PeerUrl.SameHost(s.BaseUrl, row.TargetUrl)))
+        {
+            store.UpdateStatus(id, "completed", completedNow: true);
+            return Conflict(new { reason = "already a peer" });
+        }
+
+        Guid peerGuid;
+        lock (Plugin.ConfigWriteLock)
+        {
+            peerGuid = Guid.NewGuid();
+            config.RemoteServers.Add(new Configuration.RemoteServer
+            {
+                Id = peerGuid,
+                Name = row.TargetUrl,
+                BaseUrl = row.TargetUrl,
+                FederationShareKey = row.TheirApiKey!,
+                Enabled = true
+            });
+            Plugin.Instance?.SaveConfiguration();
+        }
+
+        string? reciprocalApiKey = null;
+        if (row.Mutual)
+        {
+            reciprocalApiKey = GenerateApiKey();
+            var keyId = Guid.NewGuid();
+            lock (Plugin.ConfigWriteLock)
+            {
+                config.Shares.Add(new Configuration.ShareKey
+                {
+                    Id = keyId,
+                    ApiKey = reciprocalApiKey,
+                    Label = $"Direct access for {row.TargetUrl}",
+                    BoundPeerUrl = row.TargetUrl,
+                    Enabled = true
+                });
+                Plugin.Instance?.SaveConfiguration();
+            }
+            store.UpdateStatus(id, "completed", ourKeyId: keyId.ToString(), completedNow: true);
+        }
+        else
+        {
+            store.UpdateStatus(id, "completed", completedNow: true);
+        }
+
+        var result = await client.CallInviteAcceptedAsync(row.TargetUrl,
+            nonce: row.Nonce,
+            apiKey: reciprocalApiKey,
+            mutual: row.Mutual,
+            targetBasicAuthUser: null, targetBasicAuthPass: null,
+            ourBaseUrl: config.PublicBaseUrl,
+            ourBasicAuthUser: config.PublicBaseUrlBasicAuthUser,
+            ourBasicAuthPass: config.PublicBaseUrlBasicAuthPass,
+            ct: ct).ConfigureAwait(false);
+
+        // Even if the callback fails, we have the peer added locally. Surface the warning.
+        if (!result.Ok)
+            _logger.LogWarning("InviteAccepted callback to {Peer} returned {Status}: {Body}", row.TargetUrl, result.HttpStatus, result.Body);
+
+        return Ok(new { added = peerGuid, mutual = row.Mutual, callbackOk = result.Ok });
+    }
+
+    [AllowAnonymous]
+    [HttpPost("InviteAccepted")]
+    public IActionResult ReceiveInviteAccepted([FromBody] InviteAcceptedPayload payload,
+        [FromServices] Services.PeerAccessStore store)
+    {
+        if (payload is null || string.IsNullOrWhiteSpace(payload.Nonce)) return BadRequest("Nonce required");
+
+        var row = store.GetByNonce(payload.Nonce);
+        if (row is null) return NotFound("unknown nonce");
+        if (row.Direction != "out" || row.Mode != "invite") return BadRequest("nonce belongs to wrong row");
+
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        // The peer accepted; if mutual, they ALSO provided their own key. Add them as a RemoteServer.
+        if (payload.Mutual && !string.IsNullOrEmpty(payload.ApiKey) && !string.IsNullOrEmpty(payload.OurBaseUrl))
+        {
+            var theirCanon = Services.PeerUrl.Canonicalize(payload.OurBaseUrl);
+            if (theirCanon is null || !Services.PeerUrl.SameHost(row.TargetUrl, theirCanon))
+                return BadRequest("OurBaseUrl mismatch vs invite target");
+
+            if (config.RemoteServers.All(s => !Services.PeerUrl.SameHost(s.BaseUrl, theirCanon)))
+            {
+                lock (Plugin.ConfigWriteLock)
+                {
+                    config.RemoteServers.Add(new Configuration.RemoteServer
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = theirCanon,
+                        BaseUrl = theirCanon,
+                        FederationShareKey = payload.ApiKey!,
+                        BasicAuthUser = payload.BasicAuthUser ?? string.Empty,
+                        BasicAuthPass = payload.BasicAuthPass ?? string.Empty,
+                        Enabled = true
+                    });
+                    Plugin.Instance?.SaveConfiguration();
+                }
+                store.UpdateStatus(row.Id, "completed", theirApiKey: payload.ApiKey, completedNow: true);
+                return Ok(new { added = true, status = "completed" });
+            }
+        }
+
+        store.UpdateStatus(row.Id, "completed", completedNow: true);
+        return Ok(new { added = false, status = "completed" });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("AccessRequests/{id}/Decline")]
+    public IActionResult DeclineInvite(long id, [FromServices] Services.PeerAccessStore store)
+    {
+        var row = store.Get(id);
+        if (row is null) return NotFound();
+        if (row.Direction != "in" || row.Status != "pending") return BadRequest("not a pending inbound");
+        store.UpdateStatus(id, "denied", completedNow: true);
+        return NoContent();
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("AccessRequests/{id}/Block")]
+    public IActionResult BlockPeerForRequest(long id, [FromServices] Services.PeerAccessStore store)
+    {
+        var row = store.Get(id);
+        if (row is null) return NotFound();
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+
+        lock (Plugin.ConfigWriteLock)
+        {
+            if (!config.BlockedPeerUrls.Any(u => Services.PeerUrl.SameHost(u, row.TargetUrl)))
+                config.BlockedPeerUrls.Add(row.TargetUrl);
+            Plugin.Instance?.SaveConfiguration();
+        }
+        if (row.Status == "pending") store.UpdateStatus(id, "denied", completedNow: true);
+        return Ok(new { blocked = row.TargetUrl });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Blocklist")]
+    public IActionResult GetBlocklist()
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        return Ok(config.BlockedPeerUrls);
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpDelete("Blocklist")]
+    public IActionResult Unblock([FromQuery] string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return BadRequest("url required");
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        lock (Plugin.ConfigWriteLock)
+        {
+            config.BlockedPeerUrls.RemoveAll(u => Services.PeerUrl.SameHost(u, url));
+            Plugin.Instance?.SaveConfiguration();
+        }
+        return NoContent();
+    }
 }
 
 public class CreateShareRequest
@@ -1196,4 +1799,67 @@ public class FederatedSearchHit
     public string? Type { get; set; }
     public int? Year { get; set; }
     public string? PrimaryImageUrl { get; set; }
+}
+
+public class AccessRequestPayload
+{
+    public string? FromUrl { get; set; }
+    public string? FromName { get; set; }
+    public string? Message { get; set; }
+    public string? Nonce { get; set; }
+    public bool Mutual { get; set; }
+    public string? InviteToken { get; set; }
+    public string? BasicAuthUser { get; set; }
+    public string? BasicAuthPass { get; set; }
+}
+
+public class RequestAccessPayload
+{
+    public string? TargetUrl { get; set; }
+    public string? OurName { get; set; }
+    public string? Message { get; set; }
+    public bool Mutual { get; set; }
+    public string? InviteToken { get; set; }
+    public string? TargetBasicAuthUser { get; set; }
+    public string? TargetBasicAuthPass { get; set; }
+}
+
+public class AccessGrantedPayload
+{
+    public string? OurBaseUrl { get; set; }
+    public string? ApiKey { get; set; }
+    public string? Nonce { get; set; }
+    public bool Mutual { get; set; }
+    public string? BasicAuthUser { get; set; }
+    public string? BasicAuthPass { get; set; }
+}
+
+public class SendInvitePayload
+{
+    public string? TargetUrl { get; set; }
+    public string? Message { get; set; }
+    public bool Mutual { get; set; }
+    public string? TargetBasicAuthUser { get; set; }
+    public string? TargetBasicAuthPass { get; set; }
+}
+
+public class InviteOfferPayload
+{
+    public string? OurBaseUrl { get; set; }
+    public string? ApiKey { get; set; }
+    public string? Nonce { get; set; }
+    public bool Mutual { get; set; }
+    public string? Message { get; set; }
+    public string? BasicAuthUser { get; set; }
+    public string? BasicAuthPass { get; set; }
+}
+
+public class InviteAcceptedPayload
+{
+    public string? Nonce { get; set; }
+    public string? ApiKey { get; set; }
+    public bool Mutual { get; set; }
+    public string? OurBaseUrl { get; set; }
+    public string? BasicAuthUser { get; set; }
+    public string? BasicAuthPass { get; set; }
 }
