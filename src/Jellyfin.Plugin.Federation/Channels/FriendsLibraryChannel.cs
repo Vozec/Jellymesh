@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Federation.Services;
@@ -17,7 +18,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Federation.Channels;
 
-public class FriendsLibraryChannel : IChannel, IHasCacheKey
+public class FriendsLibraryChannel : IChannel, IHasCacheKey, IRequiresMediaInfoCallback
 {
     private readonly RemoteItemStore _store;
     private readonly ILibraryManager _libraryManager;
@@ -95,6 +96,9 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
                 // Image is fetched server-side by the plugin's reverse-proxy endpoint
                 // (FederationController.ProxyImage) so the peer API key never reaches the client.
                 ImageUrl = $"/Federation/Image/{server.Id:N}/{remote.RemoteItemId}/Primary",
+                // MediaSources here gives Jellyfin a placeholder so the UI knows the item
+                // is playable. Real sources are resolved by GetChannelItemMediaInfo below
+                // (IRequiresMediaInfoCallback) when PlaybackInfo asks.
                 MediaSources = BuildMediaSources(server.Id, remote)
             };
             items.Add(info);
@@ -135,12 +139,39 @@ public class FriendsLibraryChannel : IChannel, IHasCacheKey
         }
     }
 
+    public Task<IEnumerable<MediaSourceInfo>> GetChannelItemMediaInfo(string id, CancellationToken cancellationToken)
+    {
+        // id is the ExternalId Jellyfin stored from ChannelItemInfo.Id, i.e. "fed_<serverGuidN>_<remoteItemId>".
+        // Recover (serverId, remoteItemId) and rebuild the sources from the cached store.
+        var empty = (IEnumerable<MediaSourceInfo>)Array.Empty<MediaSourceInfo>();
+        if (string.IsNullOrEmpty(id) || !id.StartsWith("fed_", StringComparison.Ordinal))
+            return Task.FromResult(empty);
+
+        var rest = id.Substring(4);
+        var sep = rest.IndexOf('_');
+        if (sep <= 0 || sep >= rest.Length - 1) return Task.FromResult(empty);
+        if (!Guid.TryParseExact(rest.Substring(0, sep), "N", out var serverId))
+            return Task.FromResult(empty);
+        var remoteItemId = rest.Substring(sep + 1);
+
+        var remote = _store.GetItem(serverId, remoteItemId);
+        if (remote is null) return Task.FromResult(empty);
+
+        return Task.FromResult<IEnumerable<MediaSourceInfo>>(BuildMediaSources(serverId, remote));
+    }
+
+    private static readonly JsonSerializerOptions _msJson = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     private static List<MediaSourceInfo> BuildMediaSources(Guid serverId, Models.RemoteItem remote)
     {
         var list = new List<MediaSourceInfo>();
         try
         {
-            var parsed = JsonSerializer.Deserialize<List<MediaSourceInfo>>(remote.MediaSourceJson ?? "[]");
+            var parsed = JsonSerializer.Deserialize<List<MediaSourceInfo>>(remote.MediaSourceJson ?? "[]", _msJson);
             if (parsed is null) return list;
             foreach (var ms in parsed)
             {

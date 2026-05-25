@@ -11,3 +11,7 @@ build/output/
 build/stage/
 .idea/
 *.swp
+
+integration/tokens.env
+integration/plugin/
+integration/media-*/

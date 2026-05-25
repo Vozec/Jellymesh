@@ -386,9 +386,11 @@ public class RemoteJellyfinClient
             var qs = !string.IsNullOrEmpty(tmdbId)
                 ? $"AnyProviderIdEquals=tmdb.{tmdbId}"
                 : $"AnyProviderIdEquals=imdb.{imdbId}";
-            var url = $"/Items?Recursive=true&Fields=ProviderIds&Limit=1&{qs}";
+            // IncludeItemTypes filter is critical: without it, Limit=1 can match a Channel
+            // or library folder that happens to surface for the user before the actual movie.
+            var url = $"/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=ProviderIds&Limit=1&{qs}";
             if (!string.IsNullOrEmpty(server.RemoteUserId))
-                url = $"/Users/{server.RemoteUserId}/Items?Recursive=true&Fields=ProviderIds&Limit=1&{qs}";
+                url = $"/Users/{server.RemoteUserId}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=ProviderIds&Limit=1&{qs}";
 
             using var resp = await http.GetAsync(url, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode) return null;

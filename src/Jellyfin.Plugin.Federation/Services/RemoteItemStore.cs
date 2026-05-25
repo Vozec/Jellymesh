@@ -204,6 +204,44 @@ public class RemoteItemStore
         }
     }
 
+    public Models.RemoteItem? GetItem(Guid serverId, string remoteItemId)
+    {
+        using var c = new SqliteConnection(ConnString);
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = @"SELECT server_id, remote_item_id, type, name, year, provider_ids_json,
+            media_source_json, container, width, height, bitrate, runtime_ticks FROM remote_items
+            WHERE server_id=$s AND remote_item_id=$i LIMIT 1;";
+        cmd.Parameters.AddWithValue("$s", serverId.ToString());
+        cmd.Parameters.AddWithValue("$i", remoteItemId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        var item = new Models.RemoteItem
+        {
+            ServerId = Guid.Parse(r.GetString(0)),
+            RemoteItemId = r.GetString(1),
+            Type = r.IsDBNull(2) ? string.Empty : r.GetString(2),
+            Name = r.IsDBNull(3) ? string.Empty : r.GetString(3),
+            ProductionYear = r.IsDBNull(4) ? null : r.GetInt32(4),
+            MediaSourceJson = r.IsDBNull(6) ? null : r.GetString(6),
+            Container = r.IsDBNull(7) ? null : r.GetString(7),
+            Width = r.IsDBNull(8) ? null : r.GetInt32(8),
+            Height = r.IsDBNull(9) ? null : r.GetInt32(9),
+            Bitrate = r.IsDBNull(10) ? null : r.GetInt64(10),
+            RunTimeTicks = r.IsDBNull(11) ? null : r.GetInt64(11)
+        };
+        if (!r.IsDBNull(5))
+        {
+            try
+            {
+                var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(r.GetString(5));
+                if (dict is not null) item.ProviderIds = dict;
+            }
+            catch { /* ignore */ }
+        }
+        return item;
+    }
+
     public long BeginAudit(Guid peerId, string itemId, string? userId)
     {
         using var c = new SqliteConnection(ConnString);

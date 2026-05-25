@@ -1,6 +1,8 @@
+using Jellyfin.Plugin.Federation.Channels;
 using Jellyfin.Plugin.Federation.Providers;
 using Jellyfin.Plugin.Federation.Services;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Channels;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +25,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<DiagnosticsService>();
         serviceCollection.AddHostedService<StartupReportService>();
         serviceCollection.AddSingleton<IMediaSourceProvider, FederatedMediaSourceProvider>();
+        serviceCollection.AddSingleton<IChannel, FriendsLibraryChannel>();
         serviceCollection.AddHostedService<WatchStateSyncService>();
         serviceCollection.AddSingleton<PeerHealthRegistry>();
         serviceCollection.AddHostedService<HealthMonitorService>();

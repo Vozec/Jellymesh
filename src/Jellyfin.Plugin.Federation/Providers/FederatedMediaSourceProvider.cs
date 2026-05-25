@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Federation.Configuration;
@@ -28,6 +29,12 @@ public class FederatedMediaSourceProvider : IMediaSourceProvider
         _logger = logger;
     }
 
+    private static readonly JsonSerializerOptions _msJson = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     public Task<IEnumerable<MediaSourceInfo>> GetMediaSources(BaseItem item, CancellationToken cancellationToken)
     {
         var config = Plugin.Instance?.Configuration;
@@ -49,7 +56,7 @@ public class FederatedMediaSourceProvider : IMediaSourceProvider
 
             try
             {
-                var remoteSources = JsonSerializer.Deserialize<List<MediaSourceInfo>>(match.MediaSourceJson ?? "[]");
+                var remoteSources = JsonSerializer.Deserialize<List<MediaSourceInfo>>(match.MediaSourceJson ?? "[]", _msJson);
                 if (remoteSources is null) continue;
 
                 foreach (var rs in remoteSources)

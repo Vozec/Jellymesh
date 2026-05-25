@@ -768,7 +768,7 @@ h1{{font-weight:400;font-size:1.2rem}}
             http.Timeout = TimeSpan.FromSeconds(10);
 
             var qs = !string.IsNullOrEmpty(tmdb) ? $"AnyProviderIdEquals=tmdb.{tmdb}" : $"AnyProviderIdEquals=imdb.{imdb}";
-            var url = $"/Items?Recursive=true&Fields=MediaSources,MediaStreams,ProviderIds&Limit=5&{qs}";
+            var url = $"/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=MediaSources,MediaStreams,ProviderIds&Limit=5&{qs}";
             using var resp = await http.GetAsync(url, ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode) return tracks;
             using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
@@ -855,7 +855,7 @@ h1{{font-weight:400;font-size:1.2rem}}
 
     [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Diagnostics")]
-    public async Task<IActionResult> Diagnostics([FromServices] Services.DiagnosticsService diag, CancellationToken ct)
+    public async Task<IActionResult> RunDiagnostics([FromServices] Services.DiagnosticsService diag, CancellationToken ct)
         => Ok(await diag.RunAsync(ct).ConfigureAwait(false));
 
     [Authorize(Policy = Policies.RequiresElevation)]
