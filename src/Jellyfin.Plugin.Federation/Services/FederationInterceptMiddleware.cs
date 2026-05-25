@@ -68,7 +68,7 @@ public class FederationInterceptMiddleware
 
         // Similar / Themes / etc. - return empty list so the SPA's secondary fetches stop 400ing.
         var subPath = System.Text.RegularExpressions.Regex.Match(path,
-            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(Similar|ThemeMedia|InstantMix|SpecialFeatures)$");
+            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(Similar|ThemeMedia|ThemeSongs|ThemeVideos|InstantMix|SpecialFeatures|Trailers|RemoteImages|RemoteSearch)$");
         if (subPath.Success)
         {
             await WriteEmptyList(ctx).ConfigureAwait(false);
@@ -156,6 +156,17 @@ public class FederationInterceptMiddleware
             dict["Id"] = fedId;
             dict["ServerId"] = string.Empty;
             dict["ImageTags"] = new System.Collections.Generic.Dictionary<string, string> { ["Primary"] = "fed" };
+            // SPA helpers like ThemeMediaPlayer + RatingHelper assume these fields exist on
+            // every BaseItemDto; surface defaults so they don't blow up when the peer omitted
+            // them (live TV / certain content types).
+            if (!dict.ContainsKey("OwnerId") || dict["OwnerId"] is null) dict["OwnerId"] = string.Empty;
+            if (!dict.ContainsKey("ChannelId") || dict["ChannelId"] is null) dict["ChannelId"] = string.Empty;
+            if (!dict.ContainsKey("ParentLogoItemId") || dict["ParentLogoItemId"] is null) dict["ParentLogoItemId"] = string.Empty;
+            if (!dict.ContainsKey("ParentBackdropItemId") || dict["ParentBackdropItemId"] is null) dict["ParentBackdropItemId"] = string.Empty;
+            if (!dict.ContainsKey("ParentBackdropImageTags") || dict["ParentBackdropImageTags"] is null) dict["ParentBackdropImageTags"] = new System.Collections.Generic.List<string>();
+            if (!dict.ContainsKey("BackdropImageTags") || dict["BackdropImageTags"] is null) dict["BackdropImageTags"] = new System.Collections.Generic.List<string>();
+            if (!dict.ContainsKey("UserData") || dict["UserData"] is null)
+                dict["UserData"] = new System.Collections.Generic.Dictionary<string, object?> { ["Played"] = false, ["IsFavorite"] = false, ["PlaybackPositionTicks"] = 0L, ["PlayCount"] = 0 };
             // Strip server-specific fields that would conflict with our id space.
             dict.Remove("PlaylistItemId");
             dict.Remove("AncestorIds");
