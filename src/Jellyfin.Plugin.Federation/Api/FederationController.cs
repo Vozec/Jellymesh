@@ -1858,6 +1858,28 @@ h1{{font-weight:400;font-size:1.2rem}}
         return Ok(sanitized);
     }
 
+    [AllowAnonymous]
+    [HttpGet("Asset/{name}")]
+    public IActionResult GetAsset(string name)
+    {
+        // Restrict to a handful of safe assets we ship in the plugin DLL. Resource name is
+        // <namespace>.Assets.<file> so we hardcode the prefix and validate the filename.
+        if (string.IsNullOrEmpty(name) || name.Contains('/') || name.Contains('\\') || name.Contains("..")) return BadRequest();
+        var allowed = new System.Collections.Generic.Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["logo.svg"] = "image/svg+xml",
+            ["thumb.png"] = "image/png",
+            ["jellymesh-item.js"] = "application/javascript"
+        };
+        if (!allowed.TryGetValue(name, out var mime)) return NotFound();
+        var asm = typeof(Plugin).Assembly;
+        var resourceName = typeof(Plugin).Namespace + ".Assets." + name;
+        var stream = asm.GetManifestResourceStream(resourceName);
+        if (stream is null) return NotFound();
+        Response.Headers["Cache-Control"] = "public, max-age=600";
+        return File(stream, mime);
+    }
+
     [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Blocklist")]
     public IActionResult GetBlocklist()

@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration\configPage.html" />
+    <EmbeddedResource Include="Assets\thumb.png" />
+    <EmbeddedResource Include="Assets\logo.svg" />
+    <EmbeddedResource Include="Assets\jellymesh-item.js" />
   </ItemGroup>
 
   <ItemGroup>

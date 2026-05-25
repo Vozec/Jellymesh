@@ -5,30 +5,38 @@
     <title>Federation</title>
 </head>
 <body>
+<style>
+    .jm-tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.6em; margin: 0.8em 0 1.2em 0; }
+    .jm-tile { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 1em; cursor: pointer; text-align: left; color: #ddd; font: inherit; transition: background 0.15s, border-color 0.15s; }
+    .jm-tile:hover { background: #252525; border-color: #5a5a5a; }
+    .jm-tile-icon { font-size: 1.6em; display: block; margin-bottom: 0.3em; }
+    .jm-tile-label { font-weight: 600; }
+    .jm-tile-hint { color: #888; font-size: 0.8em; margin-top: 0.2em; }
+    .jm-tile-badge { display: inline-block; background: #c93; color: #111; border-radius: 0.8em; padding: 0.05em 0.5em; font-size: 0.75em; font-weight: 700; margin-left: 0.4em; }
+    dialog.jm-modal { background: #181818; color: #ddd; border: 1px solid #3a3a3a; border-radius: 0.5em; max-width: 900px; width: 90vw; max-height: 85vh; overflow-y: auto; padding: 0; }
+    dialog.jm-modal::backdrop { background: rgba(0,0,0,0.6); }
+    dialog.jm-modal .jm-modal-head { position: sticky; top: 0; background: #1c1c1c; border-bottom: 1px solid #3a3a3a; padding: 0.8em 1em; display: flex; justify-content: space-between; align-items: center; z-index: 1; }
+    dialog.jm-modal .jm-modal-head h3 { margin: 0; }
+    dialog.jm-modal .jm-modal-body { padding: 1em; }
+    dialog.jm-modal .jm-modal-close { background: transparent; border: none; color: #aaa; font-size: 1.4em; cursor: pointer; padding: 0 0.4em; }
+    dialog.jm-modal .jm-modal-close:hover { color: #fff; }
+    /* When the browser ignores <dialog>, our JS sets [open] and we fall back to a fixed overlay. */
+    dialog.jm-modal[open] { display: block; position: fixed; top: 5vh; left: 50%; transform: translateX(-50%); z-index: 10000; box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
+    .jm-status-bar { display: flex; gap: 1em; align-items: center; flex-wrap: wrap; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 0.6em 0.8em; margin: 0.6em 0; }
+    .jm-brand-row { display: flex; align-items: center; gap: 0.8em; }
+    .jm-brand-row img { width: 56px; height: 56px; }
+</style>
 <div id="FederationConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
     <div data-role="content">
         <div class="content-primary">
-            <style>
-                .jm-tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.6em; margin: 0.8em 0 1.2em 0; }
-                .jm-tile { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 1em; cursor: pointer; text-align: left; color: #ddd; font: inherit; transition: background 0.15s, border-color 0.15s; }
-                .jm-tile:hover { background: #252525; border-color: #5a5a5a; }
-                .jm-tile-icon { font-size: 1.6em; display: block; margin-bottom: 0.3em; }
-                .jm-tile-label { font-weight: 600; }
-                .jm-tile-hint { color: #888; font-size: 0.8em; margin-top: 0.2em; }
-                .jm-tile-badge { display: inline-block; background: #c93; color: #111; border-radius: 0.8em; padding: 0.05em 0.5em; font-size: 0.75em; font-weight: 700; margin-left: 0.4em; }
-                dialog.jm-modal { background: #181818; color: #ddd; border: 1px solid #3a3a3a; border-radius: 0.5em; max-width: 900px; width: 90vw; max-height: 85vh; overflow-y: auto; padding: 0; }
-                dialog.jm-modal::backdrop { background: rgba(0,0,0,0.6); }
-                dialog.jm-modal .jm-modal-head { position: sticky; top: 0; background: #1c1c1c; border-bottom: 1px solid #3a3a3a; padding: 0.8em 1em; display: flex; justify-content: space-between; align-items: center; }
-                dialog.jm-modal .jm-modal-head h3 { margin: 0; }
-                dialog.jm-modal .jm-modal-body { padding: 1em; }
-                dialog.jm-modal .jm-modal-close { background: transparent; border: none; color: #aaa; font-size: 1.4em; cursor: pointer; padding: 0 0.4em; }
-                dialog.jm-modal .jm-modal-close:hover { color: #fff; }
-                .jm-status-bar { display: flex; gap: 1em; align-items: center; flex-wrap: wrap; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 0.6em 0.8em; margin: 0.6em 0; }
-            </style>
-
             <form id="FederationConfigForm">
-                <h2 data-i18n="title">Jellymesh</h2>
-                <p data-i18n="subtitle">Configure peer Jellyfin servers to federate libraries with.</p>
+                <div class="jm-brand-row">
+                    <img src="/Federation/Asset/logo.svg" alt="Jellymesh" onerror="this.style.display='none'" />
+                    <div>
+                        <h2 data-i18n="title" style="margin:0;">Jellymesh</h2>
+                        <p data-i18n="subtitle" style="margin:0;color:#aaa;">Federate Jellyfin servers, dedupe libraries, share watch state.</p>
+                    </div>
+                </div>
 
                 <div class="jm-status-bar" id="JmStatusBar">
                     <span id="JmStatusSummary" style="font-family:monospace;font-size:0.9em;">Loading status…</span>
@@ -351,18 +359,28 @@
     <script type="text/javascript">
         var FederationPluginId = '9f3c2a8e-6b1d-4f7a-b3c5-1e2d9a8b7c6e';
 
-        // Tile-to-modal wiring. Tiles open the matching <dialog>, close buttons + Esc close it.
-        document.querySelectorAll('#FederationConfigPage .jm-tile').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var dlg = document.getElementById(btn.dataset.modal);
-                if (dlg && typeof dlg.showModal === 'function') dlg.showModal();
-            });
-        });
-        document.querySelectorAll('#FederationConfigPage .jm-modal-close').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var dlg = btn.closest('dialog');
-                if (dlg) dlg.close();
-            });
+        // Event delegation on the page container so handlers stay bound whether the script
+        // runs before or after the SPA injects this page. Direct addEventListener bindings to
+        // individual buttons silently lose elements when the SPA tears down + reinjects the view.
+        function openJmModal(id) {
+            var dlg = document.getElementById(id);
+            if (!dlg) return;
+            try {
+                if (typeof dlg.showModal === 'function') { dlg.showModal(); return; }
+            } catch (e) { /* fall through */ }
+            dlg.setAttribute('open', '');
+        }
+        function closeJmModal(dlg) {
+            if (!dlg) return;
+            try { dlg.close(); } catch (e) { dlg.removeAttribute('open'); }
+        }
+        document.querySelector('#FederationConfigPage').addEventListener('click', function (e) {
+            var tile = e.target.closest && e.target.closest('.jm-tile');
+            if (tile && tile.dataset.modal) { openJmModal(tile.dataset.modal); return; }
+            if (e.target.classList && e.target.classList.contains('jm-modal-close')) {
+                closeJmModal(e.target.closest('dialog'));
+                return;
+            }
         });
 
         function refreshPendingBadges() {

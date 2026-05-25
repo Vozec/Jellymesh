@@ -4,22 +4,22 @@
 
 ```mermaid
 flowchart TD
-    Start([Scheduled task fires]) --> Loop{For each enabled peer}
-    Loop --> Ping[Ping /System/Info/Public]
-    Ping -->|fail| Skip[Mark offline, skip] --> NextPeer
-    Ping -->|ok| MarkOnline[Health: online]
-    MarkOnline --> Digest[GET /Federation/Catalog/Digest]
-    Digest -->|peer has no plugin| Pull
-    Digest -->|hash == cached| Skip2[Skip (no changes)] --> NextPeer
-    Digest -->|hash differs| Pull[GET /Items recursive]
-    Pull --> Upsert[Upsert into remote_items]
-    Upsert --> Diff[Compute old-ids minus new-ids]
-    Diff -->|any| Delete[DELETE missing rows]
-    Diff -->|none| SaveDigest
-    Delete --> SaveDigest[SaveDigest peer, count, hash]
-    SaveDigest --> NextPeer{More peers?}
+    Start(["Scheduled task fires"]) --> Loop{"For each enabled peer"}
+    Loop --> Ping["Ping /System/Info/Public"]
+    Ping -->|fail| Skip["Mark offline, skip"] --> NextPeer{"More peers?"}
+    Ping -->|ok| MarkOnline["Health: online"]
+    MarkOnline --> Digest["GET /Federation/Catalog/Digest"]
+    Digest -->|peer has no plugin| Pull["GET /Items recursive"]
+    Digest -->|"hash == cached"| SkipNoChange["Skip (no changes)"] --> NextPeer
+    Digest -->|hash differs| Pull
+    Pull --> Upsert["Upsert into remote_items"]
+    Upsert --> Diff["Compute removed ids"]
+    Diff -->|any| Delete["DELETE missing rows"]
+    Diff -->|none| SaveDigest["SaveDigest peer, count, hash"]
+    Delete --> SaveDigest
+    SaveDigest --> NextPeer
     NextPeer -->|yes| Loop
-    NextPeer -->|no| Done([Round complete])
+    NextPeer -->|no| Done(["Round complete"])
 ```
 
 ## Health-state effect on UI

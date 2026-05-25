@@ -26,7 +26,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// the in-memory list or lose entries.</summary>
     public static readonly object ConfigWriteLock = new();
 
-    public override string Name => "Federation";
+    public override string Name => "Jellymesh";
 
     public override Guid Id => Guid.Parse("9f3c2a8e-6b1d-4f7a-b3c5-1e2d9a8b7c6e");
 

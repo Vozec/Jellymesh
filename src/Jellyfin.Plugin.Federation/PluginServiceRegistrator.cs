@@ -28,6 +28,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<QuotaService>();
         serviceCollection.AddSingleton<WebhookDispatcher>();
         serviceCollection.AddHostedService<RetentionCleanupService>();
+        serviceCollection.AddHostedService<IndexHtmlInjector>();
         serviceCollection.AddSingleton<DiagnosticsService>();
         serviceCollection.AddHostedService<StartupReportService>();
         serviceCollection.AddSingleton<IMediaSourceProvider, FederatedMediaSourceProvider>();
