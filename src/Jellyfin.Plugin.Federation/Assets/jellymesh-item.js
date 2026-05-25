@@ -16,6 +16,132 @@
         return fetch(path, opts).then((r) => r.ok ? (opts.raw ? r : r.json()) : r.text().then((t) => { throw new Error(`HTTP ${r.status}: ${t}`); }));
     }
 
+    // ----- fetch hook: federated library transparency -----------------------
+    // Trick: peer libraries are exposed as virtual VirtualFolders inside Jellyfin's SPA by
+    // navigating to #/movies.html?topParentId=fedlib_{peerN}_{libId}. The native page issues
+    // /Items?ParentId=fedlib_... and /Items/{id}/Images/... requests; we intercept those and
+    // proxy to the peer via /Federation/Peers/.../Items + /Federation/Image. The peer's
+    // item ids are surfaced as 'fed_{peerN}_{remoteItemId}' so the click chain on each card
+    // round-trips through us. ImageTags is set to a non-empty sentinel so Jellyfin emits the
+    // /Images/Primary URL we can intercept.
+    const FED_LIB_PREFIX = 'fedlib_';
+    const FED_ITEM_PREFIX = 'fed_';
+
+    function parseFedLib(id) {
+        if (!id || !id.startsWith(FED_LIB_PREFIX)) return null;
+        const rest = id.substring(FED_LIB_PREFIX.length);
+        const sep = rest.indexOf('_');
+        if (sep <= 0) return null;
+        return { peerId: hyphenateGuid(rest.substring(0, sep)), libId: rest.substring(sep + 1) };
+    }
+    function parseFedItem(id) {
+        if (!id || !id.startsWith(FED_ITEM_PREFIX)) return null;
+        const rest = id.substring(FED_ITEM_PREFIX.length);
+        const sep = rest.indexOf('_');
+        if (sep <= 0) return null;
+        return { peerId: hyphenateGuid(rest.substring(0, sep)), itemId: rest.substring(sep + 1) };
+    }
+    function hyphenateGuid(s) {
+        if (!s) return s;
+        return s.length === 32 ? s.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5') : s;
+    }
+
+    function fakeFolderItem(peerId, lib) {
+        return {
+            Id: FED_LIB_PREFIX + peerId.replace(/-/g, '') + '_' + lib.id,
+            Name: lib.name || 'Library',
+            ServerId: (window.ApiClient && ApiClient.serverId && ApiClient.serverId()) || '',
+            Type: 'CollectionFolder',
+            CollectionType: lib.type || 'movies',
+            IsFolder: true,
+            ImageTags: {},
+            BackdropImageTags: []
+        };
+    }
+    function mapPeerItem(it, peerN) {
+        const fedId = FED_ITEM_PREFIX + peerN + '_' + it.id;
+        return {
+            Id: fedId,
+            Name: it.name,
+            Type: it.type || 'Movie',
+            MediaType: 'Video',
+            ProductionYear: it.year,
+            ServerId: (window.ApiClient && ApiClient.serverId && ApiClient.serverId()) || '',
+            ImageTags: { Primary: 'fed' },
+            BackdropImageTags: [],
+            UserData: { Played: false, IsFavorite: false, PlaybackPositionTicks: 0, PlayCount: 0 },
+            IsFolder: false
+        };
+    }
+
+    function getQuery(url) {
+        const q = url.indexOf('?');
+        if (q < 0) return {};
+        const out = {};
+        url.substring(q + 1).split('&').forEach(function (p) {
+            if (!p) return;
+            const i = p.indexOf('=');
+            if (i < 0) out[decodeURIComponent(p)] = '';
+            else out[decodeURIComponent(p.substring(0, i))] = decodeURIComponent(p.substring(i + 1));
+        });
+        return out;
+    }
+
+    function jsonResponse(obj) {
+        return new Response(JSON.stringify(obj), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    function handleHookedRequest(url) {
+        // Items list scoped to a federated library: /Users/{uid}/Items?ParentId=fedlib_...
+        // or /Items?ParentId=fedlib_...
+        const q = getQuery(url);
+        if (q.ParentId && q.ParentId.startsWith(FED_LIB_PREFIX)) {
+            const parsed = parseFedLib(q.ParentId);
+            if (!parsed) return null;
+            const limit = Math.min(parseInt(q.Limit, 10) || 100, 200);
+            return jApi(`/Federation/Peers/${parsed.peerId}/Libraries/${encodeURIComponent(parsed.libId)}/Items?limit=${limit}`)
+                .then((data) => {
+                    const peerN = parsed.peerId.replace(/-/g, '');
+                    const items = ((data && data.items) || []).map((it) => mapPeerItem(it, peerN));
+                    return jsonResponse({ Items: items, TotalRecordCount: items.length, StartIndex: 0 });
+                });
+        }
+        // Single federated item lookup: /Items/{fedId} or /Users/{uid}/Items/{fedId}
+        const itemMatch = url.match(/\/Items\/(fed_[0-9a-fA-F]{32}_[^/?]+)(?:\?|$)/);
+        if (itemMatch) {
+            const parsed = parseFedItem(itemMatch[1]);
+            if (parsed) {
+                return jApi(`/Federation/Peers/${parsed.peerId}/Libraries/x/Items?limit=1`).then(() => {
+                    // Lightweight stub; the full item details come from the channel item page.
+                    return jsonResponse({ Id: itemMatch[1], Name: '(federated item)', Type: 'Movie' });
+                });
+            }
+        }
+        // Image proxy: /Items/{fedId}/Images/Primary or /Items/{fedId}/Images/Backdrop
+        const imgMatch = url.match(/\/Items\/(fed_[0-9a-fA-F]{32}_[^/?]+)\/Images\/([^/?]+)/);
+        if (imgMatch) {
+            const parsed = parseFedItem(imgMatch[1]);
+            if (parsed) {
+                const newUrl = `/Federation/Image/${parsed.peerId.replace(/-/g, '')}/${parsed.itemId}/${imgMatch[2]}?api_key=${encodeURIComponent(token())}`;
+                return fetch(newUrl);
+            }
+        }
+        // Virtual folder list: /Library/VirtualFolders sometimes asked for our fedlib id.
+        // Let the original request go through - we only need to fake the IsFolder lookup which
+        // Jellyfin doesn't seem to require for the movies.html page to render.
+        return null;
+    }
+
+    const _origFetch = window.fetch;
+    window.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : (input && input.url);
+        if (url && (url.indexOf(FED_LIB_PREFIX) >= 0 || url.indexOf(FED_ITEM_PREFIX) >= 0)) {
+            const hooked = handleHookedRequest(url);
+            if (hooked) return Promise.resolve(hooked);
+        }
+        return _origFetch.apply(this, arguments);
+    };
+
     function ensureStyle() {
         if (document.getElementById('jm-style')) return;
         const s = document.createElement('style');
@@ -276,16 +402,20 @@
         row.innerHTML = pool.map(({ peer, lib }) => buildLibraryCard(lib, peer, apiKey)).join('');
     }
 
-    // Library card uses backdrop aspect (16:9) per Jellyfin's My Media style. Image falls
-    // back to a coloured gradient when the peer has no library cover. Click opens the items
-    // overlay defined below.
+    // Library card: clicking navigates to Jellyfin's native movies.html with a fedlib_*
+    // topParentId. Our fetch hook above intercepts the /Items?ParentId=fedlib_... requests
+    // and proxies them to the peer, so Jellyfin's own page handles filtering, sorting,
+    // pagination, hover, etc. - no custom overlay UI needed.
     function buildLibraryCard(lib, peer, apiKey) {
         const peerId = peer.Id;
         const libId = lib.id;
-        // Peer library Primary image. Many Jellyfin installs don't set a library cover so we
-        // include a CSS gradient fallback via the onerror-style alternative: omit the URL
-        // when missing; for simplicity we always include it and let the browser show empty
-        // on 404, with a coloured background underneath.
+        const fedLibId = FED_LIB_PREFIX + peerId.replace(/-/g, '') + '_' + libId;
+        const collectionType = (lib.type || 'movies').toLowerCase();
+        // Use movies.html for movies, tvshows.html for series, list.html as fallback.
+        const route = collectionType === 'tvshows' ? 'tvshows.html'
+                    : collectionType === 'movies' ? 'movies.html'
+                    : 'list.html';
+        const href = `#/${route}?topParentId=${fedLibId}&collectionType=${collectionType}`;
         const imageUrl = `/Federation/Image/${peerId}/${libId}/Primary?api_key=${encodeURIComponent(apiKey)}`;
         const colorIdx = (libId.charCodeAt(0) + libId.charCodeAt(libId.length - 1)) % 6;
         const palette = ['#2b4d72', '#5a3a72', '#724a3a', '#3a724f', '#723a3a', '#3a6072'];
@@ -295,7 +425,7 @@
                 <div class="cardBox cardBox-bottompadded">
                     <div class="cardScalable">
                         <div class="cardPadder cardPadder-backdrop"></div>
-                        <a class="cardImageContainer coveredImage cardContent jm-library-open" href="#" style="background:${fallback};">
+                        <a class="cardImageContainer coveredImage cardContent" href="${href}" style="background:${fallback};">
                             <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
                             <div class="cardImage" style="background-image:url('${imageUrl}');background-size:cover;background-position:center;"></div>
                         </a>
@@ -305,51 +435,6 @@
                 </div>
             </div>
         `;
-    }
-
-    // Library-card click → open items overlay. Listener delegated on document so it survives
-    // SPA view swaps.
-    document.addEventListener('click', (e) => {
-        const link = e.target.closest && e.target.closest('.jm-library-open');
-        if (!link) return;
-        const card = link.closest('[data-jm-peer]');
-        if (!card) return;
-        e.preventDefault();
-        openLibraryOverlay(card.dataset.jmPeer, card.dataset.jmLib);
-    });
-
-    function openLibraryOverlay(peerId, libId) {
-        document.getElementById('jm-lib-overlay')?.remove();
-        const overlay = document.createElement('div');
-        overlay.id = 'jm-lib-overlay';
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;overflow-y:auto;padding:3vh 2vw;';
-        overlay.innerHTML = `
-            <div style="max-width:1400px;margin:0 auto;">
-                <div style="display:flex;align-items:center;gap:0.6em;margin-bottom:1em;">
-                    <button type="button" id="jm-lib-close" style="background:#2a2a2a;color:#fff;border:1px solid #555;border-radius:50%;width:2.4em;height:2.4em;font-size:1.3em;cursor:pointer;">&times;</button>
-                    <h2 id="jm-lib-title" style="margin:0;color:#fff;">Library</h2>
-                </div>
-                <div class="itemsContainer focuscontainer-x" id="jm-lib-items" style="display:flex;flex-wrap:wrap;gap:0.4em;"><em style="color:#888;">Loading...</em></div>
-            </div>
-        `;
-        document.body.appendChild(overlay);
-        overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.id === 'jm-lib-close') overlay.remove(); });
-        document.addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', esc); } });
-
-        const apiKey = token();
-        const ourServerId = (window.ApiClient && (ApiClient.serverId ? ApiClient.serverId() : (ApiClient.serverInfo() || {}).Id)) || '';
-        jApi(`/Federation/Peers/${peerId}/Libraries`).then((libs) => {
-            const lib = (libs || []).find((l) => l.id === libId);
-            if (lib) document.getElementById('jm-lib-title').textContent = lib.name || 'Library';
-        }).catch(() => {});
-        jApi(`/Federation/Peers/${peerId}/Libraries/${encodeURIComponent(libId)}/Items?limit=100`).then((data) => {
-            const target = document.getElementById('jm-lib-items');
-            const peer = { Id: peerId, Name: (data && data.peerName) || 'Peer' };
-            const items = (data && data.items) || [];
-            target.innerHTML = items.length
-                ? items.map((it) => buildCard(it, peer, apiKey, ourServerId)).join('')
-                : '<em style="color:#888;">No items.</em>';
-        }).catch(() => { document.getElementById('jm-lib-items').innerHTML = '<em style="color:#c88;">Cannot load items.</em>'; });
     }
 
     // Per-item card (used inside the library overlay + by the dashboard libraries panel for
