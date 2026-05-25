@@ -809,24 +809,35 @@
     });
 
     // ----- 4. Dashboard nav link --------------------------------------------
-    // Add an entry to the admin dashboard left navigation drawer pointing at our config
-    // page. Jellyfin 10.10 wraps the drawer in different selectors depending on the
-    // dashboard layout flavour, so we try a few + match the "My Plugins" anchor by href
-    // (which is stable across i18n versions).
+    // Jellyfin 10.10's admin drawer is a MUI list. The 'Mes extensions' / 'My Plugins' anchor
+    // lives directly inside <ul aria-labelledby="plugins-subheader">. We clone its className
+    // (minus the active 'Mui-selected' flag) and substitute the SVG icon + label so our row
+    // inherits exactly the same styling, hover and active behaviour.
     function ensureNavLink() {
         if (document.getElementById('jm-nav-link')) return;
-        // 'My Plugins' anchor is what every dashboard layout I've seen exposes; locate it
-        // anywhere in the document and clone its parent's structure.
-        const myExt = document.querySelector('a[href$="#/dashboard/plugins"], a[href$="#!/dashboard/plugins"], a[href*="/installedplugins"]');
+        const myExt = document.querySelector('a[href="#/dashboard/plugins"]');
         if (!myExt) return;
         const link = document.createElement('a');
         link.id = 'jm-nav-link';
-        link.className = myExt.className;
+        link.className = (myExt.className || '').replace(/\bMui-selected\b/g, '').replace(/\s+/g, ' ').trim();
         link.href = '#/configurationpage?name=Jellymesh';
-        // Mirror My Plugins's icon + label markup so the row blends in.
-        const iconEl = myExt.querySelector('.material-icons, .navMenuOptionIcon, span');
-        const iconHtml = iconEl ? `<span class="${iconEl.className || ''}">${iconEl.classList && iconEl.classList.contains('material-icons') ? 'hub' : iconEl.innerHTML}</span>` : '<span class="material-icons">hub</span>';
-        link.innerHTML = `${iconHtml}<span class="navMenuOptionText">Jellymesh</span>`;
+        link.tabIndex = 0;
+        // Reuse the existing icon container + text container classes so spacing stays consistent.
+        const iconContainer = myExt.querySelector('.MuiListItemIcon-root');
+        const textContainer = myExt.querySelector('.MuiListItemText-root');
+        const textSpan = textContainer ? textContainer.querySelector('span') : null;
+        const iconCls = iconContainer ? iconContainer.className : 'MuiListItemIcon-root';
+        const textRootCls = textContainer ? textContainer.className : 'MuiListItemText-root';
+        const textSpanCls = textSpan ? textSpan.className : 'MuiTypography-root MuiTypography-body1 MuiListItemText-primary';
+        link.innerHTML = `
+            <div class="${iconCls}">
+                <svg class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium" focusable="false" aria-hidden="true" viewBox="0 0 24 24">
+                    <path d="M12 2a3 3 0 0 0-1 5.83V10H6.83A3 3 0 1 0 5 13.83V18h6v2.17A3 3 0 1 0 13 20.17V18h6v-4.17A3 3 0 1 0 17.17 10H13V7.83A3 3 0 0 0 12 2"/>
+                </svg>
+            </div>
+            <div class="${textRootCls}"><span class="${textSpanCls}">Jellymesh</span></div>
+            <span class="MuiTouchRipple-root"></span>
+        `;
         myExt.parentNode.insertBefore(link, myExt.nextSibling);
     }
 

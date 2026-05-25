@@ -53,7 +53,7 @@ public class FederationInterceptMiddleware
             @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)$");
         if (itemMatch.Success)
         {
-            await WriteStubItem(ctx, itemMatch.Groups[1].Value).ConfigureAwait(false);
+            await ProxyItemDetail(ctx, itemMatch.Groups[1].Value).ConfigureAwait(false);
             return;
         }
 
@@ -114,6 +114,81 @@ public class FederationInterceptMiddleware
         {
             _logger.LogDebug(ex, "Federated image proxy failed for {Item}", fedId);
             ctx.Response.StatusCode = 502;
+        }
+    }
+
+    private async Task ProxyItemDetail(HttpContext ctx, string fedId)
+    {
+        // Proxy the peer's full BaseItemDto so the details page shows real title, overview,
+        // year, genres etc. instead of the bare 'federated' stub. Id stays as fed_X +
+        // ImageTags is forced to {Primary:'fed'} so /Items/fed_X/Images/Primary still routes
+        // through our image proxy.
+        var rest = fedId.Substring("fed_".Length);
+        var sep = rest.IndexOf('_');
+        if (sep <= 0) { ctx.Response.StatusCode = 400; return; }
+        var peerN = rest.Substring(0, sep);
+        var remoteId = rest.Substring(sep + 1);
+        if (!Guid.TryParseExact(peerN, "N", out var peerId)) { ctx.Response.StatusCode = 400; return; }
+
+        var config = Plugin.Instance?.Configuration;
+        var peer = config?.RemoteServers.FirstOrDefault(p => p.Id == peerId);
+        if (peer is null || !peer.Enabled) { await WriteStubItem(ctx, fedId).ConfigureAwait(false); return; }
+
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(10);
+            RemoteJellyfinClient.AddBasicAuth(http, peer);
+            var url = $"{peer.BaseUrl.TrimEnd('/')}/Users/{Uri.EscapeDataString(peer.RemoteUserId ?? string.Empty)}/Items/{Uri.EscapeDataString(remoteId)}";
+            if (string.IsNullOrEmpty(peer.RemoteUserId))
+                url = $"{peer.BaseUrl.TrimEnd('/')}/Items/{Uri.EscapeDataString(remoteId)}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Add("X-Emby-Token", peer.ApiKey);
+            using var resp = await http.SendAsync(req, ctx.RequestAborted).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) { await WriteStubItem(ctx, fedId).ConfigureAwait(false); return; }
+            using var stream = await resp.Content.ReadAsStreamAsync(ctx.RequestAborted).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+            // Clone the entire DTO into a mutable dictionary so we can rewrite the few
+            // identity fields without losing any of the rich metadata (overview, genres,
+            // tags, mediastreams, runtime, studios, people, etc.).
+            var dict = new System.Collections.Generic.Dictionary<string, object?>();
+            foreach (var p in doc.RootElement.EnumerateObject()) dict[p.Name] = JsonElementToObject(p.Value);
+            dict["Id"] = fedId;
+            dict["ServerId"] = string.Empty;
+            dict["ImageTags"] = new System.Collections.Generic.Dictionary<string, string> { ["Primary"] = "fed" };
+            // Strip server-specific fields that would conflict with our id space.
+            dict.Remove("PlaylistItemId");
+            dict.Remove("AncestorIds");
+            dict.Remove("ParentId");
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync(JsonSerializer.Serialize(dict)).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "ProxyItemDetail failed for {Item}", fedId);
+            await WriteStubItem(ctx, fedId).ConfigureAwait(false);
+        }
+    }
+
+    private static object? JsonElementToObject(JsonElement el)
+    {
+        switch (el.ValueKind)
+        {
+            case JsonValueKind.String: return el.GetString();
+            case JsonValueKind.Number: return el.TryGetInt64(out var l) ? (object)l : el.GetDouble();
+            case JsonValueKind.True: return true;
+            case JsonValueKind.False: return false;
+            case JsonValueKind.Null: return null;
+            case JsonValueKind.Array:
+                var list = new System.Collections.Generic.List<object?>();
+                foreach (var x in el.EnumerateArray()) list.Add(JsonElementToObject(x));
+                return list;
+            case JsonValueKind.Object:
+                var map = new System.Collections.Generic.Dictionary<string, object?>();
+                foreach (var p in el.EnumerateObject()) map[p.Name] = JsonElementToObject(p.Value);
+                return map;
+            default: return null;
         }
     }
 
