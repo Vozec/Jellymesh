@@ -831,9 +831,7 @@
         const textSpanCls = textSpan ? textSpan.className : 'MuiTypography-root MuiTypography-body1 MuiListItemText-primary';
         link.innerHTML = `
             <div class="${iconCls}">
-                <svg class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium" focusable="false" aria-hidden="true" viewBox="0 0 24 24">
-                    <path d="M12 2a3 3 0 0 0-1 5.83V10H6.83A3 3 0 1 0 5 13.83V18h6v2.17A3 3 0 1 0 13 20.17V18h6v-4.17A3 3 0 1 0 17.17 10H13V7.83A3 3 0 0 0 12 2"/>
-                </svg>
+                <img src="/Federation/Asset/logo.svg" alt="" style="width:1.5em;height:1.5em;object-fit:contain;" />
             </div>
             <div class="${textRootCls}"><span class="${textSpanCls}">Jellymesh</span></div>
             <span class="MuiTouchRipple-root"></span>
