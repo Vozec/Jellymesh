@@ -13,13 +13,13 @@ flowchart TD
     Digest -->|hash == cached| Skip2[Skip (no changes)] --> NextPeer
     Digest -->|hash differs| Pull[GET /Items recursive]
     Pull --> Upsert[Upsert into remote_items]
-    Upsert --> Diff[Compute old-ids \ new-ids]
+    Upsert --> Diff[Compute old-ids minus new-ids]
     Diff -->|any| Delete[DELETE missing rows]
     Diff -->|none| SaveDigest
     Delete --> SaveDigest[SaveDigest peer, count, hash]
     SaveDigest --> NextPeer{More peers?}
     NextPeer -->|yes| Loop
-    NextPeer -->|no| End([Round complete])
+    NextPeer -->|no| Done([Round complete])
 ```
 
 ## Health-state effect on UI
