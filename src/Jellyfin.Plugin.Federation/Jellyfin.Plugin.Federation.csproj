@@ -24,6 +24,7 @@
     <EmbeddedResource Include="Assets\thumb.png" />
     <EmbeddedResource Include="Assets\logo.svg" />
     <EmbeddedResource Include="Assets\jellymesh-item.js" />
+    <EmbeddedResource Include="Assets\i18n\*.json" />
   </ItemGroup>
 
   <ItemGroup>

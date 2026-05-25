@@ -72,7 +72,7 @@
                 </div>
 
                 <div class="jm-status-bar" id="JmStatusBar">
-                    <span id="JmStatusSummary" style="font-family:monospace;font-size:0.9em;">Loading status…</span>
+                    <span id="JmStatusSummary" style="font-family:monospace;font-size:0.9em;" data-i18n="status.loading">Loading status…</span>
                 </div>
 
                 <div class="jm-tile-grid">
@@ -105,35 +105,35 @@
                 <div class="checkboxContainer">
                     <label>
                         <input is="emby-checkbox" type="checkbox" id="EnableDedup" />
-                        <span>Enable deduplication (merge matching items across peers)</span>
+                        <span data-i18n="settings.dedup">Enable deduplication (merge matching items across peers)</span>
                     </label>
                 </div>
 
                 <div class="checkboxContainer">
                     <label>
                         <input is="emby-checkbox" type="checkbox" id="ShowRemoteOnlyItems" />
-                        <span>Show items that exist only on peer servers (virtual "Friends Library")</span>
+                        <span data-i18n="settings.show_remote">Show items that exist only on peer servers (virtual "Friends Library")</span>
                     </label>
                 </div>
 
                 <div class="checkboxContainer">
                     <label>
                         <input is="emby-checkbox" type="checkbox" id="EnableWatchStateSync" />
-                        <span>Sync watch state (resume position, played flag) across peers</span>
+                        <span data-i18n="settings.watch_sync">Sync watch state (resume position, played flag) across peers</span>
                     </label>
                 </div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="MatchPriority">Match strategy</label>
+                    <label class="inputLabel inputLabelUnfocused" for="MatchPriority" data-i18n="settings.match_strategy">Match strategy</label>
                     <select is="emby-select" id="MatchPriority">
-                        <option value="TmdbOnly">TMDB id only (strictest)</option>
-                        <option value="TmdbThenImdb">TMDB then IMDB</option>
-                        <option value="TmdbThenImdbThenTitle">TMDB, IMDB, then title+year</option>
+                        <option value="TmdbOnly" data-i18n="settings.match.tmdb">TMDB id only (strictest)</option>
+                        <option value="TmdbThenImdb" data-i18n="settings.match.tmdb_imdb">TMDB then IMDB</option>
+                        <option value="TmdbThenImdbThenTitle" data-i18n="settings.match.full">TMDB, IMDB, then title+year</option>
                     </select>
                 </div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="OutboundBitrateCapBps">Outbound bitrate cap (bps, 0 = unlimited)</label>
+                    <label class="inputLabel inputLabelUnfocused" for="OutboundBitrateCapBps" data-i18n="settings.bitrate">Outbound bitrate cap (bps, 0 = unlimited)</label>
                     <input is="emby-input" type="number" id="OutboundBitrateCapBps" min="0" />
                 </div>
 
@@ -153,30 +153,30 @@
                 </div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="PushDebounceSeconds">Push debounce window (seconds, ≥5)</label>
+                    <label class="inputLabel inputLabelUnfocused" for="PushDebounceSeconds" data-i18n="settings.push_debounce">Push debounce window (seconds, ≥5)</label>
                     <input is="emby-input" type="number" id="PushDebounceSeconds" min="5" max="3600" />
                 </div>
 
-                <h4 style="margin-top:1em;">Introductions (delegated key issuance)</h4>
+                <h4 style="margin-top:1em;" data-i18n="settings.intros.header">Introductions (delegated key issuance)</h4>
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="Reciprocity">Reciprocity</label>
+                    <label class="inputLabel inputLabelUnfocused" for="Reciprocity" data-i18n="settings.intros.reciprocity">Reciprocity</label>
                     <select is="emby-select" id="Reciprocity">
-                        <option value="Off">Off</option>
-                        <option value="AutoRequest">Auto-request a key back</option>
-                        <option value="AutoAcceptReciprocal">Auto-accept reciprocal</option>
+                        <option value="Off" data-i18n="settings.intros.reciprocity.off">Off</option>
+                        <option value="AutoRequest" data-i18n="settings.intros.reciprocity.request">Auto-request a key back</option>
+                        <option value="AutoAcceptReciprocal" data-i18n="settings.intros.reciprocity.accept">Auto-accept reciprocal</option>
                     </select>
                 </div>
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="IntroductionHopCap">Hop cap (empty = no cap)</label>
+                    <label class="inputLabel inputLabelUnfocused" for="IntroductionHopCap" data-i18n="settings.intros.hop">Hop cap (empty = no cap)</label>
                     <input is="emby-input" type="number" id="IntroductionHopCap" min="1" max="20" placeholder="empty = unlimited" />
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5em;max-width:30em;">
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="IntroductionRatePerHour">Rate per hour (per introducer)</label>
+                        <label class="inputLabel inputLabelUnfocused" for="IntroductionRatePerHour" data-i18n="settings.intros.rate_h">Rate per hour (per introducer)</label>
                         <input is="emby-input" type="number" id="IntroductionRatePerHour" min="1" />
                     </div>
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="IntroductionRatePerDay">Rate per day (per introducer)</label>
+                        <label class="inputLabel inputLabelUnfocused" for="IntroductionRatePerDay" data-i18n="settings.intros.rate_d">Rate per day (per introducer)</label>
                         <input is="emby-input" type="number" id="IntroductionRatePerDay" min="1" />
                     </div>
                 </div>
@@ -186,13 +186,13 @@
                 <div class="jm-modal-overlay" data-modal-id="dlg-diag"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.diag">Diagnostics</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
-                <h4>Federation status</h4>
-                <div id="FedStats" style="font-family:monospace;font-size:0.9em;padding:0.5em;background:#1a1a1a;border:1px solid #333;">Loading…</div>
+                <h4 data-i18n="diag.status">Federation status</h4>
+                <div id="FedStats" style="font-family:monospace;font-size:0.9em;padding:0.5em;background:#1a1a1a;border:1px solid #333;" data-i18n="common.loading">Loading…</div>
                 <button is="emby-button" type="button" id="RunDiagnostics" class="raised" style="margin-top:0.5em;">
-                    <span>Run diagnostics</span>
+                    <span data-i18n="diag.run">Run diagnostics</span>
                 </button>
                 <div id="DiagOutput" style="font-family:monospace;font-size:0.85em;white-space:pre-wrap;padding:0.5em;margin-top:0.5em;background:#0f0f0f;border:1px solid #333;display:none;"></div>
-                <h4 style="margin-top:1em;">Recent inbound activity</h4>
+                <h4 style="margin-top:1em;" data-i18n="diag.audit">Recent inbound activity</h4>
                 <div id="InboundAuditList" style="font-family:monospace;font-size:0.85em;"></div>
                     </div>
                 </div></div>
@@ -202,7 +202,7 @@
                     <div class="jm-modal-body">
                 <div id="RemoteServersList"></div>
                 <button is="emby-button" type="button" id="AddRemoteServer" class="raised">
-                    <span>Add peer server</span>
+                    <span data-i18n="peers.add">Add peer server</span>
                 </button>
                     </div>
                 </div></div>
@@ -210,35 +210,35 @@
                 <div class="jm-modal-overlay" data-modal-id="dlg-intros"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.intros">Introductions</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
-                <p>Ask an existing peer to introduce you a new contact, or triage incoming introduction requests.</p>
+                <p data-i18n="intros.intro">Ask an existing peer to introduce you a new contact, or triage incoming introduction requests.</p>
 
-                <h4 style="margin:0.5em 0 0.2em 0;">Send an introduction</h4>
+                <h4 style="margin:0.5em 0 0.2em 0;" data-i18n="intros.send.header">Send an introduction</h4>
                 <ol style="margin:0.4em 0 0.8em 1.2em;color:#aaa;font-size:0.9em;line-height:1.5;">
-                    <li>Pick which existing peer will act as introducer (they must trust us).</li>
-                    <li>Browse <em>their</em> peers to choose who to be introduced to.</li>
+                    <li data-i18n="intros.step1">Pick which existing peer will act as introducer (they must trust us).</li>
+                    <li data-i18n="intros.step2">Browse <em>their</em> peers to choose who to be introduced to.</li>
                 </ol>
                 <div style="display:grid;grid-template-columns:1fr auto;gap:0.6em 1em;align-items:end;">
-                    <label><span style="display:block;font-size:0.85em;color:#bbb;">Introducer peer</span>
-                        <select id="IntroPeerSelect" style="width:100%;"><option value="">- pick a peer -</option></select>
+                    <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="intros.introducer">Introducer peer</span>
+                        <select id="IntroPeerSelect" style="width:100%;"><option value="" data-i18n="intros.introducer.placeholder">- pick a peer -</option></select>
                     </label>
-                    <button type="button" class="jm-btn" id="IntroFetchDirectory">Browse their peers</button>
+                    <button type="button" class="jm-btn" id="IntroFetchDirectory" data-i18n="intros.browse">Browse their peers</button>
                 </div>
                 <div id="IntroDirectoryList" style="margin-top:0.6em;"></div>
                 <input type="hidden" id="IntroForUrl" />
-                <label style="display:block;margin-top:0.6em;"><span style="display:block;font-size:0.85em;color:#bbb;">Note (optional)</span><input type="text" id="IntroNote" style="width:100%;" /></label>
+                <label style="display:block;margin-top:0.6em;"><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="intros.note">Note (optional)</span><input type="text" id="IntroNote" style="width:100%;" /></label>
                 <label style="margin-top:0.4em;display:block;">
                     <input type="checkbox" id="IntroAlsoForward" checked />
-                    Also forward the issued key to the new peer (if we have a share key with them)
+                    <span data-i18n="intros.also_forward">Also forward the issued key to the new peer (if we have a share key with them)</span>
                 </label>
-                <button is="emby-button" type="button" id="SendIntroduction" class="jm-btn primary" style="margin-top:0.6em;"><span>Send introduction</span></button>
+                <button is="emby-button" type="button" id="SendIntroduction" class="jm-btn primary" style="margin-top:0.6em;"><span data-i18n="intros.send.button">Send introduction</span></button>
 
-                <h4 style="margin:1em 0 0.2em 0;">Pending peers (want to add us)</h4>
+                <h4 style="margin:1em 0 0.2em 0;" data-i18n="intros.pending_receiver">Pending peers (want to add us)</h4>
                 <div id="IntroPendingReceiver"></div>
 
-                <h4 style="margin:1em 0 0.2em 0;">Issued keys</h4>
+                <h4 style="margin:1em 0 0.2em 0;" data-i18n="intros.issued">Issued keys</h4>
                 <div id="IntroIssued"></div>
 
-                <h4 style="margin:1em 0 0.2em 0;">Outbound</h4>
+                <h4 style="margin:1em 0 0.2em 0;" data-i18n="intros.outbound">Outbound</h4>
                 <div id="IntroForwarder"></div>
                     </div>
                 </div></div>
@@ -246,22 +246,22 @@
                 <div class="jm-modal-overlay" data-modal-id="dlg-requests"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.requests">Content requests</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
-                <p>Ask peers to add a film, or triage what peers asked from you.</p>
+                <p data-i18n="requests.intro">Ask peers to add a film, or triage what peers asked from you.</p>
                 <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
-                    <summary style="cursor:pointer;">Send a request to a peer</summary>
+                    <summary style="cursor:pointer;" data-i18n="requests.send.summary">Send a request to a peer</summary>
                     <div style="margin-top:0.6em;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.6em 1em;">
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Peer</span><select id="ReqPeerSelect" style="width:100%;"><option value="">- pick a peer -</option></select></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">TMDB id (optional)</span><input type="text" id="ReqTmdb" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Title (optional if TMDB)</span><input type="text" id="ReqTitle" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Year (optional)</span><input type="number" id="ReqYear" min="1900" max="2100" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="requests.send.peer">Peer</span><select id="ReqPeerSelect" style="width:100%;"><option value="" data-i18n="requests.send.peer.placeholder">- pick a peer -</option></select></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="requests.send.tmdb">TMDB id (optional)</span><input type="text" id="ReqTmdb" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="requests.send.title">Title (optional if TMDB)</span><input type="text" id="ReqTitle" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="requests.send.year">Year (optional)</span><input type="number" id="ReqYear" min="1900" max="2100" style="width:100%;" /></label>
                     </div>
-                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;">Note (optional)</span><input type="text" id="ReqNote" style="width:100%;max-width:60em;" /></label>
-                    <button is="emby-button" type="button" id="SendRequest" class="raised" style="margin-top:0.3em;"><span>Send</span></button>
+                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="requests.send.note">Note (optional)</span><input type="text" id="ReqNote" style="width:100%;max-width:60em;" /></label>
+                    <button is="emby-button" type="button" id="SendRequest" class="raised" style="margin-top:0.3em;"><span data-i18n="requests.send.button">Send</span></button>
                 </details>
 
-                <h4 style="margin:1em 0 0.2em 0;">Inbound (peers asked you)</h4>
+                <h4 style="margin:1em 0 0.2em 0;" data-i18n="requests.inbound">Inbound (peers asked you)</h4>
                 <div id="ReqInList"></div>
-                <h4 style="margin:1em 0 0.2em 0;">Outbound (you asked peers)</h4>
+                <h4 style="margin:1em 0 0.2em 0;" data-i18n="requests.outbound">Outbound (you asked peers)</h4>
                 <div id="ReqOutList"></div>
                     </div>
                 </div></div>
@@ -269,22 +269,22 @@
                 <div class="jm-modal-overlay" data-modal-id="dlg-shares"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.shares">Share keys</h3><button type="button" class="jm-modal-close">×</button></div>
                     <div class="jm-modal-body">
-                <p>Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
+                <p data-i18n="shares.intro">Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
                 <div id="SharesList"></div>
                 <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
-                    <summary style="cursor:pointer;">Mint new share key</summary>
+                    <summary style="cursor:pointer;" data-i18n="shares.mint.summary">Mint new share key</summary>
                     <div style="margin-top:0.6em;display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;">
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Label</span><input type="text" id="NewShareLabel" placeholder="e.g. Movies for Alice" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="shares.mint.label">Label</span><input type="text" id="NewShareLabel" placeholder="e.g. Movies for Alice" data-i18n-placeholder="shares.mint.label.placeholder" style="width:100%;" /></label>
                         <div>
-                            <span style="display:block;font-size:0.85em;color:#bbb;">Libraries</span>
-                            <button type="button" class="jm-btn" id="NewShareLibrariesPick" style="width:100%;text-align:left;">All libraries</button>
+                            <span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="shares.mint.libraries">Libraries</span>
+                            <button type="button" class="jm-btn" id="NewShareLibrariesPick" style="width:100%;text-align:left;" data-i18n="shares.mint.libraries.all">All libraries</button>
                             <input type="hidden" id="NewShareLibraries" />
                         </div>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Allowed hours start (optional)</span><input type="time" id="NewShareHoursStart" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Allowed hours end (optional)</span><input type="time" id="NewShareHoursEnd" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Schedule timezone (optional)</span>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="shares.mint.hours_start">Allowed hours start (optional)</span><input type="time" id="NewShareHoursStart" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="shares.mint.hours_end">Allowed hours end (optional)</span><input type="time" id="NewShareHoursEnd" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="shares.mint.tz">Schedule timezone (optional)</span>
                             <select id="NewShareTimeZone" style="width:100%;">
-                                <option value="">Server local</option>
+                                <option value="" data-i18n="shares.mint.tz.local">Server local</option>
                                 <option value="UTC">UTC</option>
                                 <option value="Europe/Paris">Europe/Paris</option>
                                 <option value="Europe/London">Europe/London</option>
@@ -294,10 +294,10 @@
                                 <option value="Asia/Tokyo">Asia/Tokyo</option>
                             </select>
                         </label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Blocked tags (comma-separated)</span><input type="text" id="NewShareBlockedTags" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Max official rating</span>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="shares.mint.blocked_tags">Blocked tags (comma-separated)</span><input type="text" id="NewShareBlockedTags" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="shares.mint.max_rating">Max official rating</span>
                             <select id="NewShareMaxRating" style="width:100%;">
-                                <option value="">No limit</option>
+                                <option value="" data-i18n="shares.mint.max_rating.none">No limit</option>
                                 <option value="G">G</option>
                                 <option value="PG">PG</option>
                                 <option value="PG-13">PG-13</option>
@@ -305,26 +305,26 @@
                                 <option value="NC-17">NC-17</option>
                             </select>
                         </label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Bind to peer URL (anti-spoof, optional)</span><input type="url" id="NewShareBoundPeerUrl" placeholder="https://alice.example" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="shares.mint.bound">Bind to peer URL (anti-spoof, optional)</span><input type="url" id="NewShareBoundPeerUrl" placeholder="https://alice.example" data-i18n-placeholder="shares.mint.bound.placeholder" style="width:100%;" /></label>
                     </div>
                     <label style="margin-top:0.5em;display:block;">
                         <input type="checkbox" id="NewShareStrictUnknown" />
-                        <span>Strict mode: also hide items with unrated or regional ratings (FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.</span>
+                        <span data-i18n="shares.mint.strict">Strict mode: also hide items with unrated or regional ratings (FSK-12, 16+, BBFC-18). Required for true kid-safe scoping.</span>
                     </label>
                     <label style="margin-top:0.4em;display:block;">
                         <input type="checkbox" id="NewShareCanIntro" />
-                        <span>Allow this key to request introductions on me</span>
+                        <span data-i18n="shares.mint.can_intro">Allow this key to request introductions on me</span>
                     </label>
                     <label style="display:block;margin-top:0.5em;max-width:30em;">
-                        <span style="display:block;font-size:0.85em;color:#bbb;">Mint mode (when this key asks me to introduce)</span>
+                        <span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="shares.mint.mode">Mint mode (when this key asks me to introduce)</span>
                         <select is="emby-select" id="NewShareMintMode">
-                            <option value="Request">Request (queue for admin approval, safe default)</option>
-                            <option value="AutoAccept">Auto-accept (mint immediately)</option>
-                            <option value="Reject">Reject</option>
+                            <option value="Request" data-i18n="shares.mint.mode.request">Request (queue for admin approval, safe default)</option>
+                            <option value="AutoAccept" data-i18n="shares.mint.mode.auto">Auto-accept (mint immediately)</option>
+                            <option value="Reject" data-i18n="shares.mint.mode.reject">Reject</option>
                         </select>
                     </label>
                     <button is="emby-button" type="button" id="CreateShare" class="raised" style="margin-top:0.5em;">
-                        <span>Generate share key</span>
+                        <span data-i18n="shares.mint.button">Generate share key</span>
                     </button>
                 </details>
                     </div>
@@ -371,9 +371,9 @@
                 <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.4em 0;padding:0.6em 0.8em;">
                     <summary style="cursor:pointer;" data-i18n="handshake.access.tokens.mint">Mint invite token</summary>
                     <div style="margin-top:0.6em;display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.6em 1em;">
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Label</span><input type="text" id="NewInviteTokenLabel" placeholder="who is this for?" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Max uses (optional)</span><input type="number" id="NewInviteTokenMaxUses" min="1" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Expires (optional)</span><input type="datetime-local" id="NewInviteTokenExpiry" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.access.tokens.label">Label</span><input type="text" id="NewInviteTokenLabel" placeholder="who is this for?" data-i18n-placeholder="handshake.access.tokens.label.placeholder" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.access.tokens.maxuses">Max uses (optional)</span><input type="number" id="NewInviteTokenMaxUses" min="1" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.access.tokens.expires">Expires (optional)</span><input type="datetime-local" id="NewInviteTokenExpiry" style="width:100%;" /></label>
                     </div>
                     <button is="emby-button" type="button" id="MintInviteToken" class="raised" style="margin-top:0.4em;"><span data-i18n="handshake.access.tokens.mint">Mint invite token</span></button>
                 </details>
@@ -381,12 +381,12 @@
                 <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
                     <summary style="cursor:pointer;" data-i18n="handshake.request.send">Request access from a peer</summary>
                     <div style="margin-top:0.6em;display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.6em 1em;">
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target URL</span><input type="url" id="ReqAccessTargetUrl" placeholder="https://target.example" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target Basic user (optional)</span><input type="text" id="ReqAccessTargetBasicUser" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target Basic password (optional)</span><input type="password" id="ReqAccessTargetBasicPass" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.request.target">Target URL</span><input type="url" id="ReqAccessTargetUrl" placeholder="https://target.example" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.request.basic.user">Target Basic user (optional)</span><input type="text" id="ReqAccessTargetBasicUser" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.request.basic.pass">Target Basic password (optional)</span><input type="password" id="ReqAccessTargetBasicPass" style="width:100%;" /></label>
                     </div>
-                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;">Their invite token (if they gave you one)</span><input type="text" id="ReqAccessInviteToken" style="width:100%;max-width:60em;" /></label>
-                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;">Message (optional)</span><input type="text" id="ReqAccessMessage" style="width:100%;max-width:60em;" /></label>
+                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.request.token">Their invite token (if they gave you one)</span><input type="text" id="ReqAccessInviteToken" style="width:100%;max-width:60em;" /></label>
+                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.request.message">Message (optional)</span><input type="text" id="ReqAccessMessage" style="width:100%;max-width:60em;" /></label>
                     <label style="margin-top:0.4em;display:block;"><input type="checkbox" id="ReqAccessMutual" /><span data-i18n="handshake.request.mutual">Request mutual access (they grant + we grant back)</span></label>
                     <button is="emby-button" type="button" id="SendAccessRequest" class="raised" style="margin-top:0.4em;"><span data-i18n="handshake.request.button">Send access request</span></button>
                 </details>
@@ -394,11 +394,11 @@
                 <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
                     <summary style="cursor:pointer;" data-i18n="handshake.invite.send">Invite a peer (push a pre-minted key)</summary>
                     <div style="margin-top:0.6em;display:grid;grid-template-columns:2fr 1fr 1fr;gap:0.6em 1em;">
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target URL</span><input type="url" id="InviteTargetUrl" placeholder="https://target.example" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target Basic user (optional)</span><input type="text" id="InviteTargetBasicUser" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Target Basic password (optional)</span><input type="password" id="InviteTargetBasicPass" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.invite.target">Target URL</span><input type="url" id="InviteTargetUrl" placeholder="https://target.example" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.invite.basic.user">Target Basic user (optional)</span><input type="text" id="InviteTargetBasicUser" style="width:100%;" /></label>
+                        <label><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.invite.basic.pass">Target Basic password (optional)</span><input type="password" id="InviteTargetBasicPass" style="width:100%;" /></label>
                     </div>
-                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;">Message (optional)</span><input type="text" id="InviteMessage" style="width:100%;max-width:60em;" /></label>
+                    <label style="display:block;margin-top:0.4em;"><span style="display:block;font-size:0.85em;color:#bbb;" data-i18n="handshake.invite.message">Message (optional)</span><input type="text" id="InviteMessage" style="width:100%;max-width:60em;" /></label>
                     <label style="margin-top:0.4em;display:block;"><input type="checkbox" id="InviteMutual" /><span data-i18n="handshake.invite.mutual">Mutual invite (they accept and grant back)</span></label>
                     <button is="emby-button" type="button" id="SendInvite" class="raised" style="margin-top:0.4em;"><span data-i18n="handshake.invite.button">Send invite</span></button>
                 </details>
@@ -426,6 +426,56 @@
 
     <script type="text/javascript">
         var FederationPluginId = '9f3c2a8e-6b1d-4f7a-b3c5-1e2d9a8b7c6e';
+        var jmLastConfig = null;
+
+        // i18n: server delivers JSON bundles via /Federation/I18n/{lang}. t() returns the
+        // translated string for a key, falling back to en, then to the key itself. Tokens of
+        // the form {name} in the value are substituted from the params object.
+        var jmI18n = { lang: 'en', dict: {}, en: {} };
+        function t(key, params) {
+            var v = (jmI18n.dict && jmI18n.dict[key]) || (jmI18n.en && jmI18n.en[key]) || key;
+            if (params) {
+                v = v.replace(/\{(\w+)\}/g, function (_, k) { return params[k] !== undefined ? params[k] : '{' + k + '}'; });
+            }
+            return v;
+        }
+        function loadI18n(lang) {
+            // Load both the target language and English (used as fallback). Resolves when both
+            // requests settle so the first applyI18n run sees a complete dict.
+            var jobs = [
+                ApiClient.fetch({ url: ApiClient.getUrl('Federation/I18n/' + lang), type: 'GET', dataType: 'json' })
+                    .then(function (d) { jmI18n.dict = d || {}; jmI18n.lang = lang; })
+                    .catch(function () { jmI18n.dict = {}; })
+            ];
+            if (lang !== 'en') {
+                jobs.push(ApiClient.fetch({ url: ApiClient.getUrl('Federation/I18n/en'), type: 'GET', dataType: 'json' })
+                    .then(function (d) { jmI18n.en = d || {}; })
+                    .catch(function () { jmI18n.en = {}; }));
+            } else {
+                jobs.push(Promise.resolve().then(function () { jmI18n.en = jmI18n.dict; }));
+            }
+            return Promise.all(jobs);
+        }
+        function applyI18n() {
+            document.querySelectorAll('#FederationConfigPage [data-i18n]').forEach(function (el) {
+                var k = el.getAttribute('data-i18n');
+                var v = t(k);
+                if (v === k) return; // missing → keep the in-page fallback text
+                if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'url' || el.type === 'password' || el.type === 'number')) {
+                    el.placeholder = v;
+                } else {
+                    el.textContent = v;
+                }
+            });
+            document.querySelectorAll('#FederationConfigPage [data-i18n-placeholder]').forEach(function (el) {
+                var v = t(el.getAttribute('data-i18n-placeholder'));
+                if (v) el.placeholder = v;
+            });
+            document.querySelectorAll('#FederationConfigPage [data-i18n-title]').forEach(function (el) {
+                var v = t(el.getAttribute('data-i18n-title'));
+                if (v) el.title = v;
+            });
+        }
 
         // Themed toast + alert + confirm helpers; drop-in replacements for the browser-native popups.
         function jmToast(msg, kind) {
@@ -442,8 +492,8 @@
                 overlay.className = 'jm-modal-overlay open';
                 overlay.style.zIndex = 10000;
                 var body = opts.bodyHtml || ('<p style="margin:0;">' + (opts.body || '').replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</p>');
-                var ok = '<button type="button" class="jm-btn primary" data-result="ok">' + (opts.okLabel || 'OK') + '</button>';
-                var cancel = opts.kind === 'alert' ? '' : '<button type="button" class="jm-btn" data-result="cancel">' + (opts.cancelLabel || 'Cancel') + '</button>';
+                var ok = '<button type="button" class="jm-btn primary" data-result="ok">' + (opts.okLabel || t('common.ok')) + '</button>';
+                var cancel = opts.kind === 'alert' ? '' : '<button type="button" class="jm-btn" data-result="cancel">' + (opts.cancelLabel || t('common.cancel')) + '</button>';
                 overlay.innerHTML = '<div class="jm-modal-card" style="max-width:480px;">'
                     + '<div class="jm-modal-head"><h3>' + (opts.title || '') + '</h3><button type="button" class="jm-modal-close" data-result="cancel">&times;</button></div>'
                     + '<div class="jm-modal-body">' + body + '</div>'
@@ -464,7 +514,7 @@
             });
         }
         function jmAlert(title, body) { return jmDialog({ title: title, body: body, kind: 'alert' }); }
-        function jmConfirm(title, body) { return jmDialog({ title: title, body: body, okLabel: 'Confirm' }); }
+        function jmConfirm(title, body) { return jmDialog({ title: title, body: body, okLabel: t('common.confirm') }); }
 
         function jmPickLibraries(currentIds, onConfirm) {
             ApiClient.fetch({ url: ApiClient.getUrl('Library/VirtualFolders'), type: 'GET', dataType: 'json' }).then(function (folders) {
@@ -473,18 +523,18 @@
                     var checked = selected.has(f.ItemId) ? 'checked' : '';
                     return '<label style="display:flex;align-items:center;gap:0.5em;padding:0.4em;border-bottom:1px solid #2a2a2a;">'
                         + '<input type="checkbox" data-libid="' + f.ItemId + '" ' + checked + ' />'
-                        + '<span><strong>' + (f.Name || '(unnamed)') + '</strong> <span style="color:#888;font-size:0.85em;">' + (f.CollectionType || 'mixed') + '</span></span>'
+                        + '<span><strong>' + (f.Name || t('peers.unnamed')) + '</strong> <span style="color:#888;font-size:0.85em;">' + (f.CollectionType || 'mixed') + '</span></span>'
                         + '</label>';
                 }).join('');
-                var body = '<p style="margin:0 0 0.6em 0;color:#aaa;">Uncheck all to share every library.</p>'
-                    + '<div style="max-height:50vh;overflow-y:auto;border:1px solid #333;border-radius:0.3em;">' + (rows || '<em style="display:block;padding:0.6em;">No libraries found.</em>') + '</div>';
-                jmDialog({ title: 'Pick libraries to share', bodyHtml: body, okLabel: 'Apply' }).then(function (ok) {
+                var body = '<p style="margin:0 0 0.6em 0;color:#aaa;">' + t('libs.pick.hint') + '</p>'
+                    + '<div style="max-height:50vh;overflow-y:auto;border:1px solid #333;border-radius:0.3em;">' + (rows || '<em style="display:block;padding:0.6em;">' + t('libs.pick.empty') + '</em>') + '</div>';
+                jmDialog({ title: t('libs.pick.title'), bodyHtml: body, okLabel: t('libs.pick.apply') }).then(function (ok) {
                     if (!ok) return;
                     var picked = [];
                     document.querySelectorAll('.jm-modal-overlay [data-libid]:checked').forEach(function (cb) { picked.push(cb.dataset.libid); });
                     onConfirm(picked);
                 });
-            }).catch(function () { jmAlert('Cannot load libraries', 'Library API returned an error.'); });
+            }).catch(function () { jmAlert(t('libs.pick.error'), t('libs.pick.error.body')); });
         }
 
         // Event delegation on the page container so handlers stay bound whether the script
@@ -532,106 +582,20 @@
             var bar = document.getElementById('JmStatusSummary');
             if (!bar) return;
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Stats'), type: 'GET', dataType: 'json' }).then(function (s) {
-                bar.textContent = s.PeerCount + ' peers (' + s.OnlinePeerCount + ' online) · '
-                    + s.TotalCachedItems + ' cached items · '
-                    + 'dedup ratio ' + (s.DedupRatio || 0).toFixed(2);
+                bar.textContent = t('status.summary', {
+                    peers: s.PeerCount,
+                    online: s.OnlinePeerCount,
+                    cached: s.TotalCachedItems,
+                    ratio: (s.DedupRatio || 0).toFixed(2)
+                });
             }).catch(function (err) {
-                bar.textContent = 'Status unavailable (HTTP ' + (err && err.status) + ')';
+                bar.textContent = t('status.unavailable', { code: (err && err.status) || '?' });
             });
         }
 
-        var i18n = {
-            en: {
-                'title': 'Jellymesh',
-                'subtitle': 'Configure peer Jellyfin servers to federate libraries with.',
-                'lang.label': 'Dashboard language',
-                'sync.interval': 'Sync interval (minutes)',
-                'public.url': "Our public base URL (advertised to peers; may differ from this server's bind URL)",
-                'public.basic.user': 'Basic auth user',
-                'public.basic.pass': 'Basic auth password',
-                'privacy.title': 'Privacy: who can contact us',
-                'privacy.desc': 'Master switches for unsolicited inbound contact. Turn off to refuse all new requests regardless of any per-key or per-token rule.',
-                'privacy.access': 'Accept inbound /Federation/AccessRequest (peers asking for access)',
-                'privacy.invites': 'Accept inbound /Federation/InviteOffer (peers pushing pre-minted keys)',
-                'privacy.intro': 'Accept inbound /Federation/Introduce + /Introduced (peer-mediated introductions)',
-                'handshake.title': 'Direct peer handshake (request access + invite)',
-                'handshake.desc': "Bootstrap a peering without going through a third party. The other side's admin approves before any key crosses the wire.",
-                'handshake.access.gating': 'Access request gating (inbound, when admin enables them above)',
-                'handshake.access.open': 'Open: accept access requests from any origin (rate-limited per IP)',
-                'handshake.access.ratelimit': 'Per-IP rate limit per hour',
-                'handshake.access.allowlist': 'Allowed origins (comma-separated URLs; bypasses rate limit)',
-                'handshake.access.tokens': 'Invite tokens (one-time)',
-                'handshake.access.tokens.mint': 'Mint invite token',
-                'handshake.request.send': 'Request access from a peer',
-                'handshake.request.mutual': 'Request mutual access (they grant + we grant back)',
-                'handshake.request.button': 'Send access request',
-                'handshake.invite.send': 'Invite a peer (push a pre-minted key)',
-                'handshake.invite.mutual': 'Mutual invite (they accept and grant back)',
-                'handshake.invite.button': 'Send invite',
-                'handshake.inbound': 'Inbound handshake (waiting for our approval)',
-                'handshake.outbound': 'Outbound handshake',
-                'handshake.blocklist': 'Blocked peers',
-                'handshake.blocklist.add': 'Block this URL',
-                'tile.settings': 'Settings', 'tile.settings.hint': 'General, language and sync',
-                'tile.peers': 'Peers', 'tile.peers.hint': 'Configured peer servers',
-                'tile.handshake': 'Direct handshake', 'tile.handshake.hint': 'Request access / invite',
-                'tile.intros': 'Introductions', 'tile.intros.hint': 'Via existing peers',
-                'tile.requests': 'Content requests', 'tile.requests.hint': 'Ask for films',
-                'tile.shares': 'Share keys', 'tile.shares.hint': 'Keys you issue to peers',
-                'tile.privacy': 'Privacy', 'tile.privacy.hint': 'Master switches + blocklist',
-                'tile.diag': 'Diagnostics', 'tile.diag.hint': 'Stats + audit log',
-                'save': 'Save'
-            },
-            fr: {
-                'title': 'Jellymesh',
-                'subtitle': 'Configurez des serveurs Jellyfin pairs avec qui fédérer vos bibliothèques.',
-                'lang.label': 'Langue du tableau de bord',
-                'sync.interval': 'Intervalle de sync (minutes)',
-                'public.url': 'Notre URL publique (annoncée aux pairs; peut différer de l\'URL de bind du serveur)',
-                'public.basic.user': 'Utilisateur Basic auth',
-                'public.basic.pass': 'Mot de passe Basic auth',
-                'privacy.title': 'Confidentialité : qui peut nous contacter',
-                'privacy.desc': 'Interrupteurs maîtres pour les contacts entrants non sollicités. Désactiver refuse toute nouvelle demande, peu importe les règles par clé ou par token.',
-                'privacy.access': 'Accepter les /Federation/AccessRequest entrants (pairs demandant l\'accès)',
-                'privacy.invites': 'Accepter les /Federation/InviteOffer entrants (pairs poussant des clés pré-générées)',
-                'privacy.intro': 'Accepter les /Federation/Introduce + /Introduced entrants (introductions médiatisées par un pair)',
-                'handshake.title': 'Handshake direct entre pairs (demande d\'accès + invitation)',
-                'handshake.desc': 'Initier un peering sans passer par un tiers. L\'admin du destinataire valide avant qu\'aucune clé ne soit échangée.',
-                'handshake.access.gating': 'Filtrage des demandes d\'accès (entrant, si activé plus haut)',
-                'handshake.access.open': 'Ouvert : accepter les demandes d\'accès de toute origine (rate-limit par IP)',
-                'handshake.access.ratelimit': 'Limite de débit par IP par heure',
-                'handshake.access.allowlist': 'Origines autorisées (URLs séparées par virgule; bypass du rate limit)',
-                'handshake.access.tokens': 'Tokens d\'invitation (one-time)',
-                'handshake.access.tokens.mint': 'Générer un token d\'invitation',
-                'handshake.request.send': 'Demander l\'accès à un pair',
-                'handshake.request.mutual': 'Demander un accès mutuel (ils accordent + nous accordons en retour)',
-                'handshake.request.button': 'Envoyer la demande',
-                'handshake.invite.send': 'Inviter un pair (pousser une clé pré-générée)',
-                'handshake.invite.mutual': 'Invitation mutuelle (ils acceptent et accordent en retour)',
-                'handshake.invite.button': 'Envoyer l\'invitation',
-                'handshake.inbound': 'Handshake entrant (en attente de notre approbation)',
-                'handshake.outbound': 'Handshake sortant',
-                'handshake.blocklist': 'Pairs bloqués',
-                'handshake.blocklist.add': 'Bloquer cette URL',
-                'tile.settings': 'Paramètres', 'tile.settings.hint': 'Général, langue et sync',
-                'tile.peers': 'Pairs', 'tile.peers.hint': 'Serveurs configurés',
-                'tile.handshake': 'Handshake direct', 'tile.handshake.hint': 'Demande / invitation',
-                'tile.intros': 'Introductions', 'tile.intros.hint': 'Via pairs existants',
-                'tile.requests': 'Demandes de contenu', 'tile.requests.hint': 'Demander des films',
-                'tile.shares': 'Clés de partage', 'tile.shares.hint': 'Clés que vous émettez',
-                'tile.privacy': 'Confidentialité', 'tile.privacy.hint': 'Interrupteurs + blocklist',
-                'tile.diag': 'Diagnostics', 'tile.diag.hint': 'Stats + journal',
-                'save': 'Enregistrer'
-            }
-        };
-
-        function applyI18n(lang) {
-            var dict = i18n[lang] || i18n.en;
-            document.querySelectorAll('[data-i18n]').forEach(function (el) {
-                var key = el.getAttribute('data-i18n');
-                if (dict[key]) el.textContent = dict[key];
-            });
-        }
+        // The inline en/fr dictionaries that used to live here are now served via
+        // /Federation/I18n/{lang} from Assets/i18n/*.json. See t(), loadI18n(), applyI18n()
+        // defined at the top of this script.
 
         function fieldRow(label, input, hint) {
             var hintHtml = hint ? '<small style="color:#888;display:block;margin-top:0.1em;">' + esc(hint) + '</small>' : '';
@@ -645,12 +609,12 @@
         function renderServers(servers) {
             var html = '';
             (servers || []).forEach(function (s, i) {
-                var headerName = s.Name || s.BaseUrl || '(unnamed peer)';
+                var headerName = s.Name || s.BaseUrl || t('peers.unnamed');
                 var enabledChip = s.Enabled
-                    ? '<span style="background:#1e5631;color:#dfd;padding:0.1em 0.5em;border-radius:0.4em;font-size:0.8em;">enabled</span>'
-                    : '<span style="background:#5e2222;color:#fdd;padding:0.1em 0.5em;border-radius:0.4em;font-size:0.8em;">disabled</span>';
-                var tagChips = (s.Tags || []).map(function (t) {
-                    return '<span style="background:#333;color:#ccc;padding:0.1em 0.4em;border-radius:0.3em;font-size:0.75em;margin-right:0.2em;">' + esc(t) + '</span>';
+                    ? '<span style="background:#1e5631;color:#dfd;padding:0.1em 0.5em;border-radius:0.4em;font-size:0.8em;">' + t('peers.enabled') + '</span>'
+                    : '<span style="background:#5e2222;color:#fdd;padding:0.1em 0.5em;border-radius:0.4em;font-size:0.8em;">' + t('peers.disabled') + '</span>';
+                var tagChips = (s.Tags || []).map(function (tag) {
+                    return '<span style="background:#333;color:#ccc;padding:0.1em 0.4em;border-radius:0.3em;font-size:0.75em;margin-right:0.2em;">' + esc(tag) + '</span>';
                 }).join('');
 
                 html += '<details data-idx="' + i + '" style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">';
@@ -659,41 +623,41 @@
 
                 html += '<div style="margin-top:0.6em;display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;">';
                 html += '<div>';
-                html += '<h5 style="margin:0.3em 0 0.3em 0;color:#9cd;">Basic</h5>';
-                html += fieldRow('Display name', '<input type="text" value="' + esc(s.Name || '') + '" data-field="Name" placeholder="Friendly label" />');
-                html += fieldRow('Base URL', '<input type="url" value="' + esc(s.BaseUrl || '') + '" data-field="BaseUrl" placeholder="https://peer.example.com" />', 'Where this server can reach the peer (LAN IP / hostname).');
-                html += '<label style="display:block;margin:0.4em 0;"><input type="checkbox" data-field="Enabled" ' + (s.Enabled ? 'checked' : '') + ' /> <span>Enabled</span></label>';
-                html += fieldRow('Tags (comma-separated)', '<input type="text" value="' + esc((s.Tags || []).join(", ")) + '" data-field="Tags" placeholder="family, friends, public" />', 'Free-form labels for grouping.');
+                html += '<h5 style="margin:0.3em 0 0.3em 0;color:#9cd;">' + t('peers.section.basic') + '</h5>';
+                html += fieldRow(t('peers.field.name'), '<input type="text" value="' + esc(s.Name || '') + '" data-field="Name" placeholder="' + esc(t('peers.field.name.placeholder')) + '" />');
+                html += fieldRow(t('peers.field.baseurl'), '<input type="url" value="' + esc(s.BaseUrl || '') + '" data-field="BaseUrl" placeholder="' + esc(t('peers.field.baseurl.placeholder')) + '" />', t('peers.field.baseurl.hint'));
+                html += '<label style="display:block;margin:0.4em 0;"><input type="checkbox" data-field="Enabled" ' + (s.Enabled ? 'checked' : '') + ' /> <span>' + t('peers.field.enabled') + '</span></label>';
+                html += fieldRow(t('peers.field.tags'), '<input type="text" value="' + esc((s.Tags || []).join(", ")) + '" data-field="Tags" placeholder="' + esc(t('peers.field.tags.placeholder')) + '" />', t('peers.field.tags.hint'));
                 html += '</div>';
 
                 html += '<div>';
-                html += '<h5 style="margin:0.3em 0 0.3em 0;color:#9cd;">Authentication</h5>';
-                html += fieldRow('Jellyfin API key', '<input type="text" value="' + esc(s.ApiKey || '') + '" data-field="ApiKey" placeholder="X-Emby-Token used on /Items, /Videos" />');
-                html += fieldRow('Federation share key (from peer)', '<input type="text" value="' + esc(s.FederationShareKey || '') + '" data-field="FederationShareKey" placeholder="What the peer issued for us" />');
-                html += fieldRow('HTTP Basic user (optional)', '<input type="text" value="' + esc(s.BasicAuthUser || '') + '" data-field="BasicAuthUser" placeholder="for reverse-proxy auth" />');
-                html += fieldRow('HTTP Basic password (optional)', '<input type="password" value="' + esc(s.BasicAuthPass || '') + '" data-field="BasicAuthPass" placeholder="kept server-side" />');
+                html += '<h5 style="margin:0.3em 0 0.3em 0;color:#9cd;">' + t('peers.section.auth') + '</h5>';
+                html += fieldRow(t('peers.field.apikey'), '<input type="text" value="' + esc(s.ApiKey || '') + '" data-field="ApiKey" placeholder="' + esc(t('peers.field.apikey.placeholder')) + '" />');
+                html += fieldRow(t('peers.field.fedkey'), '<input type="text" value="' + esc(s.FederationShareKey || '') + '" data-field="FederationShareKey" placeholder="' + esc(t('peers.field.fedkey.placeholder')) + '" />');
+                html += fieldRow(t('peers.field.basicuser'), '<input type="text" value="' + esc(s.BasicAuthUser || '') + '" data-field="BasicAuthUser" placeholder="' + esc(t('peers.field.basicuser.placeholder')) + '" />');
+                html += fieldRow(t('peers.field.basicpass'), '<input type="password" value="' + esc(s.BasicAuthPass || '') + '" data-field="BasicAuthPass" placeholder="' + esc(t('peers.field.basicpass.placeholder')) + '" />');
                 html += '</div>';
                 html += '</div>';
 
                 html += '<div style="margin-top:0.4em;display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;">';
                 html += '<div>';
-                html += '<h5 style="margin:0.5em 0 0.3em 0;color:#9cd;">Watch sync</h5>';
-                html += fieldRow('Remote user id on peer', '<input type="text" value="' + esc(s.RemoteUserId || '') + '" data-field="RemoteUserId" placeholder="Peer user id we push UserData to" />');
-                html += fieldRow('Local user receiving peer watch state', '<input type="text" value="' + esc(s.LocalUserIdForSync || '') + '" data-field="LocalUserIdForSync" placeholder="Our user id we mirror peer state into" />', 'Leave empty to disable pull-direction sync for this peer.');
+                html += '<h5 style="margin:0.5em 0 0.3em 0;color:#9cd;">' + t('peers.section.sync') + '</h5>';
+                html += fieldRow(t('peers.field.remoteuser'), '<input type="text" value="' + esc(s.RemoteUserId || '') + '" data-field="RemoteUserId" placeholder="' + esc(t('peers.field.remoteuser.placeholder')) + '" />');
+                html += fieldRow(t('peers.field.localuser'), '<input type="text" value="' + esc(s.LocalUserIdForSync || '') + '" data-field="LocalUserIdForSync" placeholder="' + esc(t('peers.field.localuser.placeholder')) + '" />', t('peers.field.localuser.hint'));
                 html += '</div>';
                 html += '<div>';
-                html += '<h5 style="margin:0.5em 0 0.3em 0;color:#9cd;">Quotas (soft-block)</h5>';
-                html += fieldRow('Inbound req per hour (0 = unlimited)', '<input type="number" min="0" value="' + (s.InboundReqPerHourLimit || 0) + '" data-field="InboundReqPerHourLimit" />', 'When exceeded we respond 429 with Retry-After.');
-                html += fieldRow('Outbound bytes per day (0 = unlimited)', '<input type="number" min="0" value="' + (s.OutboundBytesPerDayLimit || 0) + '" data-field="OutboundBytesPerDayLimit" />');
+                html += '<h5 style="margin:0.5em 0 0.3em 0;color:#9cd;">' + t('peers.section.quotas') + '</h5>';
+                html += fieldRow(t('peers.field.req_per_h'), '<input type="number" min="0" value="' + (s.InboundReqPerHourLimit || 0) + '" data-field="InboundReqPerHourLimit" />', t('peers.field.req_per_h.hint'));
+                html += fieldRow(t('peers.field.bytes_per_d'), '<input type="number" min="0" value="' + (s.OutboundBytesPerDayLimit || 0) + '" data-field="OutboundBytesPerDayLimit" />');
                 html += '</div>';
                 html += '</div>';
 
                 html += '<div style="margin-top:0.6em;text-align:right;">';
-                html += '<button type="button" class="remove-server raised" style="color:#f88;">Remove peer</button>';
+                html += '<button type="button" class="remove-server raised" style="color:#f88;">' + t('peers.remove') + '</button>';
                 html += '</div>';
                 html += '</details>';
             });
-            document.getElementById('RemoteServersList').innerHTML = html || '<em>No peer servers configured. Add one or send/receive an access request.</em>';
+            document.getElementById('RemoteServersList').innerHTML = html || '<em>' + t('peers.empty') + '</em>';
         }
 
         function statusBadge(status) {
@@ -705,24 +669,24 @@
         }
 
         function fmtRequest(r, showActions) {
-            var who = esc(r.Title || r.TmdbId || r.ImdbId || '(unknown)');
+            var who = esc(r.Title || r.TmdbId || r.ImdbId || t('requests.unknown_title'));
             var meta = (r.Year ? ' (' + r.Year + ')' : '') + (r.TmdbId ? ' tmdb:' + esc(r.TmdbId) : '');
-            var peer = r.PeerUrl ? ' from <code>' + esc(r.PeerUrl) + '</code>' : '';
+            var peer = r.PeerUrl ? t('requests.from_peer') + '<code>' + esc(r.PeerUrl) + '</code>' : '';
             var when = r.RequestedUtc ? ' · ' + new Date(r.RequestedUtc).toLocaleString() : '';
             var note = r.Note ? '<div style="color:#aaa;font-size:0.85em;margin-top:0.2em;">' + esc(r.Note) + '</div>' : '';
             var html = '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #333;font-size:0.9em;">';
             html += '<strong>' + who + '</strong>' + meta + peer + when + ' - ' + statusBadge(r.Status) + note;
             if (showActions && r.Status === 'pending') {
                 html += '<div style="margin-top:0.3em;">';
-                ['accepted','declined','dismissed'].forEach(function (st) {
-                    html += '<button type="button" class="req-set" data-id="' + r.Id + '" data-status="' + st + '">' + st + '</button> ';
+                [['accepted','requests.action.accepted'],['declined','requests.action.declined'],['dismissed','requests.action.dismissed']].forEach(function (pair) {
+                    html += '<button type="button" class="req-set" data-id="' + r.Id + '" data-status="' + pair[0] + '">' + t(pair[1]) + '</button> ';
                 });
                 html += '</div>';
             } else if (r.Status === 'send-failed') {
                 // Outbound rows that the peer rejected - admin should at minimum be able to
                 // dismiss the row out of the active list.
                 html += '<div style="margin-top:0.3em;">';
-                html += '<button type="button" class="req-set" data-id="' + r.Id + '" data-status="dismissed">dismiss</button>';
+                html += '<button type="button" class="req-set" data-id="' + r.Id + '" data-status="dismissed">' + t('requests.action.dismiss') + '</button>';
                 html += '</div>';
             }
             html += '</div>';
@@ -732,18 +696,18 @@
         function renderRequests() {
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Requests/in'), type: 'GET', dataType: 'json' }).then(function (rows) {
                 document.getElementById('ReqInList').innerHTML =
-                    (rows && rows.length) ? rows.map(function (r) { return fmtRequest(r, true); }).join('') : '<em>No inbound requests.</em>';
+                    (rows && rows.length) ? rows.map(function (r) { return fmtRequest(r, true); }).join('') : '<em>' + t('requests.empty.inbound') + '</em>';
             });
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Requests/out'), type: 'GET', dataType: 'json' }).then(function (rows) {
                 document.getElementById('ReqOutList').innerHTML =
-                    (rows && rows.length) ? rows.map(function (r) { return fmtRequest(r, false); }).join('') : '<em>No outbound requests.</em>';
+                    (rows && rows.length) ? rows.map(function (r) { return fmtRequest(r, false); }).join('') : '<em>' + t('requests.empty.outbound') + '</em>';
             });
         }
 
         function populatePeerSelect() {
             ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
                 var sel = document.getElementById('ReqPeerSelect');
-                var html = '<option value="">- pick a peer -</option>';
+                var html = '<option value="">' + t('requests.send.peer.placeholder') + '</option>';
                 (config.RemoteServers || []).filter(function (s) { return s.Enabled; }).forEach(function (s) {
                     html += '<option value="' + esc(s.Id) + '">' + esc(s.Name || s.BaseUrl) + '</option>';
                 });
@@ -753,10 +717,10 @@
 
         document.getElementById('SendRequest').addEventListener('click', function () {
             var peerId = document.getElementById('ReqPeerSelect').value;
-            if (!peerId) { jmToast('Pick a peer'); return; }
+            if (!peerId) { jmToast(t('requests.send.no_peer')); return; }
             var tmdb = document.getElementById('ReqTmdb').value.trim() || null;
             var title = document.getElementById('ReqTitle').value.trim() || null;
-            if (!tmdb && !title) { jmToast('Provide either a TMDB id or a title'); return; }
+            if (!tmdb && !title) { jmToast(t('requests.send.need_input')); return; }
             var year = parseInt(document.getElementById('ReqYear').value, 10);
             var note = document.getElementById('ReqNote').value.trim() || null;
             ApiClient.fetch({
@@ -773,10 +737,10 @@
                 // 400 = our config is missing.
                 var status = err && err.status;
                 var msg;
-                if (status === 502) msg = 'Peer rejected the request - they may not have your share key, or their plugin is offline.';
-                else if (status === 404) msg = 'Unknown peer - refresh the peer list and try again.';
-                else if (status === 400) msg = 'Send failed - your FederationShareKey for this peer or your PublicBaseUrl is unset.';
-                else msg = 'Send failed (HTTP ' + (status || '?') + ').';
+                if (status === 502) msg = t('requests.send.fail.502');
+                else if (status === 404) msg = t('requests.send.fail.404');
+                else if (status === 400) msg = t('requests.send.fail.400');
+                else msg = t('requests.send.fail.other', { code: status || '?' });
                 jmToast(msg);
             });
         });
@@ -801,16 +765,16 @@
                 (shares || []).forEach(function (k) {
                     html += '<div style="padding:0.6em 0.8em;margin:0.25em 0;border:1px solid #333;border-radius:0.3em;display:flex;align-items:center;gap:0.6em;">';
                     html += '<div style="flex:1;min-width:0;">';
-                    html += '<div><strong>' + esc(k.Label || '(no label)') + '</strong></div>';
-                    html += '<div style="color:#888;font-size:0.85em;">libs: ' + esc(k.LibraryIds && k.LibraryIds.length ? k.LibraryIds.join(', ') : '(all)') + ' · key: <code>' + esc(k.ApiKeyPreview) + '</code></div>';
+                    html += '<div><strong>' + esc(k.Label || t('shares.unlabeled')) + '</strong></div>';
+                    html += '<div style="color:#888;font-size:0.85em;">' + t('shares.libs.label') + ': ' + esc(k.LibraryIds && k.LibraryIds.length ? k.LibraryIds.join(', ') : t('shares.libs.all')) + ' · ' + t('shares.key.label') + ': <code>' + esc(k.ApiKeyPreview) + '</code></div>';
                     html += '</div>';
                     html += '<div style="display:flex;gap:0.4em;flex-shrink:0;">';
-                    html += '<button type="button" class="jm-btn copy-share" data-id="' + esc(k.Id) + '">Copy full key</button>';
-                    html += '<button type="button" class="jm-btn danger delete-share" data-id="' + esc(k.Id) + '">Delete</button>';
+                    html += '<button type="button" class="jm-btn copy-share" data-id="' + esc(k.Id) + '">' + t('shares.copy') + '</button>';
+                    html += '<button type="button" class="jm-btn danger delete-share" data-id="' + esc(k.Id) + '">' + t('shares.delete') + '</button>';
                     html += '</div>';
                     html += '</div>';
                 });
-                document.getElementById('SharesList').innerHTML = html || '<em>No share keys yet.</em>';
+                document.getElementById('SharesList').innerHTML = html || '<em>' + t('shares.empty') + '</em>';
             });
         }
 
@@ -835,17 +799,20 @@
             btn.disabled = true;
             var out = document.getElementById('DiagOutput');
             out.style.display = 'block';
-            out.textContent = 'Running probes against each enabled peer…';
+            out.textContent = t('diag.running');
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Diagnostics'), type: 'GET', dataType: 'json' }).then(function (r) {
                 var lines = [];
-                lines.push('Generated: ' + r.GeneratedUtc);
-                lines.push('Our PublicBaseUrl: ' + (r.OurPublicBaseUrl || '(unset - push disabled)'));
-                lines.push('Push invalidation: ' + (r.PushInvalidationConfigured ? 'enabled' : 'disabled'));
-                lines.push('Peers: ' + r.EnabledPeerCount + ' enabled, ' + r.DisabledPeerCount + ' disabled');
+                lines.push(t('diag.generated', { when: r.GeneratedUtc }));
+                lines.push(t('diag.our_url', { url: r.OurPublicBaseUrl || t('diag.our_url.unset') }));
+                lines.push(t('diag.push.label', { status: r.PushInvalidationConfigured ? t('diag.push.enabled') : t('diag.push.disabled') }));
+                lines.push(t('diag.peers.count', { enabled: r.EnabledPeerCount, disabled: r.DisabledPeerCount }));
                 lines.push('');
                 (r.Peers || []).forEach(function (p) {
-                    lines.push('- ' + (p.Name || '(unnamed)') + ' (' + p.BaseUrl + ')');
-                    lines.push('  cached health: ' + (p.CachedOnline ? 'online' : 'offline') + ', last RTT ' + p.CachedRttMs + ' ms');
+                    lines.push('- ' + (p.Name || t('peers.unnamed')) + ' (' + p.BaseUrl + ')');
+                    lines.push('  ' + t('diag.peer.cached_health', {
+                        state: p.CachedOnline ? t('diag.peer.online') : t('diag.peer.offline'),
+                        rtt: p.CachedRttMs
+                    }));
                     (p.Checks || []).forEach(function (c) {
                         lines.push('  ' + (c.Ok ? '✓' : '✗') + ' ' + c.Name + ' - ' + c.Detail);
                     });
@@ -854,7 +821,7 @@
                 out.textContent = lines.join('\n');
                 btn.disabled = false;
             }).catch(function (err) {
-                out.textContent = 'Diagnostics failed: HTTP ' + (err && err.status || '?');
+                out.textContent = t('diag.failed', { code: (err && err.status) || '?' });
                 btn.disabled = false;
             });
         });
@@ -863,13 +830,13 @@
         function renderStats() {
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Stats'), type: 'GET', dataType: 'json' }).then(function (s) {
                 var html = '';
-                html += '<strong>Peers:</strong> ' + s.OnlinePeerCount + ' online / ' + s.EnabledPeerCount + ' enabled / ' + s.PeerCount + ' total<br>';
-                html += '<strong>Cache:</strong> ' + s.TotalCachedItems + ' rows · ' + s.DistinctItems + ' distinct items · dedup ratio ' + (s.DedupRatio * 100).toFixed(1) + '%<br>';
-                html += '<strong>Streams:</strong> ' + s.TotalStreamCount + ' served · ' + humanBytes(s.TotalBytesServed) + ' total<br><br>';
+                html += '<strong>' + t('stats.peers') + '</strong> ' + t('stats.peers.line', { online: s.OnlinePeerCount, enabled: s.EnabledPeerCount, total: s.PeerCount }) + '<br>';
+                html += '<strong>' + t('stats.cache') + '</strong> ' + t('stats.cache.line', { total: s.TotalCachedItems, distinct: s.DistinctItems, ratio: (s.DedupRatio * 100).toFixed(1) }) + '<br>';
+                html += '<strong>' + t('stats.streams') + '</strong> ' + t('stats.streams.line', { count: s.TotalStreamCount, bytes: humanBytes(s.TotalBytesServed) }) + '<br><br>';
                 html += '<table style="width:100%;border-collapse:collapse;font-size:0.85em;">';
-                html += '<tr style="border-bottom:1px solid #444;"><th align="left">Peer</th><th>Online</th><th>RTT</th><th>Items</th><th>Streams</th><th>Bytes</th><th>Last check</th></tr>';
+                html += '<tr style="border-bottom:1px solid #444;"><th align="left">' + t('stats.table.peer') + '</th><th>' + t('stats.table.online') + '</th><th>' + t('stats.table.rtt') + '</th><th>' + t('stats.table.items') + '</th><th>' + t('stats.table.streams') + '</th><th>' + t('stats.table.bytes') + '</th><th>' + t('stats.table.last_check') + '</th></tr>';
                 (s.Peers || []).forEach(function (p) {
-                    html += '<tr><td>' + esc(p.Name || '(unnamed)') + '</td>';
+                    html += '<tr><td>' + esc(p.Name || t('peers.unnamed')) + '</td>';
                     html += '<td align="center">' + (p.Online ? '✓' : '✗') + '</td>';
                     html += '<td align="right">' + (p.LastRttMs || 0) + ' ms</td>';
                     html += '<td align="right">' + (p.CachedItemCount || 0) + '</td>';
@@ -879,12 +846,12 @@
                 });
                 html += '</table>';
                 if (s.TopStreamed && s.TopStreamed.length) {
-                    html += '<br><strong>Top streamed items:</strong><br>';
-                    s.TopStreamed.slice(0, 5).forEach(function (t) {
-                        html += '<div style="color:#aaa;">' + esc((t.ItemId || '').substring(0, 12)) + '… - ' + (t.PlayCount || 0) + '× / ' + humanBytes(t.Bytes) + '</div>';
+                    html += '<br><strong>' + t('stats.top_streamed') + '</strong><br>';
+                    s.TopStreamed.slice(0, 5).forEach(function (ts) {
+                        html += '<div style="color:#aaa;">' + esc((ts.ItemId || '').substring(0, 12)) + '… - ' + (ts.PlayCount || 0) + '× / ' + humanBytes(ts.Bytes) + '</div>';
                     });
                 }
-                html += '<div style="color:#666;margin-top:0.5em;font-size:0.75em;">Updated ' + new Date().toLocaleTimeString() + '</div>';
+                html += '<div style="color:#666;margin-top:0.5em;font-size:0.75em;">' + t('stats.updated', { when: new Date().toLocaleTimeString() }) + '</div>';
                 document.getElementById('FedStats').innerHTML = html;
             });
         }
@@ -897,11 +864,11 @@
                             + '<strong>' + esc(r.ForUrlCanonical) + '</strong> · hop ' + r.HopCount + '<br>'
                             + '<div style="color:#aaa;font-size:0.85em;margin-top:0.2em;">' + esc(r.Note || '') + '</div>'
                             + '<div style="margin-top:0.3em;">'
-                            + '<button type="button" class="jm-btn primary intro-approve" data-id="' + r.Id + '">Approve (add as peer)</button> '
-                            + '<button type="button" class="jm-btn danger intro-revoke" data-id="' + r.Id + '" data-role="receiver">Decline</button>'
+                            + '<button type="button" class="jm-btn primary intro-approve" data-id="' + r.Id + '">' + t('intros.approve_add') + '</button> '
+                            + '<button type="button" class="jm-btn danger intro-revoke" data-id="' + r.Id + '" data-role="receiver">' + t('intros.decline') + '</button>'
                             + '</div></div>';
                     }).join('')
-                    : '<em>No pending introductions.</em>';
+                    : '<em>' + t('intros.empty') + '</em>';
             });
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Introductions/issuer'), type: 'GET', dataType: 'json' }).then(function (rows) {
                 document.getElementById('IntroIssued').innerHTML = (rows && rows.length)
@@ -911,11 +878,11 @@
                             + ' · hop ' + r.HopCount
                             + (r.IssuedKeyId ? ' · key ' + esc(r.IssuedKeyId.substring(0, 8)) : '')
                             + '<div style="margin-top:0.3em;">'
-                            + (r.Status === 'pending' ? '<button type="button" class="jm-btn primary intro-approve" data-id="' + r.Id + '">Approve & mint</button> ' : '')
-                            + (r.Status === 'active' ? '<button type="button" class="jm-btn danger intro-revoke-preview" data-id="' + r.Id + '">Revoke</button>' : '')
+                            + (r.Status === 'pending' ? '<button type="button" class="jm-btn primary intro-approve" data-id="' + r.Id + '">' + t('intros.approve_mint') + '</button> ' : '')
+                            + (r.Status === 'active' ? '<button type="button" class="jm-btn danger intro-revoke-preview" data-id="' + r.Id + '">' + t('intros.revoke') + '</button>' : '')
                             + '</div></div>';
                     }).join('')
-                    : '<em>No issued introductions.</em>';
+                    : '<em>' + t('intros.empty.issued') + '</em>';
             });
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Introductions/forwarder'), type: 'GET', dataType: 'json' }).then(function (rows) {
                 document.getElementById('IntroForwarder').innerHTML = (rows && rows.length)
@@ -924,24 +891,24 @@
                             + '<strong>' + esc(r.ForUrlCanonical) + '</strong> · ' + esc(r.Status)
                             + (r.Note ? ' · ' + esc(r.Note) : '') + '</div>';
                     }).join('')
-                    : '<em>No outbound introductions.</em>';
+                    : '<em>' + t('intros.empty.outbound') + '</em>';
             });
         }
 
         document.getElementById('IntroFetchDirectory').addEventListener('click', function () {
             var peerId = document.getElementById('IntroPeerSelect').value;
-            if (!peerId) { jmToast('Pick an introducer peer first'); return; }
+            if (!peerId) { jmToast(t('intros.browse.toast')); return; }
             var list = document.getElementById('IntroDirectoryList');
-            list.innerHTML = '<em>Loading…</em>';
+            list.innerHTML = '<em>' + t('intros.directory.loading') + '</em>';
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Peers/' + peerId + '/Directory'), type: 'GET', dataType: 'json' })
                 .then(function (rows) {
                     if (!rows || rows.length === 0) {
-                        list.innerHTML = '<em>This peer publishes no directory (PublishPeerDirectory off on their side).</em>';
+                        list.innerHTML = '<em>' + t('intros.directory.empty') + '</em>';
                         return;
                     }
                     var html = '<div style="max-height:30vh;overflow-y:auto;border:1px solid #333;border-radius:0.3em;">';
                     rows.forEach(function (r) {
-                        var tags = (r.tags || []).map(function (t) { return '<span class="jm-chip">' + t + '</span>'; }).join('');
+                        var tags = (r.tags || []).map(function (tag) { return '<span class="jm-chip">' + tag + '</span>'; }).join('');
                         html += '<label style="display:flex;align-items:center;gap:0.6em;padding:0.5em;border-bottom:1px solid #2a2a2a;cursor:pointer;">'
                             + '<input type="radio" name="intro-target" value="' + esc(r.url) + '" />'
                             + '<span><strong>' + esc(r.name || r.url) + '</strong> <span style="color:#888;font-size:0.85em;">' + esc(r.url) + '</span> ' + tags + '</span>'
@@ -955,7 +922,7 @@
                         });
                     });
                 })
-                .catch(function (err) { list.innerHTML = '<em>Cannot fetch (HTTP ' + (err && err.status) + ').</em>'; });
+                .catch(function (err) { list.innerHTML = '<em>' + t('intros.directory.error', { code: (err && err.status) || '?' }) + '</em>'; });
         });
 
         document.getElementById('SendIntroduction').addEventListener('click', function () {
@@ -963,18 +930,18 @@
             var forUrl = document.getElementById('IntroForUrl').value.trim();
             var note = document.getElementById('IntroNote').value.trim() || null;
             var alsoFwd = document.getElementById('IntroAlsoForward').checked;
-            if (!peerId || !forUrl) { jmToast('Pick a peer and enter the new peer URL'); return; }
+            if (!peerId || !forUrl) { jmToast(t('intros.send.no_target.enter')); return; }
             ApiClient.fetch({
                 url: ApiClient.getUrl('Federation/IntroducePeer'),
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({ PeerId: peerId, ForUrl: forUrl, Note: note, AlsoForward: alsoFwd })
             }).then(function (r) {
-                jmToast('Result: ' + JSON.stringify(r, null, 2));
+                jmToast(t('intros.send.result.toast', { result: JSON.stringify(r, null, 2) }));
                 ['IntroForUrl','IntroNote'].forEach(function (id) { document.getElementById(id).value = ''; });
                 renderIntroductions();
             }).catch(function (err) {
-                jmToast('Introduce failed: HTTP ' + (err && err.status || '?'));
+                jmToast(t('intros.send.fail', { code: (err && err.status) || '?' }));
             });
         });
 
@@ -986,7 +953,7 @@
                 }).then(renderIntroductions);
             }
             if (e.target.classList && e.target.classList.contains('intro-revoke')) {
-                if (!confirm('Decline / revoke this introduction?')) return;
+                if (!confirm(t('intros.revoke.confirm'))) return;
                 ApiClient.fetch({
                     url: ApiClient.getUrl('Federation/Introductions/' + e.target.dataset.id + '/Revoke?cascade=false'),
                     type: 'POST'
@@ -997,13 +964,11 @@
                 ApiClient.fetch({ url: ApiClient.getUrl('Federation/Introductions/' + id + '/CascadePreview'), type: 'GET', dataType: 'json' }).then(function (p) {
                     var n = (p.cascade || []).length;
                     var msg = n === 0
-                        ? 'Revoke this introduction-key?\n(No downstream keys depend on it.)'
-                        : 'This intro has ' + n + ' downstream introduction-key(s) chained through it:\n\n'
-                            + (p.cascade || []).map(function (x) { return '  • ' + x.ForUrlCanonical; }).join('\n')
-                            + '\n\nOK = revoke ALL ' + (n + 1) + ' keys. Cancel.';
+                        ? t('intros.revoke.simple')
+                        : t('intros.revoke.cascade_warn', { count: n });
                     var cascade = false;
                     if (n > 0 && confirm(msg)) { cascade = true; }
-                    else if (n > 0) { if (!confirm('Revoke just THIS key (keep downstream)?')) return; }
+                    else if (n > 0) { if (!confirm(t('intros.revoke.cascade_only'))) return; }
                     else if (!confirm(msg)) return;
                     ApiClient.fetch({
                         url: ApiClient.getUrl('Federation/Introductions/' + id + '/Revoke?cascade=' + cascade),
@@ -1015,6 +980,7 @@
 
         document.querySelector('#FederationConfigPage').addEventListener('viewshow', function () {
             ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
+                jmLastConfig = config;
                 document.getElementById('SyncIntervalMinutes').value = config.SyncIntervalMinutes;
                 document.getElementById('EnableDedup').checked = config.EnableDedup;
                 document.getElementById('ShowRemoteOnlyItems').checked = config.ShowRemoteOnlyItems;
@@ -1042,15 +1008,22 @@
                 renderBlocklist();
                 refreshPendingBadges();
                 refreshStatusBar();
-                applyI18n(config.DashboardLanguage || 'en');
-                renderServers(config.RemoteServers);
-                renderShares();
-                renderRequests();
-                renderIntroductions();
+                // Load language bundle THEN do all the re-renders. Most renderers use t() so
+                // they need the dict populated to emit translated strings.
+                var lang = config.DashboardLanguage || 'en';
+                populateLanguageDropdown(lang);
+                loadI18n(lang).then(function () {
+                    applyI18n();
+                    renderServers(config.RemoteServers);
+                    renderShares();
+                    renderRequests();
+                    renderIntroductions();
+                    refreshStatusBar();
+                });
                 populatePeerSelect();
                 // Also populate the introduction peer dropdown - reuses populatePeerSelect's logic.
                 var introSel = document.getElementById('IntroPeerSelect');
-                var html = '<option value="">- pick a peer (introducer) -</option>';
+                var html = '<option value="">' + t('intros.introducer.dropdown.placeholder') + '</option>';
                 (config.RemoteServers || []).filter(function (s) { return s.Enabled && s.FederationShareKey; }).forEach(function (s) {
                     html += '<option value="' + esc(s.Id) + '">' + esc(s.Name || s.BaseUrl) + '</option>';
                 });
@@ -1069,7 +1042,7 @@
             var current = document.getElementById('NewShareLibraries').value;
             jmPickLibraries(current, function (picked) {
                 document.getElementById('NewShareLibraries').value = picked.join(',');
-                document.getElementById('NewShareLibrariesPick').textContent = picked.length === 0 ? 'All libraries' : (picked.length + ' selected');
+                document.getElementById('NewShareLibrariesPick').textContent = picked.length === 0 ? t('shares.mint.libraries.all') : t('shares.mint.libraries.selected', { count: picked.length });
             });
         });
 
@@ -1094,7 +1067,7 @@
                     MintMode: document.getElementById('NewShareMintMode').value
                 })
             }).then(function (resp) {
-                jmToast('Share key generated:\n\n' + resp.ApiKey + '\n\nHand it to your friend.');
+                jmToast(t('shares.mint.done.toast', { key: resp.ApiKey }));
                 ['NewShareLabel','NewShareLibraries','NewShareHoursStart','NewShareHoursEnd','NewShareTimeZone','NewShareBlockedTags','NewShareMaxRating','NewShareBoundPeerUrl']
                     .forEach(function (id) { document.getElementById(id).value = ''; });
                 document.getElementById('NewShareStrictUnknown').checked = false;
@@ -1105,7 +1078,7 @@
         document.getElementById('SharesList').addEventListener('click', function (e) {
             if (e.target.classList.contains('delete-share')) {
                 var id = e.target.dataset.id;
-                jmConfirm('Revoke share key?', 'The friend using this key will lose access immediately.').then(function (ok) {
+                jmConfirm(t('shares.delete.confirm.title'), t('shares.delete.confirm.body')).then(function (ok) {
                     if (!ok) return;
                     ApiClient.fetch({ url: ApiClient.getUrl('Federation/Shares/' + id), type: 'DELETE' }).then(renderShares);
                 });
@@ -1113,7 +1086,7 @@
             if (e.target.classList.contains('copy-share')) {
                 ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
                     var k = (config.Shares || []).find(function (x) { return x.Id === e.target.dataset.id; });
-                    if (k) { navigator.clipboard.writeText(k.ApiKey); jmToast('Copied to clipboard.'); }
+                    if (k) { navigator.clipboard.writeText(k.ApiKey); jmToast(t('shares.copied')); }
                 });
             }
         });
@@ -1158,24 +1131,24 @@
 
         function renderInviteTokens(tokens) {
             var html = '';
-            (tokens || []).forEach(function (t) {
+            (tokens || []).forEach(function (tok) {
                 html += '<div style="padding:0.5em;margin:0.2em 0;border:1px solid #444;font-family:monospace;">'
-                    + esc(t.Label || '(no label)')
-                    + ' &middot; <code>' + esc(t.Token) + '</code>'
-                    + ' &middot; uses ' + (t.UsedCount || 0) + (t.MaxUses ? '/' + t.MaxUses : '')
-                    + (t.ExpiresUtc ? ' &middot; expires ' + esc(t.ExpiresUtc) : '')
-                    + ' <button type="button" class="jm-btn copy-invite-token" data-token="' + esc(t.Token) + '">Copy</button>'
-                    + ' <button type="button" class="jm-btn danger delete-invite-token" data-token="' + esc(t.Token) + '">Delete</button>'
+                    + esc(tok.Label || t('shares.unlabeled'))
+                    + ' &middot; <code>' + esc(tok.Token) + '</code>'
+                    + ' &middot; ' + t('handshake.access.tokens.row.uses') + ' ' + (tok.UsedCount || 0) + (tok.MaxUses ? '/' + tok.MaxUses : '')
+                    + (tok.ExpiresUtc ? ' &middot; ' + t('handshake.access.tokens.row.expires') + ' ' + esc(tok.ExpiresUtc) : '')
+                    + ' <button type="button" class="jm-btn copy-invite-token" data-token="' + esc(tok.Token) + '">' + t('handshake.access.tokens.copy') + '</button>'
+                    + ' <button type="button" class="jm-btn danger delete-invite-token" data-token="' + esc(tok.Token) + '">' + t('handshake.access.tokens.delete') + '</button>'
                     + '</div>';
             });
-            document.getElementById('AccessInviteTokensList').innerHTML = html || '<em>No invite tokens.</em>';
+            document.getElementById('AccessInviteTokensList').innerHTML = html || '<em>' + t('handshake.access.tokens.empty') + '</em>';
         }
 
         document.getElementById('MintInviteToken').addEventListener('click', function () {
             var bytes = new Uint8Array(16);
             crypto.getRandomValues(bytes);
             var token = Array.from(bytes).map(function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
-            var label = document.getElementById('NewInviteTokenLabel').value.trim() || 'unlabelled';
+            var label = document.getElementById('NewInviteTokenLabel').value.trim() || t('handshake.access.tokens.unlabelled');
             var maxUses = parseInt(document.getElementById('NewInviteTokenMaxUses').value, 10);
             var expiryRaw = document.getElementById('NewInviteTokenExpiry').value;
             var expiresUtc = expiryRaw ? new Date(expiryRaw).toISOString() : null;
@@ -1190,7 +1163,7 @@
                     document.getElementById('NewInviteTokenLabel').value = '';
                     document.getElementById('NewInviteTokenMaxUses').value = '';
                     document.getElementById('NewInviteTokenExpiry').value = '';
-                    jmToast('Invite token:\n\n' + token + '\n\nHand it to the peer.');
+                    jmToast(t('handshake.access.tokens.created.toast', { token: token }));
                 });
             });
         });
@@ -1198,11 +1171,11 @@
         document.getElementById('AccessInviteTokensList').addEventListener('click', function (e) {
             if (e.target.classList.contains('copy-invite-token')) {
                 navigator.clipboard.writeText(e.target.dataset.token);
-                jmToast('Copied.');
+                jmToast(t('handshake.access.tokens.copied.short'));
             }
             if (e.target.classList.contains('delete-invite-token')) {
                 var tok = e.target.dataset.token;
-                jmConfirm('Delete invite token?', 'Anyone who already received it can no longer request access with it.').then(function (ok) {
+                jmConfirm(t('handshake.access.tokens.delete.confirm.title'), t('handshake.access.tokens.delete.confirm.body')).then(function (ok) {
                     if (!ok) return;
                     ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
                         config.AccessRequestInviteTokens = (config.AccessRequestInviteTokens || []).filter(function (t) { return t.Token !== tok; });
@@ -1216,33 +1189,33 @@
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/in'), type: 'GET', dataType: 'json' }).then(function (rows) {
                 document.getElementById('HandshakeInboundList').innerHTML = fmtHandshakeRows(rows, true);
             }).catch(function () {
-                document.getElementById('HandshakeInboundList').innerHTML = '<em>No inbound.</em>';
+                document.getElementById('HandshakeInboundList').innerHTML = '<em>' + t('handshake.inbound.empty') + '</em>';
             });
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/out'), type: 'GET', dataType: 'json' }).then(function (rows) {
                 document.getElementById('HandshakeOutboundList').innerHTML = fmtHandshakeRows(rows, false);
             }).catch(function () {
-                document.getElementById('HandshakeOutboundList').innerHTML = '<em>No outbound.</em>';
+                document.getElementById('HandshakeOutboundList').innerHTML = '<em>' + t('handshake.outbound.empty') + '</em>';
             });
         }
 
         function fmtHandshakeRows(rows, inbound) {
-            if (!rows || rows.length === 0) return '<em>(none)</em>';
+            if (!rows || rows.length === 0) return '<em>' + t('handshake.row.empty') + '</em>';
             return rows.map(function (r) {
                 var actions = '';
                 if (inbound && r.Status === 'pending') {
                     if (r.Mode === 'request') {
-                        actions = ' <button type="button" class="handshake-approve" data-id="' + r.Id + '">Approve</button>'
-                            + ' <button type="button" class="handshake-deny" data-id="' + r.Id + '" style="color:#f88;">Deny</button>'
-                            + ' <button type="button" class="handshake-block" data-id="' + r.Id + '" style="color:#f00;">Block</button>';
+                        actions = ' <button type="button" class="handshake-approve" data-id="' + r.Id + '">' + t('handshake.row.approve') + '</button>'
+                            + ' <button type="button" class="handshake-deny" data-id="' + r.Id + '" style="color:#f88;">' + t('handshake.row.deny') + '</button>'
+                            + ' <button type="button" class="handshake-block" data-id="' + r.Id + '" style="color:#f00;">' + t('handshake.row.block') + '</button>';
                     } else if (r.Mode === 'invite') {
-                        actions = ' <button type="button" class="handshake-accept" data-id="' + r.Id + '">Accept</button>'
-                            + ' <button type="button" class="handshake-decline" data-id="' + r.Id + '" style="color:#f88;">Decline</button>'
-                            + ' <button type="button" class="handshake-block" data-id="' + r.Id + '" style="color:#f00;">Block</button>';
+                        actions = ' <button type="button" class="handshake-accept" data-id="' + r.Id + '">' + t('handshake.row.accept') + '</button>'
+                            + ' <button type="button" class="handshake-decline" data-id="' + r.Id + '" style="color:#f88;">' + t('handshake.row.decline') + '</button>'
+                            + ' <button type="button" class="handshake-block" data-id="' + r.Id + '" style="color:#f00;">' + t('handshake.row.block') + '</button>';
                     }
                 }
                 return '<div style="padding:0.5em;margin:0.2em 0;border:1px solid #444;font-family:monospace;">'
                     + '<strong>' + esc(r.Mode) + '</strong> ' + esc(r.TargetUrl)
-                    + (r.Mutual ? ' [mutual]' : '')
+                    + (r.Mutual ? ' ' + t('handshake.row.mutual') : '')
                     + ' &middot; ' + esc(r.Status)
                     + (r.Message ? ' &middot; ' + esc(r.Message) : '')
                     + actions
@@ -1254,15 +1227,15 @@
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Blocklist'), type: 'GET', dataType: 'json' }).then(function (urls) {
                 var html = (urls || []).map(function (u) {
                     return '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #444;font-family:monospace;">'
-                        + esc(u) + ' <button type="button" class="unblock" data-url="' + esc(u) + '" style="float:right;">Unblock</button></div>';
+                        + esc(u) + ' <button type="button" class="unblock" data-url="' + esc(u) + '" style="float:right;">' + t('handshake.blocklist.unblock') + '</button></div>';
                 }).join('');
-                document.getElementById('HandshakeBlocklist').innerHTML = html || '<em>(nobody blocked.)</em>';
-            }).catch(function () { document.getElementById('HandshakeBlocklist').innerHTML = '<em>(blocklist API unreachable.)</em>'; });
+                document.getElementById('HandshakeBlocklist').innerHTML = html || '<em>' + t('handshake.blocklist.empty') + '</em>';
+            }).catch(function () { document.getElementById('HandshakeBlocklist').innerHTML = '<em>' + t('handshake.blocklist.unreachable') + '</em>'; });
         }
 
         document.getElementById('AddToBlocklist').addEventListener('click', function () {
             var url = document.getElementById('NewBlockedUrl').value.trim();
-            if (!url) { jmToast('URL required'); return; }
+            if (!url) { jmToast(t('handshake.blocklist.no_url')); return; }
             ApiClient.getPluginConfiguration(FederationPluginId).then(function (config) {
                 config.BlockedPeerUrls = (config.BlockedPeerUrls || []).concat([url]);
                 ApiClient.updatePluginConfiguration(FederationPluginId, config).then(function () {
@@ -1282,8 +1255,8 @@
         document.querySelector('#FederationConfigPage').addEventListener('click', function (e) {
             if (e.target.classList.contains('handshake-approve')) {
                 ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Approve'), type: 'POST' })
-                    .then(function () { renderHandshakeLists(); jmToast('Approved + granted callback sent.'); })
-                    .catch(function (err) { jmToast('Approve failed: HTTP ' + (err && err.status)); });
+                    .then(function () { renderHandshakeLists(); jmToast(t('handshake.request.approve.toast')); })
+                    .catch(function (err) { jmToast(t('handshake.row.approve.fail', { code: (err && err.status) || '?' })); });
             }
             if (e.target.classList.contains('handshake-deny')) {
                 ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Deny'), type: 'POST' })
@@ -1291,8 +1264,8 @@
             }
             if (e.target.classList.contains('handshake-accept')) {
                 ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Accept'), type: 'POST' })
-                    .then(function () { renderHandshakeLists(); jmToast('Accepted + peer added.'); })
-                    .catch(function (err) { jmToast('Accept failed: HTTP ' + (err && err.status)); });
+                    .then(function () { renderHandshakeLists(); jmToast(t('handshake.invite.accept.toast')); })
+                    .catch(function (err) { jmToast(t('handshake.row.accept.fail', { code: (err && err.status) || '?' })); });
             }
             if (e.target.classList.contains('handshake-decline')) {
                 ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + e.target.dataset.id + '/Decline'), type: 'POST' })
@@ -1300,7 +1273,7 @@
             }
             if (e.target.classList.contains('handshake-block')) {
                 var id = e.target.dataset.id;
-                jmConfirm('Block this peer?', 'They will not be able to contact us anymore, even via intermediaries.').then(function (ok) {
+                jmConfirm(t('handshake.row.block.confirm.title'), t('handshake.row.block.confirm.body')).then(function (ok) {
                     if (!ok) return;
                     ApiClient.fetch({ url: ApiClient.getUrl('Federation/AccessRequests/' + id + '/Block'), type: 'POST' })
                         .then(function () { renderHandshakeLists(); renderBlocklist(); });
@@ -1310,7 +1283,7 @@
 
         document.getElementById('SendAccessRequest').addEventListener('click', function () {
             var url = document.getElementById('ReqAccessTargetUrl').value.trim();
-            if (!url) { jmToast('Target URL required'); return; }
+            if (!url) { jmToast(t('handshake.request.no_url')); return; }
             ApiClient.fetch({
                 url: ApiClient.getUrl('Federation/RequestAccess'),
                 type: 'POST', contentType: 'application/json',
@@ -1322,13 +1295,13 @@
                     TargetBasicAuthUser: document.getElementById('ReqAccessTargetBasicUser').value.trim() || null,
                     TargetBasicAuthPass: document.getElementById('ReqAccessTargetBasicPass').value.trim() || null
                 })
-            }).then(function () { renderHandshakeLists(); jmToast('Access request sent. Wait for the peer admin to approve.'); })
-              .catch(function (err) { jmToast('Send failed: HTTP ' + (err && err.status)); });
+            }).then(function () { renderHandshakeLists(); jmToast(t('handshake.request.sent.toast')); })
+              .catch(function (err) { jmToast(t('handshake.request.fail', { code: (err && err.status) || '?' })); });
         });
 
         document.getElementById('SendInvite').addEventListener('click', function () {
             var url = document.getElementById('InviteTargetUrl').value.trim();
-            if (!url) { jmToast('Target URL required'); return; }
+            if (!url) { jmToast(t('handshake.request.no_url')); return; }
             ApiClient.fetch({
                 url: ApiClient.getUrl('Federation/Invite'),
                 type: 'POST', contentType: 'application/json',
@@ -1339,13 +1312,36 @@
                     TargetBasicAuthUser: document.getElementById('InviteTargetBasicUser').value.trim() || null,
                     TargetBasicAuthPass: document.getElementById('InviteTargetBasicPass').value.trim() || null
                 })
-            }).then(function () { renderHandshakeLists(); jmToast('Invite sent. The peer admin will accept on their dashboard.'); })
-              .catch(function (err) { jmToast('Invite failed: HTTP ' + (err && err.status)); });
+            }).then(function () { renderHandshakeLists(); jmToast(t('handshake.invite.sent.toast')); })
+              .catch(function (err) { jmToast(t('handshake.invite.fail', { code: (err && err.status) || '?' })); });
         });
 
         document.getElementById('DashboardLanguage').addEventListener('change', function () {
-            applyI18n(this.value);
+            var lang = this.value;
+            loadI18n(lang).then(function () {
+                applyI18n();
+                if (jmLastConfig) renderServers(jmLastConfig.RemoteServers);
+                renderShares();
+                renderRequests();
+                renderIntroductions();
+                refreshStatusBar();
+                renderInviteTokens((jmLastConfig && jmLastConfig.AccessRequestInviteTokens) || []);
+                renderHandshakeLists();
+                renderBlocklist();
+            });
         });
+
+        function populateLanguageDropdown(currentLang) {
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/I18n/Languages'), type: 'GET', dataType: 'json' })
+                .then(function (langs) {
+                    var sel = document.getElementById('DashboardLanguage');
+                    if (!sel || !langs || !langs.length) return;
+                    sel.innerHTML = langs.map(function (l) {
+                        return '<option value="' + esc(l.code) + (l.code === currentLang ? '" selected>' : '">') + esc(l.name) + '</option>';
+                    }).join('');
+                })
+                .catch(function () { /* keep the inline EN/FR fallback */ });
+        }
 
         document.getElementById('FederationConfigForm').addEventListener('submit', function (e) {
             e.preventDefault();

@@ -1895,6 +1895,50 @@ h1{{font-weight:400;font-size:1.2rem}}
         return Ok(rows);
     }
 
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("I18n/Languages")]
+    public IActionResult ListI18nLanguages()
+    {
+        // Enumerate every Assets.i18n.*.json embedded resource and return its locale code
+        // along with the human-readable name pulled from the file's lang.name key.
+        var asm = typeof(Plugin).Assembly;
+        var prefix = typeof(Plugin).Namespace + ".Assets.i18n.";
+        var rows = new System.Collections.Generic.List<object>();
+        foreach (var resourceName in asm.GetManifestResourceNames())
+        {
+            if (!resourceName.StartsWith(prefix, StringComparison.Ordinal) || !resourceName.EndsWith(".json", StringComparison.Ordinal)) continue;
+            var code = resourceName.Substring(prefix.Length, resourceName.Length - prefix.Length - ".json".Length);
+            string displayName = code;
+            try
+            {
+                using var s = asm.GetManifestResourceStream(resourceName);
+                if (s is not null)
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(s);
+                    if (doc.RootElement.TryGetProperty("lang.name", out var n) && n.ValueKind == System.Text.Json.JsonValueKind.String)
+                        displayName = n.GetString() ?? code;
+                }
+            }
+            catch { /* fall back to code */ }
+            rows.Add(new { code, name = displayName });
+        }
+        return Ok(rows);
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("I18n/{lang}")]
+    public IActionResult GetI18nBundle(string lang)
+    {
+        if (string.IsNullOrEmpty(lang) || lang.Length > 16 || !System.Text.RegularExpressions.Regex.IsMatch(lang, "^[a-z]{2,3}(-[A-Z]{2})?$"))
+            return BadRequest("invalid lang code");
+        var asm = typeof(Plugin).Assembly;
+        var resourceName = typeof(Plugin).Namespace + ".Assets.i18n." + lang + ".json";
+        var stream = asm.GetManifestResourceStream(resourceName);
+        if (stream is null) return NotFound();
+        Response.Headers["Cache-Control"] = "public, max-age=600";
+        return File(stream, "application/json");
+    }
+
     [AllowAnonymous]
     [HttpGet("Asset/{name}")]
     public IActionResult GetAsset(string name)
