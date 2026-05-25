@@ -8,10 +8,46 @@
 <div id="FederationConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
     <div data-role="content">
         <div class="content-primary">
+            <style>
+                .jm-tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.6em; margin: 0.8em 0 1.2em 0; }
+                .jm-tile { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 1em; cursor: pointer; text-align: left; color: #ddd; font: inherit; transition: background 0.15s, border-color 0.15s; }
+                .jm-tile:hover { background: #252525; border-color: #5a5a5a; }
+                .jm-tile-icon { font-size: 1.6em; display: block; margin-bottom: 0.3em; }
+                .jm-tile-label { font-weight: 600; }
+                .jm-tile-hint { color: #888; font-size: 0.8em; margin-top: 0.2em; }
+                .jm-tile-badge { display: inline-block; background: #c93; color: #111; border-radius: 0.8em; padding: 0.05em 0.5em; font-size: 0.75em; font-weight: 700; margin-left: 0.4em; }
+                dialog.jm-modal { background: #181818; color: #ddd; border: 1px solid #3a3a3a; border-radius: 0.5em; max-width: 900px; width: 90vw; max-height: 85vh; overflow-y: auto; padding: 0; }
+                dialog.jm-modal::backdrop { background: rgba(0,0,0,0.6); }
+                dialog.jm-modal .jm-modal-head { position: sticky; top: 0; background: #1c1c1c; border-bottom: 1px solid #3a3a3a; padding: 0.8em 1em; display: flex; justify-content: space-between; align-items: center; }
+                dialog.jm-modal .jm-modal-head h3 { margin: 0; }
+                dialog.jm-modal .jm-modal-body { padding: 1em; }
+                dialog.jm-modal .jm-modal-close { background: transparent; border: none; color: #aaa; font-size: 1.4em; cursor: pointer; padding: 0 0.4em; }
+                dialog.jm-modal .jm-modal-close:hover { color: #fff; }
+                .jm-status-bar { display: flex; gap: 1em; align-items: center; flex-wrap: wrap; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 0.6em 0.8em; margin: 0.6em 0; }
+            </style>
+
             <form id="FederationConfigForm">
                 <h2 data-i18n="title">Jellymesh</h2>
                 <p data-i18n="subtitle">Configure peer Jellyfin servers to federate libraries with.</p>
 
+                <div class="jm-status-bar" id="JmStatusBar">
+                    <span id="JmStatusSummary" style="font-family:monospace;font-size:0.9em;">Loading status…</span>
+                </div>
+
+                <div class="jm-tile-grid">
+                    <button type="button" class="jm-tile" data-modal="dlg-settings"><span class="jm-tile-icon">⚙</span><span class="jm-tile-label" data-i18n="tile.settings">Settings</span><div class="jm-tile-hint" data-i18n="tile.settings.hint">General + language + sync</div></button>
+                    <button type="button" class="jm-tile" data-modal="dlg-peers"><span class="jm-tile-icon">🌐</span><span class="jm-tile-label" data-i18n="tile.peers">Peers</span><div class="jm-tile-hint" data-i18n="tile.peers.hint">Configured peer servers</div></button>
+                    <button type="button" class="jm-tile" data-modal="dlg-handshake"><span class="jm-tile-icon">🤝</span><span class="jm-tile-label" data-i18n="tile.handshake">Direct handshake</span><div class="jm-tile-hint" data-i18n="tile.handshake.hint">Request access / invite</div><span class="jm-tile-badge" id="JmBadgeHandshake" style="display:none;"></span></button>
+                    <button type="button" class="jm-tile" data-modal="dlg-intros"><span class="jm-tile-icon">↪</span><span class="jm-tile-label" data-i18n="tile.intros">Introductions</span><div class="jm-tile-hint" data-i18n="tile.intros.hint">Via existing peers</div><span class="jm-tile-badge" id="JmBadgeIntros" style="display:none;"></span></button>
+                    <button type="button" class="jm-tile" data-modal="dlg-requests"><span class="jm-tile-icon">📝</span><span class="jm-tile-label" data-i18n="tile.requests">Content requests</span><div class="jm-tile-hint" data-i18n="tile.requests.hint">Ask for films</div><span class="jm-tile-badge" id="JmBadgeRequests" style="display:none;"></span></button>
+                    <button type="button" class="jm-tile" data-modal="dlg-shares"><span class="jm-tile-icon">🔑</span><span class="jm-tile-label" data-i18n="tile.shares">Share keys</span><div class="jm-tile-hint" data-i18n="tile.shares.hint">Keys you issue to peers</div></button>
+                    <button type="button" class="jm-tile" data-modal="dlg-privacy"><span class="jm-tile-icon">🛡</span><span class="jm-tile-label" data-i18n="tile.privacy">Privacy</span><div class="jm-tile-hint" data-i18n="tile.privacy.hint">Master switches + blocklist</div></button>
+                    <button type="button" class="jm-tile" data-modal="dlg-diag"><span class="jm-tile-icon">📈</span><span class="jm-tile-label" data-i18n="tile.diag">Diagnostics</span><div class="jm-tile-hint" data-i18n="tile.diag.hint">Stats + audit log</div></button>
+                </div>
+
+                <dialog id="dlg-settings" class="jm-modal">
+                    <div class="jm-modal-head"><h3 data-i18n="tile.settings">Settings</h3><button type="button" class="jm-modal-close">×</button></div>
+                    <div class="jm-modal-body">
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="DashboardLanguage" data-i18n="lang.label">Dashboard language</label>
                     <select is="emby-select" id="DashboardLanguage">
@@ -103,21 +139,36 @@
                         <input is="emby-input" type="number" id="IntroductionRatePerDay" min="1" />
                     </div>
                 </div>
+                    </div>
+                </dialog>
 
-                <h3>Federation status</h3>
+                <dialog id="dlg-diag" class="jm-modal">
+                    <div class="jm-modal-head"><h3 data-i18n="tile.diag">Diagnostics</h3><button type="button" class="jm-modal-close">×</button></div>
+                    <div class="jm-modal-body">
+                <h4>Federation status</h4>
                 <div id="FedStats" style="font-family:monospace;font-size:0.9em;padding:0.5em;background:#1a1a1a;border:1px solid #333;">Loading…</div>
                 <button is="emby-button" type="button" id="RunDiagnostics" class="raised" style="margin-top:0.5em;">
                     <span>Run diagnostics</span>
                 </button>
                 <div id="DiagOutput" style="font-family:monospace;font-size:0.85em;white-space:pre-wrap;padding:0.5em;margin-top:0.5em;background:#0f0f0f;border:1px solid #333;display:none;"></div>
+                <h4 style="margin-top:1em;">Recent inbound activity</h4>
+                <div id="InboundAuditList" style="font-family:monospace;font-size:0.85em;"></div>
+                    </div>
+                </dialog>
 
-                <h3>Peer servers</h3>
+                <dialog id="dlg-peers" class="jm-modal">
+                    <div class="jm-modal-head"><h3 data-i18n="tile.peers">Peers</h3><button type="button" class="jm-modal-close">×</button></div>
+                    <div class="jm-modal-body">
                 <div id="RemoteServersList"></div>
                 <button is="emby-button" type="button" id="AddRemoteServer" class="raised">
                     <span>Add peer server</span>
                 </button>
+                    </div>
+                </dialog>
 
-                <h3>Introductions</h3>
+                <dialog id="dlg-intros" class="jm-modal">
+                    <div class="jm-modal-head"><h3 data-i18n="tile.intros">Introductions</h3><button type="button" class="jm-modal-close">×</button></div>
+                    <div class="jm-modal-body">
                 <p>Ask an existing peer to introduce you a new contact, or triage incoming introduction requests.</p>
 
                 <h4 style="margin:0.5em 0 0.2em 0;">Send an introduction</h4>
@@ -140,23 +191,12 @@
 
                 <h4 style="margin:1em 0 0.2em 0;">Outbound</h4>
                 <div id="IntroForwarder"></div>
-
-                <h3>Public video share links</h3>
-                <p>Generate a single-video URL anyone can open without a Jellyfin account. Optional expiry and use cap.</p>
-                <div id="PublicSharesList"></div>
-                <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
-                    <summary style="cursor:pointer;">New public link</summary>
-                    <div style="margin-top:0.6em;display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.6em 1em;">
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Jellyfin item id (uuid)</span><input type="text" id="NewPublicItemId" placeholder="local item id" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Expires (optional)</span><input type="datetime-local" id="NewPublicExpiry" style="width:100%;" /></label>
-                        <label><span style="display:block;font-size:0.85em;color:#bbb;">Max uses (optional)</span><input type="number" id="NewPublicMaxUses" min="1" style="width:100%;" /></label>
                     </div>
-                    <button is="emby-button" type="button" id="CreatePublicShare" class="raised" style="margin-top:0.5em;">
-                        <span>Generate public link</span>
-                    </button>
-                </details>
+                </dialog>
 
-                <h3>Requests</h3>
+                <dialog id="dlg-requests" class="jm-modal">
+                    <div class="jm-modal-head"><h3 data-i18n="tile.requests">Content requests</h3><button type="button" class="jm-modal-close">×</button></div>
+                    <div class="jm-modal-body">
                 <p>Ask peers to add a film, or triage what peers asked from you.</p>
                 <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
                     <summary style="cursor:pointer;">Send a request to a peer</summary>
@@ -174,8 +214,12 @@
                 <div id="ReqInList"></div>
                 <h4 style="margin:1em 0 0.2em 0;">Outbound (you asked peers)</h4>
                 <div id="ReqOutList"></div>
+                    </div>
+                </dialog>
 
-                <h3>Share keys</h3>
+                <dialog id="dlg-shares" class="jm-modal">
+                    <div class="jm-modal-head"><h3 data-i18n="tile.shares">Share keys</h3><button type="button" class="jm-modal-close">×</button></div>
+                    <div class="jm-modal-body">
                 <p>Generate a key per friend, optionally restricted to specific libraries. Hand the key to the friend; they paste it into their plugin's peer config under "Federation share key".</p>
                 <div id="SharesList"></div>
                 <details style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">
@@ -210,8 +254,12 @@
                         <span>Generate share key</span>
                     </button>
                 </details>
+                    </div>
+                </dialog>
 
-                <h3 data-i18n="privacy.title">Privacy: who can contact us</h3>
+                <dialog id="dlg-privacy" class="jm-modal">
+                    <div class="jm-modal-head"><h3 data-i18n="tile.privacy">Privacy</h3><button type="button" class="jm-modal-close">×</button></div>
+                    <div class="jm-modal-body">
                 <p data-i18n="privacy.desc">Master switches for unsolicited inbound contact. Turn off to refuse all new requests regardless of any per-key or per-token rule.</p>
                 <div class="checkboxContainer">
                     <label><input is="emby-checkbox" type="checkbox" id="AcceptInboundAccessRequests" /><span data-i18n="privacy.access">Accept inbound /Federation/AccessRequest (peers asking for access)</span></label>
@@ -222,8 +270,12 @@
                 <div class="checkboxContainer">
                     <label><input is="emby-checkbox" type="checkbox" id="AcceptInboundIntroductions" /><span data-i18n="privacy.intro">Accept inbound /Federation/Introduce + /Introduced (peer-mediated introductions)</span></label>
                 </div>
+                    </div>
+                </dialog>
 
-                <h3 data-i18n="handshake.title">Direct peer handshake (request access + invite)</h3>
+                <dialog id="dlg-handshake" class="jm-modal">
+                    <div class="jm-modal-head"><h3 data-i18n="tile.handshake">Direct handshake</h3><button type="button" class="jm-modal-close">×</button></div>
+                    <div class="jm-modal-body">
                 <p data-i18n="handshake.desc">Bootstrap a peering without going through a third party. The other side's admin approves before any key crosses the wire.</p>
 
                 <h4 data-i18n="handshake.access.gating">Access request gating (inbound, when admin enables them above)</h4>
@@ -286,9 +338,10 @@
                     <input type="url" id="NewBlockedUrl" placeholder="https://blocked.example" style="flex:1;" />
                     <button is="emby-button" type="button" id="AddToBlocklist" class="raised"><span data-i18n="handshake.blocklist.add">Block this URL</span></button>
                 </div>
+                    </div>
+                </dialog>
 
-                <br /><br />
-                <button is="emby-button" type="submit" class="raised button-submit block">
+                <button is="emby-button" type="submit" class="raised button-submit block" style="margin-top:0.8em;">
                     <span data-i18n="save">Save</span>
                 </button>
             </form>
@@ -297,6 +350,43 @@
 
     <script type="text/javascript">
         var FederationPluginId = '9f3c2a8e-6b1d-4f7a-b3c5-1e2d9a8b7c6e';
+
+        // Tile-to-modal wiring. Tiles open the matching <dialog>, close buttons + Esc close it.
+        document.querySelectorAll('#FederationConfigPage .jm-tile').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var dlg = document.getElementById(btn.dataset.modal);
+                if (dlg && typeof dlg.showModal === 'function') dlg.showModal();
+            });
+        });
+        document.querySelectorAll('#FederationConfigPage .jm-modal-close').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var dlg = btn.closest('dialog');
+                if (dlg) dlg.close();
+            });
+        });
+
+        function refreshPendingBadges() {
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/PendingCounts'), type: 'GET', dataType: 'json' }).then(function (counts) {
+                ['Handshake', 'Intros', 'Requests'].forEach(function (key) {
+                    var el = document.getElementById('JmBadge' + key);
+                    if (!el) return;
+                    var n = key === 'Handshake' ? counts.accessRequests
+                        : key === 'Intros' ? counts.introductions
+                        : counts.contentRequests;
+                    if (n > 0) { el.textContent = n; el.style.display = ''; } else { el.style.display = 'none'; }
+                });
+            }).catch(function () {});
+        }
+
+        function refreshStatusBar() {
+            ApiClient.fetch({ url: ApiClient.getUrl('Federation/Stats'), type: 'GET', dataType: 'json' }).then(function (s) {
+                var bar = document.getElementById('JmStatusSummary');
+                if (!bar) return;
+                bar.textContent = s.PeerCount + ' peers (' + s.OnlinePeerCount + ' online) · '
+                    + s.TotalCachedItems + ' cached items · '
+                    + 'dedup ratio ' + (s.DedupRatio || 0).toFixed(2);
+            }).catch(function () {});
+        }
 
         var i18n = {
             en: {
@@ -330,6 +420,14 @@
                 'handshake.outbound': 'Outbound handshake',
                 'handshake.blocklist': 'Blocked peers',
                 'handshake.blocklist.add': 'Block this URL',
+                'tile.settings': 'Settings', 'tile.settings.hint': 'General, language and sync',
+                'tile.peers': 'Peers', 'tile.peers.hint': 'Configured peer servers',
+                'tile.handshake': 'Direct handshake', 'tile.handshake.hint': 'Request access / invite',
+                'tile.intros': 'Introductions', 'tile.intros.hint': 'Via existing peers',
+                'tile.requests': 'Content requests', 'tile.requests.hint': 'Ask for films',
+                'tile.shares': 'Share keys', 'tile.shares.hint': 'Keys you issue to peers',
+                'tile.privacy': 'Privacy', 'tile.privacy.hint': 'Master switches + blocklist',
+                'tile.diag': 'Diagnostics', 'tile.diag.hint': 'Stats + audit log',
                 'save': 'Save'
             },
             fr: {
@@ -363,6 +461,14 @@
                 'handshake.outbound': 'Handshake sortant',
                 'handshake.blocklist': 'Pairs bloqués',
                 'handshake.blocklist.add': 'Bloquer cette URL',
+                'tile.settings': 'Paramètres', 'tile.settings.hint': 'Général, langue et sync',
+                'tile.peers': 'Pairs', 'tile.peers.hint': 'Serveurs configurés',
+                'tile.handshake': 'Handshake direct', 'tile.handshake.hint': 'Demande / invitation',
+                'tile.intros': 'Introductions', 'tile.intros.hint': 'Via pairs existants',
+                'tile.requests': 'Demandes de contenu', 'tile.requests.hint': 'Demander des films',
+                'tile.shares': 'Clés de partage', 'tile.shares.hint': 'Clés que vous émettez',
+                'tile.privacy': 'Confidentialité', 'tile.privacy.hint': 'Interrupteurs + blocklist',
+                'tile.diag': 'Diagnostics', 'tile.diag.hint': 'Stats + journal',
                 'save': 'Enregistrer'
             }
         };
@@ -534,64 +640,6 @@
                     url: ApiClient.getUrl('Federation/Requests/' + id + '/Status?status=' + st),
                     type: 'POST'
                 }).then(renderRequests);
-            }
-        });
-
-        function renderPublicShares() {
-            ApiClient.fetch({ url: ApiClient.getUrl('Federation/PublicShares'), type: 'GET', dataType: 'json' }).then(function (shares) {
-                var html = '';
-                (shares || []).forEach(function (s) {
-                    var status = s.Expired ? '<span style="color:#e44;">expired</span>'
-                        : s.Exhausted ? '<span style="color:#e44;">exhausted</span>'
-                        : '<span style="color:#4e4;">live</span>';
-                    var uses = (s.UsedCount || 0) + (s.MaxUses ? '/' + s.MaxUses : '');
-                    var exp = s.ExpiresUtc ? new Date(s.ExpiresUtc).toLocaleString() : '∞';
-                    var tokenSafe = esc(s.Token || '');
-                    html += '<div style="padding:0.4em;margin:0.2em 0;border:1px solid #333;font-size:0.9em;">';
-                    html += '<strong>' + esc(s.ItemName) + '</strong> ' + status + ' - ' + uses + ' use' + (s.MaxUses === 1 ? '' : 's') + ' · expires ' + esc(exp) + '<br>';
-                    html += '<a href="/Federation/Public/' + tokenSafe + '" target="_blank" style="font-family:monospace;font-size:0.8em;">/Federation/Public/' + tokenSafe + '</a> ';
-                    html += '<button type="button" class="copy-public" data-token="' + tokenSafe + '">Copy URL</button> ';
-                    html += '<button type="button" class="revoke-public" data-token="' + tokenSafe + '">Revoke</button>';
-                    html += '</div>';
-                });
-                document.getElementById('PublicSharesList').innerHTML = html || '<em>No public share links yet.</em>';
-            });
-        }
-
-        document.getElementById('CreatePublicShare').addEventListener('click', function () {
-            var itemId = document.getElementById('NewPublicItemId').value.trim();
-            if (!itemId) { alert('Item id required'); return; }
-            var expiryLocal = document.getElementById('NewPublicExpiry').value;
-            var expiryIso = expiryLocal ? new Date(expiryLocal).toISOString() : null;
-            var maxUses = parseInt(document.getElementById('NewPublicMaxUses').value, 10);
-            ApiClient.fetch({
-                url: ApiClient.getUrl('Federation/PublicShares'),
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({
-                    ItemId: itemId,
-                    ExpiresUtc: expiryIso,
-                    MaxUses: isNaN(maxUses) ? null : maxUses
-                })
-            }).then(function (resp) {
-                alert('Public share created for "' + resp.itemName + '"\n\nURL:\n' + resp.url);
-                ['NewPublicItemId','NewPublicExpiry','NewPublicMaxUses'].forEach(function (id) { document.getElementById(id).value = ''; });
-                renderPublicShares();
-            });
-        });
-
-        document.getElementById('PublicSharesList').addEventListener('click', function (e) {
-            if (e.target.classList.contains('revoke-public')) {
-                if (!confirm('Revoke this public share?')) return;
-                var token = e.target.dataset.token;
-                ApiClient.fetch({ url: ApiClient.getUrl('Federation/PublicShares/' + token), type: 'DELETE' }).then(renderPublicShares);
-            }
-            if (e.target.classList.contains('copy-public')) {
-                var token = e.target.dataset.token;
-                var url = window.location.origin + '/Federation/Public/' + token;
-                navigator.clipboard.writeText(url);
-                e.target.textContent = 'Copied!';
-                setTimeout(function () { e.target.textContent = 'Copy URL'; }, 1200);
             }
         });
 
@@ -806,10 +854,11 @@
                 renderInviteTokens(config.AccessRequestInviteTokens || []);
                 renderHandshakeLists();
                 renderBlocklist();
+                refreshPendingBadges();
+                refreshStatusBar();
                 applyI18n(config.DashboardLanguage || 'en');
                 renderServers(config.RemoteServers);
                 renderShares();
-                renderPublicShares();
                 renderRequests();
                 renderIntroductions();
                 populatePeerSelect();
