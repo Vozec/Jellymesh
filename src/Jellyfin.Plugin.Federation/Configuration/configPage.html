@@ -551,8 +551,8 @@
                 html += '<div style="margin-top:0.4em;display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;">';
                 html += '<div>';
                 html += '<h5 style="margin:0.5em 0 0.3em 0;color:#9cd;">Watch sync</h5>';
-                html += fieldRow('Remote user id on peer', '<input type="text" value="' + esc(s.RemoteUserId || '') + '" data-field="RemoteUserId" placeholder="Peer''s user id we push UserData to" />');
-                html += fieldRow('Local user receiving peer watch state', '<input type="text" value="' + esc(s.LocalUserIdForSync || '') + '" data-field="LocalUserIdForSync" placeholder="Our user id we mirror peer''s state into" />', 'Leave empty to disable pull-direction sync for this peer.');
+                html += fieldRow('Remote user id on peer', '<input type="text" value="' + esc(s.RemoteUserId || '') + '" data-field="RemoteUserId" placeholder="Peer user id we push UserData to" />');
+                html += fieldRow('Local user receiving peer watch state', '<input type="text" value="' + esc(s.LocalUserIdForSync || '') + '" data-field="LocalUserIdForSync" placeholder="Our user id we mirror peer state into" />', 'Leave empty to disable pull-direction sync for this peer.');
                 html += '</div>';
                 html += '<div>';
                 html += '<h5 style="margin:0.5em 0 0.3em 0;color:#9cd;">Quotas (soft-block)</h5>';
