@@ -205,22 +205,34 @@
             row.innerHTML = '<div class="jm-placeholder" style="padding:1em;color:#777;">Empty.</div>';
             return;
         }
-        // Standard portrait card markup pulled from Jellyfin's cardBuilder output.
-        row.innerHTML = items.map((it) => `
-            <div class="card overflowPortraitCard card-hoverable" data-id="${escapeHtml(it.id)}" data-serverid="${escapeHtml(peer.Id)}" data-type="${escapeHtml(it.type || 'Movie')}" data-prefix="" style="display:inline-block;white-space:normal;">
-                <div class="cardBox cardBox-bottompadded">
-                    <div class="cardScalable">
-                        <div class="cardPadder cardPadder-overflowPortrait"></div>
-                        <div class="cardImageContainer coveredImage cardContent" style="position:relative;">
-                            <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
-                            <div class="cardImage" style="background-image:url('${escapeHtml(it.imageUrl)}');background-size:cover;background-position:center;"></div>
+        // Standard portrait card markup pulled from Jellyfin's cardBuilder output. The link
+        // uses class="itemAction" + data-action="link"; the SPA's global click hook will
+        // route to #/details?id=. localId is the federated channel item Jellyfin already
+        // ingested via FriendsLibraryChannel.
+        row.innerHTML = items.map((it) => {
+            const localId = it.localId || '';
+            const clickable = !!localId;
+            const href = clickable ? `#/details?id=${localId}` : '#';
+            const aOpen = `<a class="cardImageContainer coveredImage cardContent itemAction" href="${href}" data-action="${clickable ? 'link' : 'none'}" data-id="${localId}" data-type="${escapeHtml(it.type || 'Movie')}" data-mediatype="Video" style="position:relative;">`;
+            return `
+                <div class="card overflowPortraitCard card-hoverable" data-id="${localId}" data-serverid="" data-type="${escapeHtml(it.type || 'Movie')}" data-prefix="" style="display:inline-block;white-space:normal;">
+                    <div class="cardBox cardBox-bottompadded">
+                        <div class="cardScalable">
+                            <div class="cardPadder cardPadder-overflowPortrait"></div>
+                            ${aOpen}
+                                <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
+                                <div class="cardImage" style="background-image:url('${escapeHtml(it.imageUrl)}');background-size:cover;background-position:center;"></div>
+                            </a>
                         </div>
+                        <div class="cardText cardTextCentered cardText-first">
+                            ${clickable ? `<a class="itemAction" href="${href}" data-action="link" data-id="${localId}" style="color:inherit;text-decoration:none;"><bdi>${escapeHtml(it.name || '')}</bdi></a>`
+                                        : `<bdi>${escapeHtml(it.name || '')}</bdi>`}
+                        </div>
+                        <div class="cardText cardTextCentered cardText-secondary"><bdi>${it.year || ''}${it.version ? ' &middot; ' + escapeHtml(it.version) : ''}</bdi></div>
                     </div>
-                    <div class="cardText cardTextCentered cardText-first"><bdi>${escapeHtml(it.name || '')}</bdi></div>
-                    <div class="cardText cardTextCentered cardText-secondary"><bdi>${it.year || ''}${it.version ? ' &middot; ' + escapeHtml(it.version) : ''}</bdi></div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     function escapeHtml(s) {

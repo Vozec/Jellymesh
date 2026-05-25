@@ -1919,7 +1919,9 @@ h1{{font-weight:400;font-size:1.2rem}}
     }
 
     [HttpGet("Peers/{peerId}/Libraries/{libraryId}/Items")]
-    public async Task<IActionResult> ListPeerLibraryItems(string peerId, string libraryId, [FromQuery] int? limit, CancellationToken ct)
+    public async Task<IActionResult> ListPeerLibraryItems(string peerId, string libraryId, [FromQuery] int? limit,
+        [FromServices] MediaBrowser.Controller.Library.ILibraryManager library,
+        CancellationToken ct)
     {
         if (!Guid.TryParse(peerId, out var pid)) return BadRequest("peerId invalid");
         var config = Plugin.Instance?.Configuration;
@@ -1941,6 +1943,26 @@ h1{{font-weight:400;font-size:1.2rem}}
             if (!resp.IsSuccessStatusCode) return StatusCode((int)resp.StatusCode);
             using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            // Build a one-pass map of {fed_<peerN>_<remoteItemId> -> local Jellyfin item id} so
+            // each card we ship to the client carries the local id that the SPA can navigate
+            // to via #/details?id=. Without it cards are pure thumbnails with no click target.
+            var externalToLocal = new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
+            try
+            {
+                var q = new MediaBrowser.Controller.Entities.InternalItemsQuery
+                {
+                    Recursive = true,
+                    IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Movie, Jellyfin.Data.Enums.BaseItemKind.Episode }
+                };
+                foreach (var li in library.GetItemList(q))
+                {
+                    var ext = li.ExternalId;
+                    if (!string.IsNullOrEmpty(ext) && ext.StartsWith("fed_", StringComparison.Ordinal))
+                        externalToLocal[ext] = li.Id.ToString("N");
+                }
+            }
+            catch (Exception ex) { _logger.LogDebug(ex, "ExternalId -> local id mapping failed"); }
+
             var rows = new System.Collections.Generic.List<object>();
             if (doc.RootElement.TryGetProperty("Items", out var items))
             {
@@ -1962,9 +1984,45 @@ h1{{font-weight:400;font-size:1.2rem}}
                             }
                         }
                     }
+                    var externalId = "fed_" + pid.ToString("N") + "_" + id;
+                    externalToLocal.TryGetValue(externalId, out var localId);
+                    // Fallback: dedup hid this remote item because we own it locally too.
+                    // Look up the local Movie by TMDB/IMDB and link the card to it.
+                    string? localKind = localId is null ? null : "channel";
+                    if (localId is null)
+                    {
+                        string? tmdb = null, imdb = null;
+                        if (el.TryGetProperty("ProviderIds", out var pids) && pids.ValueKind == System.Text.Json.JsonValueKind.Object)
+                        {
+                            if (pids.TryGetProperty("Tmdb", out var tm) && tm.ValueKind == System.Text.Json.JsonValueKind.String) tmdb = tm.GetString();
+                            if (pids.TryGetProperty("Imdb", out var im) && im.ValueKind == System.Text.Json.JsonValueKind.String) imdb = im.GetString();
+                        }
+                        if (!string.IsNullOrEmpty(tmdb) || !string.IsNullOrEmpty(imdb))
+                        {
+                            try
+                            {
+                                var lookup = new MediaBrowser.Controller.Entities.InternalItemsQuery
+                                {
+                                    IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Movie, Jellyfin.Data.Enums.BaseItemKind.Episode },
+                                    Recursive = true,
+                                    Limit = 1
+                                };
+                                if (!string.IsNullOrEmpty(tmdb)) lookup.HasAnyProviderId = new System.Collections.Generic.Dictionary<string, string> { ["Tmdb"] = tmdb };
+                                else lookup.HasAnyProviderId = new System.Collections.Generic.Dictionary<string, string> { ["Imdb"] = imdb! };
+                                var match = library.GetItemList(lookup).FirstOrDefault();
+                                if (match is not null) { localId = match.Id.ToString("N"); localKind = "local"; }
+                            }
+                            catch { /* skip */ }
+                        }
+                    }
                     rows.Add(new
                     {
                         id,
+                        // localId is the Jellyfin item id the SPA can navigate to. localKind
+                        // tells the client whether it points to a channel item (federated) or
+                        // a normal local Movie (we already own it).
+                        localId,
+                        localKind,
                         name = el.TryGetProperty("Name", out var n) ? n.GetString() : null,
                         type = el.TryGetProperty("Type", out var t) ? t.GetString() : null,
                         year = el.TryGetProperty("ProductionYear", out var py) && py.ValueKind == System.Text.Json.JsonValueKind.Number ? py.GetInt32() : (int?)null,
