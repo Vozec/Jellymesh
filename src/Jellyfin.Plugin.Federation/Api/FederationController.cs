@@ -1880,6 +1880,109 @@ h1{{font-weight:400;font-size:1.2rem}}
         }));
     }
 
+    [HttpGet("Peers/{peerId}/Libraries")]
+    public async Task<IActionResult> ListPeerLibraries(string peerId, CancellationToken ct)
+    {
+        if (!Guid.TryParse(peerId, out var pid)) return BadRequest("peerId invalid");
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        var peer = config.RemoteServers.FirstOrDefault(p => p.Id == pid);
+        if (peer is null || !peer.Enabled) return NotFound();
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(10);
+            Services.RemoteJellyfinClient.AddBasicAuth(http, peer);
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{peer.BaseUrl.TrimEnd('/')}/Library/VirtualFolders");
+            req.Headers.Add("X-Emby-Token", peer.ApiKey);
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return StatusCode((int)resp.StatusCode);
+            using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            var rows = new System.Collections.Generic.List<object>();
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                rows.Add(new
+                {
+                    id = el.TryGetProperty("ItemId", out var iid) ? iid.GetString() : null,
+                    name = el.TryGetProperty("Name", out var n) ? n.GetString() : null,
+                    type = el.TryGetProperty("CollectionType", out var ct2) ? ct2.GetString() : null
+                });
+            }
+            return Ok(rows);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ListPeerLibraries to {Peer} failed", peer.Name);
+            return StatusCode(502, new { reason = ex.Message });
+        }
+    }
+
+    [HttpGet("Peers/{peerId}/Libraries/{libraryId}/Items")]
+    public async Task<IActionResult> ListPeerLibraryItems(string peerId, string libraryId, [FromQuery] int? limit, CancellationToken ct)
+    {
+        if (!Guid.TryParse(peerId, out var pid)) return BadRequest("peerId invalid");
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        var peer = config.RemoteServers.FirstOrDefault(p => p.Id == pid);
+        if (peer is null || !peer.Enabled) return NotFound();
+        var lim = Math.Clamp(limit ?? 24, 1, 100);
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(10);
+            Services.RemoteJellyfinClient.AddBasicAuth(http, peer);
+            var fields = "ProviderIds,MediaStreams,Container,Width,Height,RunTimeTicks";
+            var prefix = !string.IsNullOrEmpty(peer.RemoteUserId) ? $"/Users/{peer.RemoteUserId}/Items" : "/Items";
+            var url = $"{peer.BaseUrl.TrimEnd('/')}{prefix}?ParentId={Uri.EscapeDataString(libraryId)}&Recursive=true&IncludeItemTypes=Movie,Series&Fields={fields}&Limit={lim}&SortBy=DateCreated&SortOrder=Descending";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Add("X-Emby-Token", peer.ApiKey);
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return StatusCode((int)resp.StatusCode);
+            using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            var rows = new System.Collections.Generic.List<object>();
+            if (doc.RootElement.TryGetProperty("Items", out var items))
+            {
+                foreach (var el in items.EnumerateArray())
+                {
+                    var id = el.TryGetProperty("Id", out var iid) ? iid.GetString() : null;
+                    if (id is null) continue;
+                    var video = "";
+                    if (el.TryGetProperty("MediaStreams", out var ms) && ms.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var s in ms.EnumerateArray())
+                        {
+                            if (s.TryGetProperty("Type", out var ty) && ty.GetString() == "Video")
+                            {
+                                var height = s.TryGetProperty("Height", out var h) && h.ValueKind == System.Text.Json.JsonValueKind.Number ? h.GetInt32() : 0;
+                                var codec = s.TryGetProperty("Codec", out var c) ? c.GetString() : null;
+                                video = $"{height}p {codec}".Trim();
+                                break;
+                            }
+                        }
+                    }
+                    rows.Add(new
+                    {
+                        id,
+                        name = el.TryGetProperty("Name", out var n) ? n.GetString() : null,
+                        type = el.TryGetProperty("Type", out var t) ? t.GetString() : null,
+                        year = el.TryGetProperty("ProductionYear", out var py) && py.ValueKind == System.Text.Json.JsonValueKind.Number ? py.GetInt32() : (int?)null,
+                        version = video,
+                        // Image goes through our reverse proxy so the peer API key never reaches the client.
+                        imageUrl = $"/Federation/Image/{pid:N}/{id}/Primary"
+                    });
+                }
+            }
+            return Ok(new { peerId = pid, peerName = peer.Name, items = rows });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ListPeerLibraryItems to {Peer} failed", peer.Name);
+            return StatusCode(502, new { reason = ex.Message });
+        }
+    }
+
     [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Peers/{peerId}/Directory")]
     public async Task<IActionResult> FetchPeerDirectory(string peerId,
