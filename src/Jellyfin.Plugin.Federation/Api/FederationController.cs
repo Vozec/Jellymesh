@@ -1881,13 +1881,22 @@ h1{{font-weight:400;font-size:1.2rem}}
     }
 
     [HttpGet("Peers/{peerId}/Libraries")]
-    public async Task<IActionResult> ListPeerLibraries(string peerId, CancellationToken ct)
+    public async Task<IActionResult> ListPeerLibraries(string peerId,
+        [FromQuery] bool? onlyEnabled,
+        [FromServices] Services.PeerLibraryCache cache,
+        CancellationToken ct)
     {
         if (!Guid.TryParse(peerId, out var pid)) return BadRequest("peerId invalid");
         var config = Plugin.Instance?.Configuration;
         if (config is null) return StatusCode(500);
         var peer = config.RemoteServers.FirstOrDefault(p => p.Id == pid);
         if (peer is null || !peer.Enabled) return NotFound();
+
+        string json;
+        if (cache.TryGet(Services.PeerLibraryCache.LibsKey(pid), out json))
+        {
+            return ContentWithLibFilter(json, pid, config, onlyEnabled == true);
+        }
         try
         {
             var http = _httpClientFactory.CreateClient();
@@ -1909,7 +1918,9 @@ h1{{font-weight:400;font-size:1.2rem}}
                     type = el.TryGetProperty("CollectionType", out var ct2) ? ct2.GetString() : null
                 });
             }
-            return Ok(rows);
+            json = System.Text.Json.JsonSerializer.Serialize(rows);
+            cache.Store(Services.PeerLibraryCache.LibsKey(pid), json);
+            return ContentWithLibFilter(json, pid, config, onlyEnabled == true);
         }
         catch (Exception ex)
         {
@@ -1918,9 +1929,36 @@ h1{{font-weight:400;font-size:1.2rem}}
         }
     }
 
+    private IActionResult ContentWithLibFilter(string json, Guid pid, Configuration.PluginConfiguration config, bool onlyEnabled)
+    {
+        if (!onlyEnabled) return Content(json, "application/json");
+        // Apply per-lib enabled filter so the home-page caller doesn't need to know the
+        // config layout. Default for libs with no setting is enabled.
+        var doc = System.Text.Json.JsonDocument.Parse(json);
+        var settings = config.PeerLibrarySettings;
+        var filtered = new System.Collections.Generic.List<object>();
+        foreach (var el in doc.RootElement.EnumerateArray())
+        {
+            var id = el.TryGetProperty("id", out var iid) ? iid.GetString() : null;
+            if (id is null) continue;
+            var s = settings.FirstOrDefault(x => x.PeerId == pid && x.LibraryId == id);
+            if (s is not null && !s.Enabled) continue;
+            filtered.Add(new
+            {
+                id,
+                name = el.TryGetProperty("name", out var n) ? n.GetString() : null,
+                type = el.TryGetProperty("type", out var t) ? t.GetString() : null,
+                hideFromHomepage = s?.HideFromHomepage == true,
+                mergeWithLocalLibraryId = s?.MergeWithLocalLibraryId
+            });
+        }
+        return Ok(filtered);
+    }
+
     [HttpGet("Peers/{peerId}/Libraries/{libraryId}/Items")]
     public async Task<IActionResult> ListPeerLibraryItems(string peerId, string libraryId, [FromQuery] int? limit,
         [FromServices] MediaBrowser.Controller.Library.ILibraryManager library,
+        [FromServices] Services.PeerLibraryCache cache,
         CancellationToken ct)
     {
         if (!Guid.TryParse(peerId, out var pid)) return BadRequest("peerId invalid");
@@ -1929,6 +1967,8 @@ h1{{font-weight:400;font-size:1.2rem}}
         var peer = config.RemoteServers.FirstOrDefault(p => p.Id == pid);
         if (peer is null || !peer.Enabled) return NotFound();
         var lim = Math.Clamp(limit ?? 24, 1, 100);
+        var cacheKey = Services.PeerLibraryCache.LibItemsKey(pid, libraryId, lim);
+        if (cache.TryGet(cacheKey, out var cached)) return Content(cached, "application/json");
         try
         {
             var http = _httpClientFactory.CreateClient();
@@ -2032,13 +2072,54 @@ h1{{font-weight:400;font-size:1.2rem}}
                     });
                 }
             }
-            return Ok(new { peerId = pid, peerName = peer.Name, items = rows });
+            var payload = new { peerId = pid, peerName = peer.Name, items = rows };
+            var json = System.Text.Json.JsonSerializer.Serialize(payload);
+            cache.Store(cacheKey, json);
+            return Content(json, "application/json");
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "ListPeerLibraryItems to {Peer} failed", peer.Name);
             return StatusCode(502, new { reason = ex.Message });
         }
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("PeerLibraryConfig")]
+    public IActionResult GetPeerLibraryConfig()
+    {
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        return Ok(new { layout = config.PeerHomeLayout.ToString(), settings = config.PeerLibrarySettings });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("PeerLibraryConfig")]
+    public IActionResult SetPeerLibraryConfig([FromBody] PeerLibraryConfigPayload payload,
+        [FromServices] Services.PeerLibraryCache cache)
+    {
+        if (payload is null) return BadRequest("missing body");
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        lock (Plugin.ConfigWriteLock)
+        {
+            if (payload.Layout is { Length: > 0 } && Enum.TryParse<Configuration.PeerHomeLayout>(payload.Layout, true, out var lay))
+                config.PeerHomeLayout = lay;
+            if (payload.Settings is not null)
+            {
+                // Replace wholesale: the caller sends the full desired state for the
+                // peers/libs it cares about. We preserve entries for peers not mentioned.
+                var keep = config.PeerLibrarySettings
+                    .Where(s => !payload.Settings.Any(p => p.PeerId == s.PeerId && p.LibraryId == s.LibraryId))
+                    .ToList();
+                keep.AddRange(payload.Settings);
+                config.PeerLibrarySettings = keep;
+            }
+            Plugin.Instance?.SaveConfiguration();
+        }
+        // Settings changed → drop cached lib listings so the next read reflects new flags.
+        cache.Clear();
+        return Ok(new { layout = config.PeerHomeLayout.ToString(), settings = config.PeerLibrarySettings });
     }
 
     [Authorize(Policy = Policies.RequiresElevation)]
@@ -2244,6 +2325,12 @@ public class FederatedSearchHit
     public string? Type { get; set; }
     public int? Year { get; set; }
     public string? PrimaryImageUrl { get; set; }
+}
+
+public class PeerLibraryConfigPayload
+{
+    public string? Layout { get; set; }
+    public List<Configuration.PeerLibrarySetting>? Settings { get; set; }
 }
 
 public class AccessRequestPayload

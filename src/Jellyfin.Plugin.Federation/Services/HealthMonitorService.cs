@@ -14,15 +14,17 @@ public class HealthMonitorService : BackgroundService
     private readonly PeerHealthRegistry _registry;
     private readonly PeerHealthHistoryStore _history;
     private readonly WebhookDispatcher _webhook;
+    private readonly PeerLibraryCache _libCache;
     private readonly ILogger<HealthMonitorService> _logger;
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(30);
 
-    public HealthMonitorService(RemoteJellyfinClient client, PeerHealthRegistry registry, PeerHealthHistoryStore history, WebhookDispatcher webhook, ILogger<HealthMonitorService> logger)
+    public HealthMonitorService(RemoteJellyfinClient client, PeerHealthRegistry registry, PeerHealthHistoryStore history, WebhookDispatcher webhook, PeerLibraryCache libCache, ILogger<HealthMonitorService> logger)
     {
         _client = client;
         _registry = registry;
         _history = history;
         _webhook = webhook;
+        _libCache = libCache;
         _logger = logger;
         _registry.HealthChanged += OnHealthChanged;
     }
@@ -34,6 +36,7 @@ public class HealthMonitorService : BackgroundService
         _webhook.Fire(e.Online ? "peer-online" : "peer-offline",
             $"Peer {name} is now {(e.Online ? "online" : "offline")}",
             new { e.PeerId, e.Online });
+        _libCache?.InvalidatePeer(e.PeerId);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

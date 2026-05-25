@@ -155,41 +155,36 @@
     // ----- 2. Home-page sections per peer ------------------------------------
     function ensureHomeSections() {
         if (!/^#\/(home(\.html)?)?$/.test(location.hash) && location.hash !== '' && location.hash !== '#/') return;
-        // The Jellyfin SPA renders home tabs into a section with class .homeSectionsContainer
-        // inside the active tab. Wait for the standard 'My Media' section to be in the DOM
-        // before injecting so our sections appear AFTER it.
         const homeView = document.querySelector('.homeSectionsContainer, .homePage');
         if (!homeView) return;
         if (homeView.dataset.jmInjected === 'yes') return;
         homeView.dataset.jmInjected = 'yes';
 
-        jApi('/Federation/Stats').then((stats) => {
+        // Load layout config + peer list in parallel.
+        Promise.all([
+            jApi('/Federation/PeerLibraryConfig').catch(() => ({ layout: 'SectionPerPeer', settings: [] })),
+            jApi('/Federation/Stats')
+        ]).then(([cfg, stats]) => {
+            if (cfg.layout === 'Off') return;
             const peers = (stats.Peers || []).filter((p) => p.Enabled && p.Online);
             if (peers.length === 0) return;
-            peers.forEach((peer) => renderPeerSection(homeView, peer));
+            if (cfg.layout === 'OneSectionAllPeers') {
+                renderCombinedSection(homeView, peers);
+            } else {
+                peers.forEach((peer) => renderPeerSection(homeView, peer));
+            }
         }).catch(() => { delete homeView.dataset.jmInjected; });
     }
 
     // Reproduce Jellyfin's home-page section markup so our injected sections inherit every
-    // built-in style + the horizontal scroller behaviour automatically.
+    // built-in style + the horizontal scroller behaviour automatically. Skips peers whose
+    // libs are all disabled/hidden or whose lib listing fails.
     function renderPeerSection(host, peer) {
-        // One verticalSection per library on the peer (mirrors how Jellyfin shows Latest Movies
-        // and Latest Shows as separate sections rather than nesting). Section title says
-        // 'Library on PeerName'.
-        jApi('/Federation/Peers/' + peer.Id + '/Libraries').then((libs) => {
-            (libs || []).forEach((lib) => {
-                const section = document.createElement('div');
-                section.className = 'verticalSection';
-                section.dataset.jmPeer = peer.Id;
-                section.dataset.jmLib = lib.id;
-                section.innerHTML = `
-                    <div class="sectionTitleContainer sectionTitleContainer-cards padded-left">
-                        <h2 class="sectionTitle sectionTitle-cards">${escapeHtml(lib.name || 'Library')} <span style="opacity:0.65;font-weight:400;">&middot; ${escapeHtml(peer.Name || 'Peer')}</span></h2>
-                    </div>
-                    <div is="emby-itemscontainer" class="itemsContainer scrollSlider focuscontainer-x padded-left padded-right" data-monitor="" style="white-space:nowrap;overflow-x:auto;">
-                        <div class="jm-placeholder" style="padding:1em;color:#777;">Loading...</div>
-                    </div>
-                `;
+        jApi(`/Federation/Peers/${peer.Id}/Libraries?onlyEnabled=true`).then((libs) => {
+            const visible = (libs || []).filter((l) => !l.hideFromHomepage);
+            if (visible.length === 0) return; // skip section entirely - user asked
+            visible.forEach((lib) => {
+                const section = buildSection(`${escapeHtml(lib.name || 'Library')} <span style="opacity:0.65;font-weight:400;">&middot; ${escapeHtml(peer.Name || 'Peer')}</span>`);
                 host.appendChild(section);
                 jApi(`/Federation/Peers/${peer.Id}/Libraries/${encodeURIComponent(lib.id)}/Items?limit=18`)
                     .then((data) => fillSectionCards(section, peer, data.items || []))
@@ -198,51 +193,88 @@
         }).catch(() => { /* peer offline mid-render */ });
     }
 
+    // Single combined 'From your friends' section that pools items from every enabled+visible
+    // lib across all peers.
+    function renderCombinedSection(host, peers) {
+        const section = buildSection('From your friends');
+        host.appendChild(section);
+        const pool = [];
+        Promise.all(peers.map((peer) =>
+            jApi(`/Federation/Peers/${peer.Id}/Libraries?onlyEnabled=true`).then((libs) => {
+                const visible = (libs || []).filter((l) => !l.hideFromHomepage);
+                return Promise.all(visible.map((lib) =>
+                    jApi(`/Federation/Peers/${peer.Id}/Libraries/${encodeURIComponent(lib.id)}/Items?limit=12`)
+                        .then((data) => (data.items || []).forEach((it) => pool.push({ peer, it })))
+                        .catch(() => {})
+                ));
+            }).catch(() => {})
+        )).then(() => {
+            if (pool.length === 0) { section.remove(); return; }
+            fillSectionCardsMixed(section, pool);
+        });
+    }
+
+    function buildSection(titleHtml) {
+        const section = document.createElement('div');
+        section.className = 'verticalSection';
+        section.innerHTML = `
+            <div class="sectionTitleContainer sectionTitleContainer-cards padded-left">
+                <h2 class="sectionTitle sectionTitle-cards">${titleHtml}</h2>
+            </div>
+            <div is="emby-itemscontainer" class="itemsContainer scrollSlider focuscontainer-x padded-left padded-right" data-monitor="" style="white-space:nowrap;overflow-x:auto;">
+                <div class="jm-placeholder" style="padding:1em;color:#777;">Loading...</div>
+            </div>
+        `;
+        return section;
+    }
+
+    function fillSectionCardsMixed(section, pool) {
+        const row = section.querySelector('.itemsContainer');
+        if (!row) return;
+        const apiKey = token();
+        const ourServerId = (window.ApiClient && (ApiClient.serverId ? ApiClient.serverId() : (ApiClient.serverInfo() || {}).Id)) || '';
+        const cards = pool.map(({ peer, it }) => buildCard(it, peer, apiKey, ourServerId)).filter(Boolean);
+        row.innerHTML = cards.length ? cards.join('') : '<div class="jm-placeholder" style="padding:1em;color:#777;">No items.</div>';
+    }
+
     function fillSectionCards(section, peer, items) {
         const row = section.querySelector('.itemsContainer');
         if (!row) return;
-        if (items.length === 0) {
-            row.innerHTML = '<div class="jm-placeholder" style="padding:1em;color:#777;">Empty.</div>';
-            return;
-        }
-        // Standard portrait card markup pulled from Jellyfin's cardBuilder output. The link
-        // uses class="itemAction" + data-action="link"; Jellyfin's global click delegate
-        // calls appRouter.showItem(id, serverId). serverId is REQUIRED - without it the
-        // handler bails silently and the card looks unresponsive. Pull it from ApiClient.
         const apiKey = token();
         const ourServerId = (window.ApiClient && (ApiClient.serverId ? ApiClient.serverId() : (ApiClient.serverInfo() || {}).Id)) || '';
-        row.innerHTML = items.map((it) => {
-            const localId = it.localId || '';
-            const clickable = !!localId;
-            const href = clickable ? `#/details?id=${localId}&serverId=${ourServerId}` : '#';
-            // background-image URLs are fetched by the browser without any Jellyfin auth
-            // header, so we tack on ?api_key= which Jellyfin's auth pipeline accepts as
-            // an equivalent to X-Emby-Token.
-            const imageUrl = `${it.imageUrl}?api_key=${encodeURIComponent(apiKey)}`;
-            const dataAttrs = `data-action="${clickable ? 'link' : 'none'}" data-id="${localId}" data-serverid="${ourServerId}" data-type="${escapeHtml(it.type || 'Movie')}" data-mediatype="Video" data-isfolder="false"`;
-            // No inline style on cardImageContainer: Jellyfin's CSS positions it absolute
-            // inside .cardScalable, which also makes it the containing block for the badge.
-            // Overriding position:relative breaks the layout and the image stays 0x0.
-            const aOpen = `<a class="cardImageContainer coveredImage cardContent itemAction" href="${href}" ${dataAttrs}>`;
-            return `
-                <div class="card overflowPortraitCard card-hoverable" data-id="${localId}" data-serverid="${ourServerId}" data-type="${escapeHtml(it.type || 'Movie')}" data-prefix="" style="display:inline-block;white-space:normal;vertical-align:top;margin:0.3em;width:150px;">
-                    <div class="cardBox cardBox-bottompadded">
-                        <div class="cardScalable">
-                            <div class="cardPadder cardPadder-overflowPortrait"></div>
-                            ${aOpen}
-                                <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
-                                <div class="cardImage" style="background-image:url('${imageUrl}');"></div>
-                            </a>
-                        </div>
-                        <div class="cardText cardTextCentered cardText-first">
-                            ${clickable ? `<a class="itemAction" href="${href}" ${dataAttrs} style="color:inherit;text-decoration:none;"><bdi>${escapeHtml(it.name || '')}</bdi></a>`
-                                        : `<bdi>${escapeHtml(it.name || '')}</bdi>`}
-                        </div>
-                        <div class="cardText cardTextCentered cardText-secondary"><bdi>${it.year || ''}${it.version ? ' &middot; ' + escapeHtml(it.version) : ''}</bdi></div>
+        const cards = items.map((it) => buildCard(it, peer, apiKey, ourServerId)).filter(Boolean);
+        row.innerHTML = cards.length
+            ? cards.join('')
+            : '<div class="jm-placeholder" style="padding:1em;color:#777;">No playable items (waiting for sync).</div>';
+    }
+
+    // Returns null when the peer item has no local equivalent yet (channel sync hasn't run
+    // or dedup hid it). Skipping the card is better than rendering a dead href='#'.
+    function buildCard(it, peer, apiKey, ourServerId) {
+        const localId = it.localId || '';
+        if (!localId) return null;
+        const href = `#/details?id=${localId}&serverId=${ourServerId}`;
+        // background-image URLs are fetched by the browser without any Jellyfin auth header,
+        // so we tack on ?api_key which Jellyfin's auth pipeline accepts equivalent.
+        const imageUrl = `${it.imageUrl}?api_key=${encodeURIComponent(apiKey)}`;
+        const dataAttrs = `data-action="link" data-id="${localId}" data-serverid="${ourServerId}" data-type="${escapeHtml(it.type || 'Movie')}" data-mediatype="Video" data-isfolder="false"`;
+        return `
+            <div class="card overflowPortraitCard card-hoverable" data-id="${localId}" data-serverid="${ourServerId}" data-type="${escapeHtml(it.type || 'Movie')}" data-prefix="" style="display:inline-block;white-space:normal;vertical-align:top;margin:0.3em;width:150px;">
+                <div class="cardBox cardBox-bottompadded">
+                    <div class="cardScalable">
+                        <div class="cardPadder cardPadder-overflowPortrait"></div>
+                        <a class="cardImageContainer coveredImage cardContent itemAction" href="${href}" ${dataAttrs}>
+                            <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
+                            <div class="cardImage" style="background-image:url('${imageUrl}');"></div>
+                        </a>
                     </div>
+                    <div class="cardText cardTextCentered cardText-first">
+                        <a class="itemAction" href="${href}" ${dataAttrs} style="color:inherit;text-decoration:none;"><bdi>${escapeHtml(it.name || '')}</bdi></a>
+                    </div>
+                    <div class="cardText cardTextCentered cardText-secondary"><bdi>${it.year || ''}${it.version ? ' &middot; ' + escapeHtml(it.version) : ''}</bdi></div>
                 </div>
-            `;
-        }).join('');
+            </div>
+        `;
     }
 
     function escapeHtml(s) {
@@ -305,6 +337,110 @@
         return parts.join(' ');
     }
 
+    // ----- 4b. Dashboard / libraries panel ----------------------------------
+    function ensureDashboardLibrariesPanel() {
+        if (!location.hash.startsWith('#/dashboard/libraries')) return;
+        if (document.getElementById('jm-dashlibs')) return;
+        // The Jellyfin libraries page renders 'addLibrary' / VirtualFolders list inside a
+        // .content-primary. We append our panel right after it.
+        const host = document.querySelector('.content-primary') || document.querySelector('.libraryPage');
+        if (!host) return;
+        const panel = document.createElement('div');
+        panel.id = 'jm-dashlibs';
+        panel.style.cssText = 'margin-top:2em;padding-top:1em;border-top:1px solid #333;';
+        panel.innerHTML = `
+            <h2 style="margin-bottom:0.3em;">Federated libraries</h2>
+            <p style="color:#aaa;margin:0 0 1em;">Libraries shared by your peers. Toggle visibility, hide from home, or merge into one of your local libraries.</p>
+            <div style="margin-bottom:0.8em;display:flex;align-items:center;gap:0.6em;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:0.4em;">
+                    <span style="color:#bbb;">Home layout:</span>
+                    <select id="jm-layout" style="background:#222;color:#eee;border:1px solid #444;padding:0.3em 0.5em;border-radius:0.3em;">
+                        <option value="SectionPerPeer">One section per peer</option>
+                        <option value="OneSectionAllPeers">One section for all peers</option>
+                        <option value="Off">Hide federated content from home</option>
+                    </select>
+                </label>
+                <button type="button" class="raised" id="jm-libs-refresh" style="margin-left:auto;background:#2a2a2a;color:#ddd;border:1px solid #555;border-radius:0.3em;padding:0.4em 0.9em;cursor:pointer;">Refresh peer lists</button>
+            </div>
+            <div id="jm-dashlibs-body"><em style="color:#777;">Loading...</em></div>
+        `;
+        host.appendChild(panel);
+        document.getElementById('jm-libs-refresh').addEventListener('click', () => loadDashlibs(true));
+        document.getElementById('jm-layout').addEventListener('change', (e) => {
+            jApi('/Federation/PeerLibraryConfig', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Layout: e.target.value }) })
+                .then(() => toast('Saved.'))
+                .catch(() => toast('Save failed.', 'error'));
+        });
+        loadDashlibs(false);
+    }
+
+    function loadDashlibs(forceRefresh) {
+        const body = document.getElementById('jm-dashlibs-body');
+        if (!body) return;
+        Promise.all([
+            jApi('/Federation/Stats'),
+            jApi('/Federation/PeerLibraryConfig'),
+            jApi('/Library/VirtualFolders')
+        ]).then(([stats, cfg, localLibs]) => {
+            const layoutSel = document.getElementById('jm-layout');
+            if (layoutSel) layoutSel.value = cfg.layout || 'SectionPerPeer';
+            const peers = (stats.Peers || []).filter((p) => p.Enabled);
+            if (peers.length === 0) { body.innerHTML = '<em style="color:#777;">No peers configured.</em>'; return; }
+            body.innerHTML = '';
+            peers.forEach((peer) => {
+                const block = document.createElement('div');
+                block.style.cssText = 'background:#1c1c1c;border:1px solid #333;border-radius:0.4em;margin:0.6em 0;padding:0.8em 1em;';
+                block.innerHTML = `<h3 style="margin:0 0 0.4em;">${escapeHtml(peer.Name)} <span style="font-size:0.85em;color:${peer.Online ? '#8c8' : '#c88'};">${peer.Online ? 'online' : 'offline'}</span></h3><div data-jm-libs><em style="color:#777;">Loading...</em></div>`;
+                body.appendChild(block);
+                jApi(`/Federation/Peers/${peer.Id}/Libraries${forceRefresh ? '?refresh=1' : ''}`).then((libs) => {
+                    if (!libs || libs.length === 0) { block.querySelector('[data-jm-libs]').innerHTML = '<em style="color:#777;">No libraries shared (or peer offline).</em>'; return; }
+                    block.querySelector('[data-jm-libs]').innerHTML = libs.map((lib) => renderLibRow(peer, lib, cfg.settings || [], localLibs || [])).join('');
+                }).catch(() => { block.querySelector('[data-jm-libs]').innerHTML = '<em style="color:#888;">Unreachable.</em>'; });
+            });
+        }).catch(() => { body.innerHTML = '<em style="color:#c88;">Failed to load peer/library config.</em>'; });
+    }
+
+    function renderLibRow(peer, lib, settings, localLibs) {
+        const setting = settings.find((s) => s.PeerId === peer.Id && s.LibraryId === lib.id) || {};
+        const enabled = setting.Enabled !== false;
+        const hidden = !!setting.HideFromHomepage;
+        const mergeTarget = setting.MergeWithLocalLibraryId || '';
+        const localOpts = ['<option value="">(no merge)</option>']
+            .concat((localLibs || []).map((ll) => `<option value="${escapeHtml(ll.ItemId)}" ${mergeTarget === ll.ItemId ? 'selected' : ''}>${escapeHtml(ll.Name)}</option>`))
+            .join('');
+        return `
+            <div style="display:grid;grid-template-columns:1.4fr auto auto 1.6fr auto;gap:0.6em;align-items:center;padding:0.4em 0;border-bottom:1px solid #2a2a2a;"
+                 data-jm-peer="${peer.Id}" data-jm-lib="${escapeHtml(lib.id)}">
+                <div><strong>${escapeHtml(lib.name)}</strong> <span style="color:#888;font-size:0.85em;">${escapeHtml(lib.type || 'mixed')}</span></div>
+                <label style="display:flex;align-items:center;gap:0.3em;color:#bbb;"><input type="checkbox" class="jm-lib-enabled" ${enabled ? 'checked' : ''} /> Enabled</label>
+                <label style="display:flex;align-items:center;gap:0.3em;color:#bbb;"><input type="checkbox" class="jm-lib-hide" ${hidden ? 'checked' : ''} /> Hide from home</label>
+                <label style="display:flex;align-items:center;gap:0.3em;color:#bbb;">Merge into:
+                    <select class="jm-lib-merge" style="background:#222;color:#eee;border:1px solid #444;border-radius:0.3em;padding:0.25em 0.4em;">${localOpts}</select>
+                </label>
+                <button type="button" class="jm-lib-save" style="background:#3b6fa4;color:#fff;border:none;border-radius:0.3em;padding:0.4em 0.8em;cursor:pointer;">Save</button>
+            </div>
+        `;
+    }
+
+    // Save handler delegated on the dashboard panel.
+    document.addEventListener('click', function (e) {
+        if (!e.target.classList || !e.target.classList.contains('jm-lib-save')) return;
+        const row = e.target.closest('[data-jm-peer]');
+        if (!row) return;
+        const peerId = row.dataset.jmPeer;
+        const libId = row.dataset.jmLib;
+        const setting = {
+            PeerId: peerId,
+            LibraryId: libId,
+            Enabled: row.querySelector('.jm-lib-enabled').checked,
+            HideFromHomepage: row.querySelector('.jm-lib-hide').checked,
+            MergeWithLocalLibraryId: row.querySelector('.jm-lib-merge').value || null
+        };
+        jApi('/Federation/PeerLibraryConfig', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Settings: [setting] }) })
+            .then(() => toast('Saved.'))
+            .catch(() => toast('Save failed.', 'error'));
+    });
+
     // ----- 4. Dashboard nav link --------------------------------------------
     function ensureNavLink() {
         if (document.getElementById('jm-nav-link')) return;
@@ -332,6 +468,7 @@
         ensureItemBadge();
         ensureHomeSections();
         ensureNavLink();
+        ensureDashboardLibrariesPanel();
     }
 
     document.addEventListener('DOMContentLoaded', () => {

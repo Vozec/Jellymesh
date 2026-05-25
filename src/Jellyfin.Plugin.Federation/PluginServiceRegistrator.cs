@@ -26,6 +26,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<InboundAuditStore>();
         serviceCollection.AddSingleton<PeerHealthHistoryStore>();
         serviceCollection.AddSingleton<QuotaService>();
+        serviceCollection.AddSingleton<PeerLibraryCache>();
         serviceCollection.AddSingleton<WebhookDispatcher>();
         serviceCollection.AddHostedService<RetentionCleanupService>();
         serviceCollection.AddHostedService<IndexHtmlInjector>();

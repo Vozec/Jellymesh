@@ -108,6 +108,13 @@ public class PluginConfiguration : BasePluginConfiguration
     /// URL cannot reach us even via a trusted introducer.</summary>
     public List<string> BlockedPeerUrls { get; set; } = new();
 
+    /// <summary>Per-peer per-library config (visibility / homepage / merge target). Key:
+    /// "{peerGuid}/{libraryId}". Empty entries are assumed enabled+visible.</summary>
+    public List<PeerLibrarySetting> PeerLibrarySettings { get; set; } = new();
+
+    /// <summary>How peer libraries surface on the home page.</summary>
+    public PeerHomeLayout PeerHomeLayout { get; set; } = PeerHomeLayout.SectionPerPeer;
+
     /// <summary>Days to keep completed/denied access-request rows + audit attempts +
     /// health samples. Older rows are pruned by the cleanup task.</summary>
     public int RetentionDays { get; set; } = 30;
@@ -262,6 +269,27 @@ public class RemoteServer
     /// <summary>Max bytes served outbound to this peer per day (sum of /Federation/Stream).
     /// 0 = unlimited. When exceeded, return 429.</summary>
     public long OutboundBytesPerDayLimit { get; set; } = 0;
+}
+
+public enum PeerHomeLayout
+{
+    /// <summary>One section per peer (default).</summary>
+    SectionPerPeer,
+    /// <summary>One combined 'From your friends' section pooling all peer libs.</summary>
+    OneSectionAllPeers,
+    /// <summary>Hide federated content from the home page entirely.</summary>
+    Off
+}
+
+public class PeerLibrarySetting
+{
+    public Guid PeerId { get; set; }
+    public string LibraryId { get; set; } = string.Empty;
+    public bool Enabled { get; set; } = true;
+    public bool HideFromHomepage { get; set; }
+    /// <summary>If set, items from this peer library are also injected into the local library
+    /// with this id when browsing it. Empty = no merge.</summary>
+    public string? MergeWithLocalLibraryId { get; set; }
 }
 
 public enum MatchStrategy
