@@ -42,22 +42,8 @@
             .jm-toast.show { opacity: 1; }
             .jm-toast.error { background: #a23333; }
 
-            /* Home-page peer sections */
-            .jm-peer-section { padding: 1.2em 3.3% 0; }
-            .jm-peer-head { display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.5em; }
-            .jm-peer-head h2 { margin: 0; font-size: 1.15em; }
-            .jm-peer-chip { font-size: 0.7em; background: #3b6fa4; color: #fff; padding: 0.15em 0.55em; border-radius: 0.7em; }
-            .jm-lib-block { margin: 0.6em 0 1em; }
-            .jm-lib-block h3 { margin: 0 0 0.4em; font-size: 0.95em; color: #aaa; font-weight: 500; }
-            .jm-card-row { display: flex; gap: 0.6em; overflow-x: auto; padding-bottom: 0.5em; scrollbar-width: thin; }
-            .jm-card-row::-webkit-scrollbar { height: 6px; }
-            .jm-card-row::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
-            .jm-card { flex: 0 0 150px; background: #1c1c1c; border-radius: 0.4em; overflow: hidden; cursor: default; position: relative; }
-            .jm-card img { width: 100%; height: 225px; object-fit: cover; background: #111; display: block; }
-            .jm-card .jm-card-info { padding: 0.4em 0.5em; }
-            .jm-card .jm-card-name { font-size: 0.85em; color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            .jm-card .jm-card-meta { font-size: 0.7em; color: #888; margin-top: 0.15em; }
-            .jm-card .jm-card-badge { position: absolute; top: 0.3em; right: 0.3em; background: rgba(59,111,164,0.92); color: #fff; padding: 0.1em 0.45em; border-radius: 0.6em; font-size: 0.65em; font-weight: 600; }
+            /* Peer-source chip overlaid on otherwise-native Jellyfin cards. */
+            .jm-card-badge { position: absolute; top: 0.35em; right: 0.35em; background: rgba(59,111,164,0.92); color: #fff; padding: 0.1em 0.5em; border-radius: 0.7em; font-size: 0.7em; font-weight: 600; z-index: 1; pointer-events: none; }
 
             /* Item details source badge */
             .jm-source-badge { display: inline-flex; align-items: center; gap: 0.35em; background: rgba(59,111,164,0.18); border: 1px solid rgba(59,111,164,0.55); color: #9bc5ee; padding: 0.2em 0.6em; border-radius: 0.4em; font-size: 0.78em; margin: 0.4em 0.4em 0 0; }
@@ -169,72 +155,72 @@
     // ----- 2. Home-page sections per peer ------------------------------------
     function ensureHomeSections() {
         if (!/^#\/(home(\.html)?)?$/.test(location.hash) && location.hash !== '' && location.hash !== '#/') return;
-        const homeView = document.querySelector('.homeSectionsContainer, .libraryPage, .view[data-type="home"]') || document.querySelector('.homePage');
+        // The Jellyfin SPA renders home tabs into a section with class .homeSectionsContainer
+        // inside the active tab. Wait for the standard 'My Media' section to be in the DOM
+        // before injecting so our sections appear AFTER it.
+        const homeView = document.querySelector('.homeSectionsContainer, .homePage');
         if (!homeView) return;
         if (homeView.dataset.jmInjected === 'yes') return;
         homeView.dataset.jmInjected = 'yes';
 
-        // Container we append our sections into. We piggyback on the home view's last child so
-        // we appear AFTER 'My media' / latest movies.
-        const host = document.createElement('div');
-        host.id = 'jm-home-host';
-        host.style.cssText = 'margin-top:1em;';
-        homeView.appendChild(host);
-
         jApi('/Federation/Stats').then((stats) => {
             const peers = (stats.Peers || []).filter((p) => p.Enabled && p.Online);
-            if (peers.length === 0) {
-                host.dataset.jmEmpty = 'yes';
-                return;
-            }
-            peers.forEach((peer) => renderPeerSection(host, peer));
+            if (peers.length === 0) return;
+            peers.forEach((peer) => renderPeerSection(homeView, peer));
         }).catch(() => { delete homeView.dataset.jmInjected; });
     }
 
+    // Reproduce Jellyfin's home-page section markup so our injected sections inherit every
+    // built-in style + the horizontal scroller behaviour automatically.
     function renderPeerSection(host, peer) {
-        const section = document.createElement('section');
-        section.className = 'jm-peer-section';
-        section.dataset.peerId = peer.Id;
-        section.innerHTML = `
-            <div class="jm-peer-head">
-                <h2>${escapeHtml(peer.Name || 'Peer')}</h2>
-                <span class="jm-peer-chip">Federated</span>
-            </div>
-            <div class="jm-peer-libs"></div>
-        `;
-        host.appendChild(section);
-
-        const libsHost = section.querySelector('.jm-peer-libs');
+        // One verticalSection per library on the peer (mirrors how Jellyfin shows Latest Movies
+        // and Latest Shows as separate sections rather than nesting). Section title says
+        // 'Library on PeerName'.
         jApi('/Federation/Peers/' + peer.Id + '/Libraries').then((libs) => {
-            if (!libs || libs.length === 0) {
-                libsHost.innerHTML = '<em style="color:#777;">No shared libraries.</em>';
-                return;
-            }
-            libs.forEach((lib) => {
-                const block = document.createElement('div');
-                block.className = 'jm-lib-block';
-                block.innerHTML = `<h3>${escapeHtml(lib.name || 'Library')}</h3><div class="jm-card-row"><em style="color:#777;">Loading...</em></div>`;
-                libsHost.appendChild(block);
-                jApi(`/Federation/Peers/${peer.Id}/Libraries/${encodeURIComponent(lib.id)}/Items?limit=18`).then((data) => {
-                    const row = block.querySelector('.jm-card-row');
-                    const items = (data && data.items) || [];
-                    if (items.length === 0) {
-                        row.innerHTML = '<em style="color:#777;">Empty.</em>';
-                        return;
-                    }
-                    row.innerHTML = items.map((it) => `
-                        <div class="jm-card" data-peer="${escapeHtml(peer.Id)}" data-item="${escapeHtml(it.id)}">
-                            <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
-                            <img loading="lazy" src="${escapeHtml(it.imageUrl)}" alt="" onerror="this.style.background='#222';this.removeAttribute('src');" />
-                            <div class="jm-card-info">
-                                <div class="jm-card-name">${escapeHtml(it.name || '')}</div>
-                                <div class="jm-card-meta">${it.year || ''}${it.version ? ' &middot; ' + escapeHtml(it.version) : ''}</div>
-                            </div>
-                        </div>
-                    `).join('');
-                }).catch(() => { block.querySelector('.jm-card-row').innerHTML = '<em style="color:#888;">Cannot load items.</em>'; });
+            (libs || []).forEach((lib) => {
+                const section = document.createElement('div');
+                section.className = 'verticalSection';
+                section.dataset.jmPeer = peer.Id;
+                section.dataset.jmLib = lib.id;
+                section.innerHTML = `
+                    <div class="sectionTitleContainer sectionTitleContainer-cards padded-left">
+                        <h2 class="sectionTitle sectionTitle-cards">${escapeHtml(lib.name || 'Library')} <span style="opacity:0.65;font-weight:400;">&middot; ${escapeHtml(peer.Name || 'Peer')}</span></h2>
+                    </div>
+                    <div is="emby-itemscontainer" class="itemsContainer scrollSlider focuscontainer-x padded-left padded-right" data-monitor="" style="white-space:nowrap;overflow-x:auto;">
+                        <div class="jm-placeholder" style="padding:1em;color:#777;">Loading...</div>
+                    </div>
+                `;
+                host.appendChild(section);
+                jApi(`/Federation/Peers/${peer.Id}/Libraries/${encodeURIComponent(lib.id)}/Items?limit=18`)
+                    .then((data) => fillSectionCards(section, peer, data.items || []))
+                    .catch(() => { section.querySelector('.jm-placeholder').textContent = 'Cannot load items.'; });
             });
-        }).catch(() => { libsHost.innerHTML = '<em style="color:#888;">Cannot load libraries from this peer.</em>'; });
+        }).catch(() => { /* peer offline mid-render */ });
+    }
+
+    function fillSectionCards(section, peer, items) {
+        const row = section.querySelector('.itemsContainer');
+        if (!row) return;
+        if (items.length === 0) {
+            row.innerHTML = '<div class="jm-placeholder" style="padding:1em;color:#777;">Empty.</div>';
+            return;
+        }
+        // Standard portrait card markup pulled from Jellyfin's cardBuilder output.
+        row.innerHTML = items.map((it) => `
+            <div class="card overflowPortraitCard card-hoverable" data-id="${escapeHtml(it.id)}" data-serverid="${escapeHtml(peer.Id)}" data-type="${escapeHtml(it.type || 'Movie')}" data-prefix="" style="display:inline-block;white-space:normal;">
+                <div class="cardBox cardBox-bottompadded">
+                    <div class="cardScalable">
+                        <div class="cardPadder cardPadder-overflowPortrait"></div>
+                        <div class="cardImageContainer coveredImage cardContent" style="position:relative;">
+                            <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
+                            <div class="cardImage" style="background-image:url('${escapeHtml(it.imageUrl)}');background-size:cover;background-position:center;"></div>
+                        </div>
+                    </div>
+                    <div class="cardText cardTextCentered cardText-first"><bdi>${escapeHtml(it.name || '')}</bdi></div>
+                    <div class="cardText cardTextCentered cardText-secondary"><bdi>${it.year || ''}${it.version ? ' &middot; ' + escapeHtml(it.version) : ''}</bdi></div>
+                </div>
+            </div>
+        `).join('');
     }
 
     function escapeHtml(s) {
