@@ -809,22 +809,24 @@
     });
 
     // ----- 4. Dashboard nav link --------------------------------------------
+    // Add an entry to the admin dashboard left navigation drawer pointing at our config
+    // page. Jellyfin 10.10 wraps the drawer in different selectors depending on the
+    // dashboard layout flavour, so we try a few + match the "My Plugins" anchor by href
+    // (which is stable across i18n versions).
     function ensureNavLink() {
         if (document.getElementById('jm-nav-link')) return;
-        // The drawer's "My Extensions" entry has data-itemid='myplugins' or anchor text matching.
-        const drawer = document.querySelector('.mainDrawer, .drawer-content, .dashboardDocument .navMenuContainer');
-        if (!drawer) return;
-        const myExt = Array.from(drawer.querySelectorAll('a, .navMenuOption')).find((el) => {
-            const href = el.getAttribute('href') || '';
-            const txt = (el.textContent || '').trim().toLowerCase();
-            return href.includes('/installedplugins') || href.includes('/dashboard/plugins') || txt === 'my plugins' || txt === 'mes extensions' || txt === 'mes plugins';
-        });
+        // 'My Plugins' anchor is what every dashboard layout I've seen exposes; locate it
+        // anywhere in the document and clone its parent's structure.
+        const myExt = document.querySelector('a[href$="#/dashboard/plugins"], a[href$="#!/dashboard/plugins"], a[href*="/installedplugins"]');
         if (!myExt) return;
         const link = document.createElement('a');
         link.id = 'jm-nav-link';
-        link.className = myExt.className || 'jm-nav-link';
+        link.className = myExt.className;
         link.href = '#/configurationpage?name=Jellymesh';
-        link.innerHTML = `<span class="material-icons">hub</span><span>Jellymesh</span>`;
+        // Mirror My Plugins's icon + label markup so the row blends in.
+        const iconEl = myExt.querySelector('.material-icons, .navMenuOptionIcon, span');
+        const iconHtml = iconEl ? `<span class="${iconEl.className || ''}">${iconEl.classList && iconEl.classList.contains('material-icons') ? 'hub' : iconEl.innerHTML}</span>` : '<span class="material-icons">hub</span>';
+        link.innerHTML = `${iconHtml}<span class="navMenuOptionText">Jellymesh</span>`;
         myExt.parentNode.insertBefore(link, myExt.nextSibling);
     }
 
