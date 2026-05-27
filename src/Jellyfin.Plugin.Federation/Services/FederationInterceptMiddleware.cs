@@ -65,12 +65,14 @@ public class FederationInterceptMiddleware
             return;
         }
 
-        // Match /Items/{fed_X}/Images/{type} OR /Users/{uid}/Items/{fed_X}/Images/{type}.
+        // Match /Items/{fed_X}/Images/{type} OR /Items/{fed_X}/Images/{type}/{index}.
+        // Backdrop URLs include an /0 suffix to pick the Nth artwork.
         var imageMatch = System.Text.RegularExpressions.Regex.Match(path,
-            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/Images/([^/]+)$");
+            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/Images/([^/]+)(?:/(\d+))?$");
         if (imageMatch.Success)
         {
-            await ProxyImage(ctx, imageMatch.Groups[1].Value, imageMatch.Groups[2].Value).ConfigureAwait(false);
+            var indexPart = imageMatch.Groups[3].Success ? "/" + imageMatch.Groups[3].Value : string.Empty;
+            await ProxyImage(ctx, imageMatch.Groups[1].Value, imageMatch.Groups[2].Value + indexPart).ConfigureAwait(false);
             return;
         }
 
@@ -128,7 +130,10 @@ public class FederationInterceptMiddleware
             var qs = ctx.Request.QueryString.Value ?? string.Empty;
             qs = System.Text.RegularExpressions.Regex.Replace(qs, @"([?&])(api_key|tag)=[^&]*", "$1");
             qs = qs.Replace("?&", "?").TrimEnd('?', '&');
-            var url = $"{peer.BaseUrl.TrimEnd('/')}/Items/{Uri.EscapeDataString(remoteId)}/Images/{Uri.EscapeDataString(imageType)}{qs}";
+            // imageType may include an index suffix (e.g. 'Backdrop/0'); escape per segment
+            // so the slash stays a path separator rather than %2F which peers reject.
+            var imageTypePath = string.Join('/', imageType.Split('/').Select(Uri.EscapeDataString));
+            var url = $"{peer.BaseUrl.TrimEnd('/')}/Items/{Uri.EscapeDataString(remoteId)}/Images/{imageTypePath}{qs}";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Add("X-Emby-Token", peer.ApiKey);
             using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ctx.RequestAborted).ConfigureAwait(false);

@@ -1043,6 +1043,33 @@ h1{{font-weight:400;font-size:1.2rem}}
     }
 
     [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpPost("Channel/PurgeOrphans")]
+    public IActionResult PurgeOrphanChannelItems([FromServices] MediaBrowser.Controller.Library.ILibraryManager library)
+    {
+        // Find items whose ExternalId starts with our fed_ prefix and whose owning channel
+        // is gone (FriendsLibraryChannel was removed). Delete them so 404 references in the
+        // SPA stop coming back.
+        var q = new MediaBrowser.Controller.Entities.InternalItemsQuery
+        {
+            Recursive = true
+        };
+        var orphans = library.GetItemList(q)
+            .Where(i => !string.IsNullOrEmpty(i.ExternalId) && i.ExternalId.StartsWith("fed_", StringComparison.Ordinal))
+            .ToList();
+        var deleted = 0;
+        foreach (var item in orphans)
+        {
+            try
+            {
+                library.DeleteItem(item, new MediaBrowser.Controller.Library.DeleteOptions { DeleteFileLocation = false, DeleteFromExternalProvider = false }, false);
+                deleted++;
+            }
+            catch (Exception ex) { _logger.LogDebug(ex, "Could not delete orphan {Id}", item.Id); }
+        }
+        return Ok(new { found = orphans.Count, deleted });
+    }
+
+    [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Sync/Progress")]
     public IActionResult GetSyncProgress([FromServices] Services.SyncProgressTracker tracker)
     {
