@@ -117,28 +117,27 @@
         // Forward original request to the server, then concat the peer items into the
         // response so the user sees them alongside their local items.
         if (q.ParentId && /^[0-9a-fA-F]{32}$/.test(q.ParentId)) {
-            const merges = (mergeConfigCache || []).filter((s) =>
-                s.Enabled !== false &&
-                s.MergeWithLocalLibraryId &&
-                s.MergeWithLocalLibraryId.replace(/-/g, '') === q.ParentId);
-            if (merges.length > 0) {
-                return _origFetch.apply(window, originalArgs).then(async (resp) => {
-                    if (!resp.ok) return resp;
-                    const data = await resp.clone().json().catch(() => null);
-                    if (!data || !Array.isArray(data.Items)) return resp;
-                    const limit = Math.min(parseInt(q.Limit, 10) || 100, 200);
-                    for (const m of merges) {
-                        try {
-                            const peerData = await jApi(`/Federation/Peers/${m.PeerId}/Libraries/${encodeURIComponent(m.LibraryId)}/Items?limit=${limit}`);
-                            const peerN = m.PeerId.replace(/-/g, '');
-                            const items = ((peerData && peerData.items) || []).map((it) => mapPeerItem(it, peerN));
-                            data.Items = data.Items.concat(items);
-                            data.TotalRecordCount = (data.TotalRecordCount || 0) + items.length;
-                        } catch (_) { /* peer offline mid-render; skip */ }
-                    }
-                    return jsonResponse(data);
-                });
-            }
+            return ensureMergeConfig().then(async (settings) => {
+                const merges = (settings || []).filter((s) =>
+                    s.Enabled !== false &&
+                    s.MergeWithLocalLibraryId &&
+                    s.MergeWithLocalLibraryId.replace(/-/g, '') === q.ParentId);
+                const origResp = await _origFetch.apply(window, originalArgs);
+                if (merges.length === 0 || !origResp.ok) return origResp;
+                const data = await origResp.clone().json().catch(() => null);
+                if (!data || !Array.isArray(data.Items)) return origResp;
+                const limit = Math.min(parseInt(q.Limit, 10) || 100, 200);
+                for (const m of merges) {
+                    try {
+                        const peerData = await jApi(`/Federation/Peers/${m.PeerId}/Libraries/${encodeURIComponent(m.LibraryId)}/Items?limit=${limit}`);
+                        const peerN = m.PeerId.replace(/-/g, '');
+                        const items = ((peerData && peerData.items) || []).map((it) => mapPeerItem(it, peerN));
+                        data.Items = data.Items.concat(items);
+                        data.TotalRecordCount = (data.TotalRecordCount || 0) + items.length;
+                    } catch (_) { /* peer offline mid-render; skip */ }
+                }
+                return jsonResponse(data);
+            });
         }
         // /Users/{uid}/Items/fedlib_X  ->  return a fake CollectionFolder so movies.html
         // doesn't 400 when it fetches the library metadata.
@@ -167,14 +166,27 @@
     }
 
     const _origFetch = window.fetch;
-    // Merge config cached in-process; refreshed below at intervals so changes saved in the
-    // dashboard panel propagate to all open tabs within 30 s. Pre-loaded so the merge check
-    // in the fetch hook has data on first hit.
+    // Merge config cached in-process; refreshed at intervals so saves in the dashboard
+    // panel propagate to all open tabs within 30 s. ensureMergeConfig() awaits the first
+    // load so the intercepted request on the very first movies.html mount sees the
+    // merge mappings (otherwise the cache is still null and merge silently no-ops).
     let mergeConfigCache = null;
+    let mergeConfigInflight = null;
     function refreshMergeConfig() {
-        jApi('/Federation/PeerLibraryConfig').then((cfg) => {
+        mergeConfigInflight = jApi('/Federation/PeerLibraryConfig').then((cfg) => {
             mergeConfigCache = (cfg && cfg.settings) || [];
-        }).catch(() => { if (mergeConfigCache === null) mergeConfigCache = []; });
+            mergeConfigInflight = null;
+            return mergeConfigCache;
+        }).catch(() => {
+            mergeConfigCache = mergeConfigCache || [];
+            mergeConfigInflight = null;
+            return mergeConfigCache;
+        });
+        return mergeConfigInflight;
+    }
+    function ensureMergeConfig() {
+        if (mergeConfigCache !== null) return Promise.resolve(mergeConfigCache);
+        return mergeConfigInflight || refreshMergeConfig();
     }
     refreshMergeConfig();
     setInterval(refreshMergeConfig, 30000);

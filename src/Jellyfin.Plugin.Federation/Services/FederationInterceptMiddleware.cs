@@ -33,7 +33,29 @@ public class FederationInterceptMiddleware
     public async Task InvokeAsync(HttpContext ctx)
     {
         var path = ctx.Request.Path.Value;
-        if (path is null || ctx.Request.Method != HttpMethods.Get)
+        if (path is null)
+        {
+            await _next(ctx).ConfigureAwait(false);
+            return;
+        }
+
+        // PlaybackInfo is a POST; route it through our peer proxy + path rewrite before any
+        // other matcher so playback works end to end. Without this Jellyfin's stock route
+        // returns 400 on the federated id.
+        if (ctx.Request.Method == HttpMethods.Post)
+        {
+            var pbMatch = System.Text.RegularExpressions.Regex.Match(path,
+                @"^/Items/(fed_[0-9a-fA-F]+_[^/]+)/PlaybackInfo$");
+            if (pbMatch.Success)
+            {
+                await ProxyPlaybackInfo(ctx, pbMatch.Groups[1].Value).ConfigureAwait(false);
+                return;
+            }
+            await _next(ctx).ConfigureAwait(false);
+            return;
+        }
+
+        if (ctx.Request.Method != HttpMethods.Get)
         {
             await _next(ctx).ConfigureAwait(false);
             return;
@@ -66,9 +88,10 @@ public class FederationInterceptMiddleware
             return;
         }
 
-        // Similar / Themes / etc. - return empty list so the SPA's secondary fetches stop 400ing.
+        // Similar / Themes / Intros / etc. - return empty list so the SPA's secondary
+        // fetches stop 400ing.
         var subPath = System.Text.RegularExpressions.Regex.Match(path,
-            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(Similar|ThemeMedia|ThemeSongs|ThemeVideos|InstantMix|SpecialFeatures|Trailers|RemoteImages|RemoteSearch)$");
+            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(Similar|ThemeMedia|ThemeSongs|ThemeVideos|InstantMix|SpecialFeatures|Trailers|Intros|RemoteImages|RemoteSearch|AdditionalParts)$");
         if (subPath.Success)
         {
             await WriteEmptyList(ctx).ConfigureAwait(false);
@@ -200,6 +223,82 @@ public class FederationInterceptMiddleware
                 foreach (var p in el.EnumerateObject()) map[p.Name] = JsonElementToObject(p.Value);
                 return map;
             default: return null;
+        }
+    }
+
+    private async Task ProxyPlaybackInfo(HttpContext ctx, string fedId)
+    {
+        // The SPA POSTs profile-based capabilities; we forward them unchanged to the peer
+        // which decides direct-play / transcode and returns MediaSources. We then rewrite
+        // each MediaSource.Path + Id so the player hits OUR /Federation/Stream proxy
+        // instead of trying to reach the peer directly (the player only has session creds
+        // for THIS server).
+        var rest = fedId.Substring("fed_".Length);
+        var sep = rest.IndexOf('_');
+        if (sep <= 0) { ctx.Response.StatusCode = 400; return; }
+        var peerN = rest.Substring(0, sep);
+        var remoteId = rest.Substring(sep + 1);
+        if (!Guid.TryParseExact(peerN, "N", out var peerId)) { ctx.Response.StatusCode = 400; return; }
+
+        var config = Plugin.Instance?.Configuration;
+        var peer = config?.RemoteServers.FirstOrDefault(p => p.Id == peerId);
+        if (peer is null || !peer.Enabled) { ctx.Response.StatusCode = 404; return; }
+
+        try
+        {
+            // Buffer the incoming request body (capabilities + device profile).
+            string body;
+            using (var reader = new System.IO.StreamReader(ctx.Request.Body))
+                body = await reader.ReadToEndAsync().ConfigureAwait(false);
+
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(15);
+            RemoteJellyfinClient.AddBasicAuth(http, peer);
+            var qs = ctx.Request.QueryString.Value ?? string.Empty;
+            // Strip our api_key sentinel; the peer wouldn't honour it.
+            qs = System.Text.RegularExpressions.Regex.Replace(qs, @"([?&])api_key=[^&]*", "$1");
+            qs = qs.Replace("?&", "?").TrimEnd('?', '&');
+            var url = $"{peer.BaseUrl.TrimEnd('/')}/Items/{Uri.EscapeDataString(remoteId)}/PlaybackInfo{qs}";
+            using var req = new HttpRequestMessage(HttpMethod.Post, url);
+            req.Headers.Add("X-Emby-Token", peer.ApiKey);
+            if (!string.IsNullOrEmpty(body))
+                req.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+            using var resp = await http.SendAsync(req, ctx.RequestAborted).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) { ctx.Response.StatusCode = (int)resp.StatusCode; return; }
+
+            using var stream = await resp.Content.ReadAsStreamAsync(ctx.RequestAborted).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+            var dict = new System.Collections.Generic.Dictionary<string, object?>();
+            foreach (var p in doc.RootElement.EnumerateObject()) dict[p.Name] = JsonElementToObject(p.Value);
+
+            // Rewrite MediaSources: each source's Id gets a fed_ prefix so subsequent
+            // /Videos/{sourceId}/stream requests route through us. Path points at our
+            // /Federation/Stream proxy which fetches the raw bytes from the peer with
+            // ?static=true (peer never transcodes; we do the transcoding locally).
+            if (dict.TryGetValue("MediaSources", out var msObj) && msObj is System.Collections.Generic.List<object?> sources)
+            {
+                foreach (var s in sources)
+                {
+                    if (s is not System.Collections.Generic.Dictionary<string, object?> ms) continue;
+                    var originalId = ms.TryGetValue("Id", out var idVal) ? idVal?.ToString() : remoteId;
+                    var newSourceId = "fed_" + peerN + "_" + originalId;
+                    ms["Id"] = newSourceId;
+                    ms["IsRemote"] = true;
+                    ms["Path"] = $"/Federation/Stream/{peerN}/{remoteId}?sourceId={Uri.EscapeDataString(originalId ?? string.Empty)}";
+                    ms["SupportsTranscoding"] = true;
+                    ms["SupportsDirectStream"] = true;
+                    ms["SupportsDirectPlay"] = false; // force the player to route bytes through us
+                }
+            }
+
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync(JsonSerializer.Serialize(dict)).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PlaybackInfo proxy failed for {Item}", fedId);
+            ctx.Response.StatusCode = 502;
         }
     }
 
