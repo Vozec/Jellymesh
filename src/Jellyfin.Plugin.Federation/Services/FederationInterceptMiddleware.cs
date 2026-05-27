@@ -212,6 +212,28 @@ public class FederationInterceptMiddleware
                     }
                 }
             }
+            // MediaSources[].Id are peer-side ids; playbackmanager.js does
+            // apiClient.getItem(userId, mediaSourceId || item.Id) at L2654 which 404s when
+            // the bare peer id is queried locally. Rewrite + point Path at our /Federation/Stream
+            // proxy so direct-play works without ever asking the local server to resolve the
+            // peer id.
+            if (dict.TryGetValue("MediaSources", out var msObj) && msObj is System.Collections.Generic.List<object?> sources)
+            {
+                foreach (var s in sources)
+                {
+                    if (s is not System.Collections.Generic.Dictionary<string, object?> ms) continue;
+                    var origId = ms.TryGetValue("Id", out var idVal) ? idVal?.ToString() : remoteId;
+                    var newId = "fed_" + peerN + "_" + origId;
+                    ms["Id"] = newId;
+                    ms["IsRemote"] = true;
+                    ms["Protocol"] = "Http";
+                    ms["Path"] = $"/Federation/Stream/{peerN}/{remoteId}?sourceId={Uri.EscapeDataString(origId ?? string.Empty)}";
+                    ms["DirectStreamUrl"] = ms["Path"];
+                    ms["SupportsDirectPlay"] = true;
+                    ms["SupportsDirectStream"] = true;
+                    ms["SupportsTranscoding"] = true;
+                }
+            }
             // SPA helpers like ThemeMediaPlayer + RatingHelper assume these fields exist on
             // every BaseItemDto; surface defaults so they don't blow up when the peer omitted
             // them (live TV / certain content types).

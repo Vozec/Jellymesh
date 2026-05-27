@@ -266,9 +266,9 @@
             const newUrl = rewriteImageUrl(m[1]);
             if (newUrl && newUrl !== m[1]) el.style.backgroundImage = `url('${newUrl}')`;
         });
-        // Native cards bound to a federated id: stamp a 'REMOTE' ribbon on top so the user
+        // Native cards bound to a federated id: stamp a 'Remote' chip on top so the user
         // sees at a glance that it's not actually on their disk. We attach to .cardImageContainer
-        // (Jellyfin's own poster container) so the band overlays the image area only.
+        // (Jellyfin's own poster container) so the chip overlays the image area only.
         root.querySelectorAll('[data-id^="fed_"]').forEach((card) => {
             if (card.dataset.jmRibbon === 'yes') return;
             const host = card.querySelector('.cardImageContainer, .cardImage, .cardScalable');
@@ -276,11 +276,26 @@
             const ribbon = document.createElement('div');
             ribbon.className = 'jm-remote-ribbon';
             ribbon.textContent = 'Remote';
-            // Make sure the container can host an absolute child.
             if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
             host.appendChild(ribbon);
             card.dataset.jmRibbon = 'yes';
         });
+        // Details page hero poster + backdrop also gets a Remote chip when the route is on
+        // a federated item. Jellyfin renders the poster inside .detailImageContainer + the
+        // backdrop is a sibling .itemBackdrop; we attach to whichever exists.
+        if (location.hash.startsWith('#/details') && /[?&]id=fed_/.test(location.hash)) {
+            ['.detailImageContainer', '.itemBackdrop', '.detailLogoContainer', '.cardImageContainer'].forEach((sel) => {
+                root.querySelectorAll(sel).forEach((host) => {
+                    if (host.dataset.jmDetailsRibbon === 'yes') return;
+                    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+                    const chip = document.createElement('div');
+                    chip.className = 'jm-remote-ribbon';
+                    chip.textContent = 'Remote';
+                    host.appendChild(chip);
+                    host.dataset.jmDetailsRibbon = 'yes';
+                });
+            });
+        }
     }
     function startImageRewriter() {
         rewriteFedImages(document);
