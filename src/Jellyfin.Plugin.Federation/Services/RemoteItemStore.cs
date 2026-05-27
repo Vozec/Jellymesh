@@ -198,7 +198,7 @@ public class RemoteItemStore
                     var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(r.GetString(5));
                     if (dict is not null) item.ProviderIds = dict;
                 }
-                catch { /* ignore */ }
+                catch (Exception ex) { _logger.LogDebug(ex, "ProviderIds JSON decode failed; treating as empty"); }
             }
             yield return item;
         }
@@ -237,7 +237,7 @@ public class RemoteItemStore
                 var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(r.GetString(5));
                 if (dict is not null) item.ProviderIds = dict;
             }
-            catch { /* ignore */ }
+            catch (Exception ex) { _logger.LogDebug(ex, "ProviderIds JSON decode failed; treating as empty"); }
         }
         return item;
     }
