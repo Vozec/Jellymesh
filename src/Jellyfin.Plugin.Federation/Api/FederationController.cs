@@ -2108,7 +2108,9 @@ h1{{font-weight:400;font-size:1.2rem}}
         }
     }
 
-    [Authorize(Policy = Policies.RequiresElevation)]
+    // GET is reachable by any logged-in user so non-admin browsers can apply the merge
+    // mapping when rendering the home / movies.html pages. Mutation (POST) still requires
+    // elevation.
     [HttpGet("PeerLibraryConfig")]
     public IActionResult GetPeerLibraryConfig()
     {

@@ -272,6 +272,21 @@
             const newUrl = rewriteImageUrl(m[1]);
             if (newUrl && newUrl !== m[1]) el.style.backgroundImage = `url('${newUrl}')`;
         });
+        // Native cards bound to a federated id: stamp a 'REMOTE' ribbon on top so the user
+        // sees at a glance that it's not actually on their disk. We attach to .cardImageContainer
+        // (Jellyfin's own poster container) so the band overlays the image area only.
+        root.querySelectorAll('[data-id^="fed_"]').forEach((card) => {
+            if (card.dataset.jmRibbon === 'yes') return;
+            const host = card.querySelector('.cardImageContainer, .cardImage, .cardScalable');
+            if (!host) return;
+            const ribbon = document.createElement('div');
+            ribbon.className = 'jm-remote-ribbon';
+            ribbon.textContent = 'REMOTE';
+            // Make sure the container can host an absolute child.
+            if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+            host.appendChild(ribbon);
+            card.dataset.jmRibbon = 'yes';
+        });
     }
     function startImageRewriter() {
         rewriteFedImages(document);
@@ -317,6 +332,8 @@
 
             /* Peer-source chip overlaid on otherwise-native Jellyfin cards. */
             .jm-card-badge { position: absolute; top: 0.35em; right: 0.35em; background: rgba(59,111,164,0.92); color: #fff; padding: 0.1em 0.5em; border-radius: 0.7em; font-size: 0.7em; font-weight: 600; z-index: 1; pointer-events: none; }
+            /* Native Jellyfin cards (movies.html merged view) get this band added by JS. */
+            .jm-remote-ribbon { position: absolute; top: 0; left: 0; right: 0; background: linear-gradient(180deg, rgba(59,111,164,0.95), rgba(59,111,164,0.7)); color: #fff; padding: 0.25em 0.5em; font-size: 0.72em; font-weight: 600; text-align: center; z-index: 2; pointer-events: none; letter-spacing: 0.04em; }
 
             /* Dashboard libraries panel */
             #jm-dashlibs { margin: 1.5em 0; padding: 1.3em 1.4em; background: linear-gradient(180deg, #1a1a1a 0%, #161616 100%); border: 1px solid #2e2e2e; border-radius: 0.6em; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset; }

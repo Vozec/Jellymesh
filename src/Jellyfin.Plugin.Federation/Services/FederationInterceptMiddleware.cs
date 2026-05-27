@@ -91,7 +91,7 @@ public class FederationInterceptMiddleware
         // Similar / Themes / Intros / etc. - return empty list so the SPA's secondary
         // fetches stop 400ing.
         var subPath = System.Text.RegularExpressions.Regex.Match(path,
-            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(Similar|ThemeMedia|ThemeSongs|ThemeVideos|InstantMix|SpecialFeatures|Trailers|Intros|RemoteImages|RemoteSearch|AdditionalParts)$");
+            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(Similar|ThemeMedia|ThemeSongs|ThemeVideos|InstantMix|SpecialFeatures|Trailers|Intros|RemoteImages|RemoteSearch|AdditionalParts|Ancestors|ParentalRating)$");
         if (subPath.Success)
         {
             await WriteEmptyList(ctx).ConfigureAwait(false);
@@ -284,10 +284,19 @@ public class FederationInterceptMiddleware
                     var newSourceId = "fed_" + peerN + "_" + originalId;
                     ms["Id"] = newSourceId;
                     ms["IsRemote"] = true;
+                    // Play the file directly from our /Federation/Stream proxy. Setting
+                    // DirectPlay=true tells the browser to use the URL as-is (works whenever
+                    // the container + codec is browser-native). When the codec is not
+                    // playable, the browser falls back to asking us for a transcoded stream;
+                    // we keep DirectStream/Transcoding on so that path is available too.
+                    ms["Protocol"] = "Http";
                     ms["Path"] = $"/Federation/Stream/{peerN}/{remoteId}?sourceId={Uri.EscapeDataString(originalId ?? string.Empty)}";
-                    ms["SupportsTranscoding"] = true;
+                    ms["SupportsDirectPlay"] = true;
                     ms["SupportsDirectStream"] = true;
-                    ms["SupportsDirectPlay"] = false; // force the player to route bytes through us
+                    ms["SupportsTranscoding"] = true;
+                    // Expose a DirectStreamUrl so the player can pick it up without going
+                    // through /Videos/{sourceId}/stream resolution.
+                    ms["DirectStreamUrl"] = ms["Path"];
                 }
             }
 
