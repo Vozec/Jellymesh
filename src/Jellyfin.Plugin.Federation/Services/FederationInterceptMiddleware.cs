@@ -94,10 +94,20 @@ public class FederationInterceptMiddleware
             return;
         }
 
-        // Similar / Themes / Intros / etc. - return empty list so the SPA's secondary
+        // ThemeMedia / ThemeSongs / ThemeVideos need the wrapped shape with OwnerId, or the
+        // SPA throws 'TypeError: cannot read OwnerId of undefined' (themeMediaPlayer.js:111).
+        var themeMatch = System.Text.RegularExpressions.Regex.Match(path,
+            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(ThemeMedia|ThemeSongs|ThemeVideos)$");
+        if (themeMatch.Success)
+        {
+            await WriteThemeMediaShape(ctx, themeMatch.Groups[1].Value, themeMatch.Groups[2].Value).ConfigureAwait(false);
+            return;
+        }
+
+        // Similar / Intros / etc. - return empty list so the SPA's secondary
         // fetches stop 400ing.
         var subPath = System.Text.RegularExpressions.Regex.Match(path,
-            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(Similar|ThemeMedia|ThemeSongs|ThemeVideos|InstantMix|SpecialFeatures|Trailers|Intros|RemoteImages|RemoteSearch|AdditionalParts|Ancestors|ParentalRating)$");
+            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(Similar|InstantMix|SpecialFeatures|Trailers|Intros|RemoteImages|RemoteSearch|AdditionalParts|Ancestors|ParentalRating)$");
         if (subPath.Success)
         {
             await WriteEmptyList(ctx).ConfigureAwait(false);
@@ -188,6 +198,20 @@ public class FederationInterceptMiddleware
             dict["Id"] = fedId;
             dict["ServerId"] = LocalServerId;
             dict["ImageTags"] = new System.Collections.Generic.Dictionary<string, string> { ["Primary"] = "fed" };
+            // People[].Id are person item ids on the peer; the SPA renders cast images via
+            // /Items/{personId}/Images/Primary. Without the fed_ prefix the local server
+            // 404s on each one. Rewrite so the request flows back through our image proxy.
+            if (dict.TryGetValue("People", out var peopleObj) && peopleObj is System.Collections.Generic.List<object?> people)
+            {
+                foreach (var entry in people)
+                {
+                    if (entry is not System.Collections.Generic.Dictionary<string, object?> person) continue;
+                    if (person.TryGetValue("Id", out var pid) && pid is string pidStr && !string.IsNullOrEmpty(pidStr))
+                    {
+                        person["Id"] = "fed_" + peerN + "_" + pidStr;
+                    }
+                }
+            }
             // SPA helpers like ThemeMediaPlayer + RatingHelper assume these fields exist on
             // every BaseItemDto; surface defaults so they don't blow up when the peer omitted
             // them (live TV / certain content types).
@@ -360,6 +384,33 @@ public class FederationInterceptMiddleware
         ctx.Response.StatusCode = 200;
         ctx.Response.ContentType = "application/json";
         await ctx.Response.WriteAsync("{\"Items\":[],\"TotalRecordCount\":0,\"StartIndex\":0}").ConfigureAwait(false);
+    }
+
+    private static async Task WriteThemeMediaShape(HttpContext ctx, string fedId, string variant)
+    {
+        // themeMediaPlayer.js dereferences result.OwnerId on whichever branch is picked
+        // (ThemeVideosResult or ThemeSongsResult). The full AllThemeMediaResult shape always
+        // wins even when both are empty + the standalone /ThemeSongs and /ThemeVideos
+        // endpoints expect a single ThemeMediaResult.
+        ctx.Response.StatusCode = 200;
+        ctx.Response.ContentType = "application/json";
+        var inner = new System.Collections.Generic.Dictionary<string, object?>
+        {
+            ["Items"] = new System.Collections.Generic.List<object?>(),
+            ["TotalRecordCount"] = 0,
+            ["OwnerId"] = fedId
+        };
+        object payload = variant switch
+        {
+            "ThemeMedia" => new System.Collections.Generic.Dictionary<string, object?>
+            {
+                ["ThemeVideosResult"] = inner,
+                ["ThemeSongsResult"] = inner,
+                ["SoundtrackSongsResult"] = inner
+            },
+            _ => inner
+        };
+        await ctx.Response.WriteAsync(JsonSerializer.Serialize(payload)).ConfigureAwait(false);
     }
 }
 
