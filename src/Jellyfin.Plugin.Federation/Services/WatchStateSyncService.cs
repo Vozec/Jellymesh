@@ -9,6 +9,15 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Federation.Services;
 
+/// <summary>
+/// Watch-state writeback for LOCAL playback that resolves to a peer item via TMDB/IMDB.
+///
+/// Federated playback (playing a fed_X id directly) is handled separately by
+/// FederationInterceptMiddleware.TryForwardPlaybackSession + WritePeerUserData, which
+/// forwards /Sessions/Playing/* events to the source peer and explicitly writes
+/// PlaybackPositionTicks via /Users/{uid}/Items/{remoteId}/UserData. The two paths
+/// together cover both directions: a user can resume on either node.
+/// </summary>
 public class WatchStateSyncService : IHostedService, IDisposable
 {
     private readonly IUserDataManager _userDataManager;
