@@ -25,71 +25,6 @@
     // round-trips through us. ImageTags is set to a non-empty sentinel so Jellyfin emits the
     // /Images/Primary URL we can intercept.
     const FED_LIB_PREFIX = 'fedlib_';
-    const FED_ITEM_PREFIX = 'fed_';
-
-    function parseFedLib(id) {
-        if (!id || !id.startsWith(FED_LIB_PREFIX)) return null;
-        const rest = id.substring(FED_LIB_PREFIX.length);
-        const sep = rest.indexOf('_');
-        if (sep <= 0) return null;
-        return { peerId: hyphenateGuid(rest.substring(0, sep)), libId: rest.substring(sep + 1) };
-    }
-    function parseFedItem(id) {
-        if (!id || !id.startsWith(FED_ITEM_PREFIX)) return null;
-        const rest = id.substring(FED_ITEM_PREFIX.length);
-        const sep = rest.indexOf('_');
-        if (sep <= 0) return null;
-        return { peerId: hyphenateGuid(rest.substring(0, sep)), itemId: rest.substring(sep + 1) };
-    }
-    function hyphenateGuid(s) {
-        if (!s) return s;
-        return s.length === 32 ? s.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5') : s;
-    }
-
-    function fakeFolderItem(peerId, lib) {
-        return {
-            Id: FED_LIB_PREFIX + peerId.replace(/-/g, '') + '_' + lib.id,
-            Name: lib.name || 'Library',
-            ServerId: (window.ApiClient && ApiClient.serverId && ApiClient.serverId()) || '',
-            Type: 'CollectionFolder',
-            CollectionType: lib.type || 'movies',
-            IsFolder: true,
-            ImageTags: {},
-            BackdropImageTags: []
-        };
-    }
-    function mapPeerItem(it, peerN) {
-        const fedId = FED_ITEM_PREFIX + peerN + '_' + it.id;
-        return {
-            Id: fedId,
-            Name: it.name,
-            Type: it.type || 'Movie',
-            MediaType: 'Video',
-            ProductionYear: it.year,
-            ServerId: (window.ApiClient && ApiClient.serverId && ApiClient.serverId()) || '',
-            ImageTags: { Primary: 'fed' },
-            BackdropImageTags: [],
-            UserData: { Played: false, IsFavorite: false, PlaybackPositionTicks: 0, PlayCount: 0 },
-            IsFolder: false
-        };
-    }
-
-    function getQuery(url) {
-        const q = url.indexOf('?');
-        if (q < 0) return {};
-        const out = {};
-        url.substring(q + 1).split('&').forEach(function (p) {
-            if (!p) return;
-            const i = p.indexOf('=');
-            if (i < 0) out[decodeURIComponent(p)] = '';
-            else out[decodeURIComponent(p.substring(0, i))] = decodeURIComponent(p.substring(i + 1));
-        });
-        return out;
-    }
-
-    function jsonResponse(obj) {
-        return new Response(JSON.stringify(obj), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    }
 
     // FederationInterceptMiddleware on the server side handles every wire-level redirect now:
     //   - /Items/fed_X            -> proxied BaseItemDto with rewritten Id/People/MediaSources
@@ -137,16 +72,17 @@
     }
     function startImageRewriter() {
         rewriteFedImages(document);
+        // Cards get inserted as subtrees when the user paginates or navigates routes;
+        // childList covers every visible new card. The image bytes no longer need rewriting
+        // (server middleware proxies /Items/fed_X/Images/*), so we drop attribute observation.
         const obs = new MutationObserver((muts) => {
             for (const m of muts) {
                 m.addedNodes.forEach((n) => {
-                    if (n.nodeType !== 1) return;
-                    rewriteFedImages(n);
+                    if (n.nodeType === 1) rewriteFedImages(n);
                 });
-                if (m.type === 'attributes' && m.target instanceof Element) rewriteFedImages(m.target);
             }
         });
-        obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style'] });
+        obs.observe(document.body, { childList: true, subtree: true });
     }
     if (document.body) startImageRewriter();
     else document.addEventListener('DOMContentLoaded', startImageRewriter);

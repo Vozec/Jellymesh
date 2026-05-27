@@ -88,6 +88,20 @@ public class FederationInterceptMiddleware
             }
         }
 
+        // /Users/{uid}/Items/Latest?ParentId=<localLib>: Home page 'Recently Added' carousel
+        // calls this for each library. Returns a flat array (not wrapped). Append peer items
+        // when the local lib has merge mappings so the carousel shows federated 'recents' too.
+        var pathIsLatest = System.Text.RegularExpressions.Regex.IsMatch(path, @"^/Users/[^/]+/Items/Latest$");
+        if (pathIsLatest)
+        {
+            var parentId = ctx.Request.Query["ParentId"].ToString();
+            if (IsLocalGuid(parentId) && HasMergeFor(parentId))
+            {
+                await AppendPeerLatest(ctx, parentId).ConfigureAwait(false);
+                return;
+            }
+        }
+
         // Match /Items/{fed_X}/Images/{type} OR /Items/{fed_X}/Images/{type}/{index}.
         // Backdrop URLs include an /0 suffix to pick the Nth artwork.
         var imageMatch = System.Text.RegularExpressions.Regex.Match(path,
@@ -500,6 +514,10 @@ public class FederationInterceptMiddleware
     private async Task AppendPeerItems(HttpContext ctx, string localLibId)
     {
         // Forward to Jellyfin, capture the JSON, then concat peer items per merge config.
+        // Jellyfin's response-compression middleware would otherwise gzip the buffered body and
+        // make JsonDocument.ParseAsync choke on '0x0B' — strip Accept-Encoding before _next so
+        // the inner pipeline returns plain JSON we can re-serialise.
+        ctx.Request.Headers.Remove("Accept-Encoding");
         var bodyStream = ctx.Response.Body;
         using var buffer = new MemoryStream();
         ctx.Response.Body = buffer;
@@ -565,6 +583,80 @@ public class FederationInterceptMiddleware
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "AppendPeerItems failed for {Lib}", localLibId);
+            buffer.Position = 0;
+            await buffer.CopyToAsync(ctx.Response.Body, ctx.RequestAborted).ConfigureAwait(false);
+        }
+    }
+
+    private async Task AppendPeerLatest(HttpContext ctx, string localLibId)
+    {
+        // Home carousel: /Users/{uid}/Items/Latest?ParentId=<lib>. Response is a JSON array
+        // (not a wrapping object). Append a few peer items so the user sees federated 'recents'
+        // alongside local ones. Limit defaults to 16; we trim our injection to the same.
+        ctx.Request.Headers.Remove("Accept-Encoding");
+        var bodyStream = ctx.Response.Body;
+        using var buffer = new MemoryStream();
+        ctx.Response.Body = buffer;
+        try { await _next(ctx).ConfigureAwait(false); }
+        finally { ctx.Response.Body = bodyStream; }
+
+        buffer.Position = 0;
+        if (ctx.Response.StatusCode < 200 || ctx.Response.StatusCode >= 300)
+        {
+            await buffer.CopyToAsync(ctx.Response.Body, ctx.RequestAborted).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            using var doc = await JsonDocument.ParseAsync(buffer, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+            var items = new System.Collections.Generic.List<object?>();
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var el in doc.RootElement.EnumerateArray()) items.Add(JsonElementToObject(el));
+            }
+
+            var settings = Plugin.Instance?.Configuration?.PeerLibrarySettings ?? new System.Collections.Generic.List<Configuration.PeerLibrarySetting>();
+            var targetNoHyphen = localLibId.Replace("-", string.Empty).ToLowerInvariant();
+            var merges = settings.Where(s => s.Enabled
+                && !string.IsNullOrEmpty(s.MergeWithLocalLibraryId)
+                && s.MergeWithLocalLibraryId.Replace("-", string.Empty).ToLowerInvariant() == targetNoHyphen).ToList();
+
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(15);
+            var localPort = ctx.Connection.LocalPort > 0 ? ctx.Connection.LocalPort : 8096;
+            var jellyfinHost = $"http://localhost:{localPort}";
+            var limit = int.TryParse(ctx.Request.Query["Limit"].ToString(), out var l) ? l : 16;
+            limit = Math.Clamp(limit, 1, 50);
+
+            foreach (var m in merges)
+            {
+                try
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Get,
+                        $"{jellyfinHost}/Federation/Peers/{m.PeerId}/Libraries/{Uri.EscapeDataString(m.LibraryId)}/Items?limit={limit}");
+                    ForwardAuth(ctx, req);
+                    using var r = await http.SendAsync(req, ctx.RequestAborted).ConfigureAwait(false);
+                    if (!r.IsSuccessStatusCode) continue;
+                    using var s = await r.Content.ReadAsStreamAsync(ctx.RequestAborted).ConfigureAwait(false);
+                    using var d = await JsonDocument.ParseAsync(s, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+                    var peerN = m.PeerId.ToString("N");
+                    if (d.RootElement.TryGetProperty("items", out var arr))
+                    {
+                        foreach (var el in arr.EnumerateArray()) items.Add(MapPeerItemDto(el, peerN));
+                    }
+                }
+                catch { /* peer unreachable; skip */ }
+            }
+
+            ctx.Response.ContentType = "application/json";
+            var bytes = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(items));
+            ctx.Response.ContentLength = bytes.Length;
+            await ctx.Response.Body.WriteAsync(bytes, ctx.RequestAborted).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AppendPeerLatest failed for {Lib}", localLibId);
             buffer.Position = 0;
             await buffer.CopyToAsync(ctx.Response.Body, ctx.RequestAborted).ConfigureAwait(false);
         }
