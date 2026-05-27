@@ -25,6 +25,31 @@ public class FederationInterceptMiddleware
     private readonly MediaBrowser.Controller.IServerApplicationHost _appHost;
     private readonly ILogger<FederationInterceptMiddleware> _logger;
 
+    // Hot-path patterns: middleware fires for every HTTP request, so recompiling these on each
+    // call was 10 fresh regex parses per request. Lifted to RegexOptions.Compiled statics.
+    private const System.Text.RegularExpressions.RegexOptions RxOpt =
+        System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.CultureInvariant;
+    private static readonly System.Text.RegularExpressions.Regex RxPlaybackInfo =
+        new(@"^/Items/(fed_[0-9a-fA-F]+_[^/]+)/PlaybackInfo$", RxOpt);
+    private static readonly System.Text.RegularExpressions.Regex RxSessionsPlaying =
+        new(@"^/Sessions/Playing(?:/(?:Progress|Stopped))?$", RxOpt);
+    private static readonly System.Text.RegularExpressions.Regex RxItemsList =
+        new(@"^(?:/Users/[^/]+)?/Items$", RxOpt);
+    private static readonly System.Text.RegularExpressions.Regex RxItemsLatest =
+        new(@"^/Users/[^/]+/Items/Latest$", RxOpt);
+    private static readonly System.Text.RegularExpressions.Regex RxImage =
+        new(@"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/Images/([^/]+)(?:/(\d+))?$", RxOpt);
+    private static readonly System.Text.RegularExpressions.Regex RxItem =
+        new(@"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)$", RxOpt);
+    private static readonly System.Text.RegularExpressions.Regex RxLib =
+        new(@"^(?:/Users/[^/]+)?/Items/(fedlib_[0-9a-fA-F]+_[^/]+)$", RxOpt);
+    private static readonly System.Text.RegularExpressions.Regex RxTheme =
+        new(@"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(ThemeMedia|ThemeSongs|ThemeVideos)$", RxOpt);
+    private static readonly System.Text.RegularExpressions.Regex RxSubPath =
+        new(@"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(Similar|InstantMix|SpecialFeatures|Trailers|Intros|RemoteImages|RemoteSearch|AdditionalParts|Ancestors|ParentalRating)$", RxOpt);
+    private static readonly System.Text.RegularExpressions.Regex RxLocalGuid =
+        new(@"^[0-9a-fA-F]{32}$", RxOpt);
+
     public FederationInterceptMiddleware(RequestDelegate next, IHttpClientFactory httpClientFactory, MediaBrowser.Controller.IServerApplicationHost appHost, ILogger<FederationInterceptMiddleware> logger)
     {
         _next = next;
@@ -49,8 +74,7 @@ public class FederationInterceptMiddleware
         // returns 400 on the federated id.
         if (ctx.Request.Method == HttpMethods.Post)
         {
-            var pbMatch = System.Text.RegularExpressions.Regex.Match(path,
-                @"^/Items/(fed_[0-9a-fA-F]+_[^/]+)/PlaybackInfo$");
+            var pbMatch = RxPlaybackInfo.Match(path);
             if (pbMatch.Success)
             {
                 await ProxyPlaybackInfo(ctx, pbMatch.Groups[1].Value).ConfigureAwait(false);
@@ -60,7 +84,7 @@ public class FederationInterceptMiddleware
             // the SPA reports playback state with itemId=fed_X. Jellyfin's stock handler drops
             // it because the item isn't in the local library, so peer never sees progress.
             // Rewrite + forward to the source peer with our outbound API key.
-            if (System.Text.RegularExpressions.Regex.IsMatch(path, @"^/Sessions/Playing(?:/(?:Progress|Stopped))?$"))
+            if (RxSessionsPlaying.IsMatch(path))
             {
                 if (await TryForwardPlaybackSession(ctx).ConfigureAwait(false)) return;
             }
@@ -78,7 +102,7 @@ public class FederationInterceptMiddleware
         // movies.html SPA controller issues this; we synthesise an Items[] envelope from
         // /Federation/Peers/{peer}/Libraries/{lib}/Items. Single-flight: any /Items request
         // (with or without /Users/{uid} prefix) qualifies.
-        var pathIsItemsList = System.Text.RegularExpressions.Regex.IsMatch(path, @"^(?:/Users/[^/]+)?/Items$");
+        var pathIsItemsList = RxItemsList.IsMatch(path);
         if (pathIsItemsList)
         {
             var parentId = ctx.Request.Query["ParentId"].ToString();
@@ -99,7 +123,7 @@ public class FederationInterceptMiddleware
         // /Users/{uid}/Items/Latest?ParentId=<localLib>: Home page 'Recently Added' carousel
         // calls this for each library. Returns a flat array (not wrapped). Append peer items
         // when the local lib has merge mappings so the carousel shows federated 'recents' too.
-        var pathIsLatest = System.Text.RegularExpressions.Regex.IsMatch(path, @"^/Users/[^/]+/Items/Latest$");
+        var pathIsLatest = RxItemsLatest.IsMatch(path);
         if (pathIsLatest)
         {
             var parentId = ctx.Request.Query["ParentId"].ToString();
@@ -112,8 +136,7 @@ public class FederationInterceptMiddleware
 
         // Match /Items/{fed_X}/Images/{type} OR /Items/{fed_X}/Images/{type}/{index}.
         // Backdrop URLs include an /0 suffix to pick the Nth artwork.
-        var imageMatch = System.Text.RegularExpressions.Regex.Match(path,
-            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/Images/([^/]+)(?:/(\d+))?$");
+        var imageMatch = RxImage.Match(path);
         if (imageMatch.Success)
         {
             var indexPart = imageMatch.Groups[3].Success ? "/" + imageMatch.Groups[3].Value : string.Empty;
@@ -122,8 +145,7 @@ public class FederationInterceptMiddleware
         }
 
         // Match /Items/{fed_X} OR /Users/{uid}/Items/{fed_X} (item details probe).
-        var itemMatch = System.Text.RegularExpressions.Regex.Match(path,
-            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)$");
+        var itemMatch = RxItem.Match(path);
         if (itemMatch.Success)
         {
             await ProxyItemDetail(ctx, itemMatch.Groups[1].Value).ConfigureAwait(false);
@@ -131,8 +153,7 @@ public class FederationInterceptMiddleware
         }
 
         // Match /Items/{fedlib_X} OR /Users/{uid}/Items/{fedlib_X} (collection folder probe).
-        var libMatch = System.Text.RegularExpressions.Regex.Match(path,
-            @"^(?:/Users/[^/]+)?/Items/(fedlib_[0-9a-fA-F]+_[^/]+)$");
+        var libMatch = RxLib.Match(path);
         if (libMatch.Success)
         {
             await WriteStubFolder(ctx, libMatch.Groups[1].Value).ConfigureAwait(false);
@@ -141,8 +162,7 @@ public class FederationInterceptMiddleware
 
         // ThemeMedia / ThemeSongs / ThemeVideos need the wrapped shape with OwnerId, or the
         // SPA throws 'TypeError: cannot read OwnerId of undefined' (themeMediaPlayer.js:111).
-        var themeMatch = System.Text.RegularExpressions.Regex.Match(path,
-            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(ThemeMedia|ThemeSongs|ThemeVideos)$");
+        var themeMatch = RxTheme.Match(path);
         if (themeMatch.Success)
         {
             await WriteThemeMediaShape(ctx, themeMatch.Groups[1].Value, themeMatch.Groups[2].Value).ConfigureAwait(false);
@@ -151,8 +171,7 @@ public class FederationInterceptMiddleware
 
         // Similar / Intros / etc. - return empty list so the SPA's secondary
         // fetches stop 400ing.
-        var subPath = System.Text.RegularExpressions.Regex.Match(path,
-            @"^(?:/Users/[^/]+)?/Items/(fed_[0-9a-fA-F]+_[^/]+)/(Similar|InstantMix|SpecialFeatures|Trailers|Intros|RemoteImages|RemoteSearch|AdditionalParts|Ancestors|ParentalRating)$");
+        var subPath = RxSubPath.Match(path);
         if (subPath.Success)
         {
             await WriteEmptyList(ctx).ConfigureAwait(false);
@@ -411,7 +430,7 @@ public class FederationInterceptMiddleware
         }
     }
 
-    private static async Task WriteStubItem(HttpContext ctx, string fedId)
+    private async Task WriteStubItem(HttpContext ctx, string fedId)
     {
         ctx.Response.StatusCode = 200;
         ctx.Response.ContentType = "application/json";
@@ -421,7 +440,7 @@ public class FederationInterceptMiddleware
             Name = "(federated)",
             Type = "Movie",
             MediaType = "Video",
-            ServerId = string.Empty, // overridden where instance available
+            ServerId = LocalServerId,
             ImageTags = new { Primary = "fed" },
             IsFolder = false,
             UserData = new { Played = false, IsFavorite = false, PlaybackPositionTicks = 0L, PlayCount = 0 }
@@ -429,7 +448,7 @@ public class FederationInterceptMiddleware
         await ctx.Response.WriteAsync(JsonSerializer.Serialize(payload)).ConfigureAwait(false);
     }
 
-    private static async Task WriteStubFolder(HttpContext ctx, string fedLibId)
+    private async Task WriteStubFolder(HttpContext ctx, string fedLibId)
     {
         ctx.Response.StatusCode = 200;
         ctx.Response.ContentType = "application/json";
@@ -439,14 +458,14 @@ public class FederationInterceptMiddleware
             Name = "Library",
             Type = "CollectionFolder",
             CollectionType = "movies",
-            ServerId = string.Empty, // overridden where instance available
+            ServerId = LocalServerId,
             ImageTags = new { },
             IsFolder = true
         };
         await ctx.Response.WriteAsync(JsonSerializer.Serialize(payload)).ConfigureAwait(false);
     }
 
-    private static bool IsLocalGuid(string s) => s != null && System.Text.RegularExpressions.Regex.IsMatch(s, @"^[0-9a-fA-F]{32}$");
+    private static bool IsLocalGuid(string s) => s != null && RxLocalGuid.IsMatch(s);
 
     private async Task<bool> TryForwardPlaybackSession(HttpContext ctx)
     {
@@ -491,8 +510,10 @@ public class FederationInterceptMiddleware
         var peer = Plugin.Instance?.Configuration?.RemoteServers.FirstOrDefault(p => p.Id == peerId);
         if (peer is null || !peer.Enabled) { ctx.Response.StatusCode = 204; return true; }
 
-        // Rewrite both ItemId + MediaSourceId (some events carry both) to the bare remote id.
-        var rewritten = System.Text.RegularExpressions.Regex.Replace(body, "\"fed_" + peerN + "_[^\"]+\"", "\"" + remoteId + "\"");
+        // Rewrite ItemId + MediaSourceId fields (some events carry both) to the bare remote id.
+        // Walk the JSON tree explicitly rather than regex-substituting on the raw body — a title
+        // or path containing 'fed_…' as a substring would otherwise corrupt the payload.
+        var rewritten = RewriteFedIdsForPeer(body, peerN, remoteId);
         try
         {
             var http = _httpClientFactory.CreateClient();
@@ -533,6 +554,52 @@ public class FederationInterceptMiddleware
     // a Jellyfin restart, which clears this anyway.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _peerAdminUserIdCache = new();
 
+    private static string RewriteFedIdsForPeer(string body, string peerN, string remoteId)
+    {
+        var fedPrefix = "fed_" + peerN + "_";
+        try
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(body);
+            if (node is null) return body;
+            RewriteFedIdsInPlace(node, fedPrefix, remoteId);
+            return node.ToJsonString();
+        }
+        catch
+        {
+            // Body wasn't valid JSON to begin with — pass through unchanged so the peer can
+            // surface its own validation error rather than us silently dropping the call.
+            return body;
+        }
+    }
+
+    private static void RewriteFedIdsInPlace(System.Text.Json.Nodes.JsonNode node, string fedPrefix, string remoteId)
+    {
+        switch (node)
+        {
+            case System.Text.Json.Nodes.JsonObject obj:
+                foreach (var kv in obj.ToList())
+                {
+                    if (kv.Value is null) continue;
+                    if (kv.Value is System.Text.Json.Nodes.JsonValue jv && jv.TryGetValue(out string? s)
+                        && s is not null && s.StartsWith(fedPrefix, StringComparison.Ordinal))
+                    {
+                        obj[kv.Key] = remoteId;
+                    }
+                    else
+                    {
+                        RewriteFedIdsInPlace(kv.Value, fedPrefix, remoteId);
+                    }
+                }
+                break;
+            case System.Text.Json.Nodes.JsonArray arr:
+                foreach (var el in arr)
+                {
+                    if (el is not null) RewriteFedIdsInPlace(el, fedPrefix, remoteId);
+                }
+                break;
+        }
+    }
+
     private async Task WritePeerUserData(HttpClient http, Configuration.RemoteServer peer, string remoteItemId, long positionTicks, CancellationToken ct)
     {
         var uid = !string.IsNullOrEmpty(peer.RemoteUserId)
@@ -558,7 +625,11 @@ public class FederationInterceptMiddleware
                     }
                 }
             }
-            catch { return; }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Probe /Users on {Peer} for admin id resolution failed", peer.Name);
+                return;
+            }
         }
         if (string.IsNullOrEmpty(uid)) return;
 
@@ -571,6 +642,11 @@ public class FederationInterceptMiddleware
                 JsonSerializer.Serialize(new { PlaybackPositionTicks = positionTicks }),
                 System.Text.Encoding.UTF8, "application/json");
             using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("Peer {Peer} returned {Status} writing UserData for {Item}",
+                    peer.Name, (int)resp.StatusCode, remoteItemId);
+            }
         }
         catch (Exception ex)
         {
@@ -708,7 +784,10 @@ public class FederationInterceptMiddleware
                         foreach (var el in arr.EnumerateArray()) items.Add(MapPeerItemDto(el, peerN));
                     }
                 }
-                catch { /* peer unreachable; skip silently */ }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "AppendPeerItems skipping peer {Peer} lib {Lib}", m.PeerId, m.LibraryId);
+                }
             }
             dict["Items"] = items;
             dict["TotalRecordCount"] = items.Count;
@@ -784,7 +863,10 @@ public class FederationInterceptMiddleware
                         foreach (var el in arr.EnumerateArray()) items.Add(MapPeerItemDto(el, peerN));
                     }
                 }
-                catch { /* peer unreachable; skip */ }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "AppendPeerLatest skipping peer {Peer} lib {Lib}", m.PeerId, m.LibraryId);
+                }
             }
 
             ctx.Response.ContentType = "application/json";

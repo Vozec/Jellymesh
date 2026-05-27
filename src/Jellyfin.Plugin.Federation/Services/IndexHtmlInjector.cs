@@ -117,7 +117,12 @@ public class IndexHtmlInjector : IHostedService
             updated = bodyClose >= 0 ? stripped.Insert(bodyClose, snippet) : stripped + "\n" + snippet;
         }
         if (updated == html) return;
-        File.WriteAllText(indexPath, updated);
+        // Atomic write: a partial read of index.html during overwrite would crash the SPA load.
+        // Stage into a sibling temp file then rename, which the kernel guarantees as a single
+        // step on the same filesystem.
+        var tmp = indexPath + ".jm-tmp";
+        File.WriteAllText(tmp, updated);
+        File.Move(tmp, indexPath, overwrite: true);
         _logger.LogInformation("Jellymesh: item-page script tag updated in {Path} (asset v{Version})", indexPath, version);
     }
 }
