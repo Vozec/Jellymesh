@@ -139,29 +139,10 @@
                 return jsonResponse(data);
             });
         }
-        // /Users/{uid}/Items/fedlib_X  ->  return a fake CollectionFolder so movies.html
-        // doesn't 400 when it fetches the library metadata.
-        const libLookup = url.match(/\/Items\/(fedlib_[0-9a-fA-F]{32}_[^/?]+)(?:\?|$)/);
-        if (libLookup) {
-            const p = parseFedLib(libLookup[1]);
-            if (p) {
-                return jApi(`/Federation/Peers/${p.peerId}/Libraries`).then((libs) => {
-                    const lib = (libs || []).find((l) => l.id === p.libId) || { id: p.libId, name: 'Library', type: 'movies' };
-                    return jsonResponse(fakeFolderItem(p.peerId, lib));
-                }).catch(() => jsonResponse(fakeFolderItem(p.peerId, { id: p.libId, name: 'Library', type: 'movies' })));
-            }
-        }
-        // /Users/{uid}/Items/fed_X  -> stub item dto so the SPA doesn't 400 trying to fetch
-        // the detail metadata. Real playback uses the local channel item; this stub only
-        // exists for transient lookups like the back-button state.
-        const itemLookup = url.match(/\/Items\/(fed_[0-9a-fA-F]{32}_[^/?]+)(?:\?|$)/);
-        if (itemLookup) {
-            const p = parseFedItem(itemLookup[1]);
-            if (p) return jsonResponse(mapPeerItem({ id: p.itemId, name: '(federated)', type: 'Movie' }, p.peerId.replace(/-/g, '')));
-        }
-        // /Items/fed_X/Images/Y or any prefix-variant -> reroute to our image proxy.
-        const rewritten = rewriteImageUrl(url);
-        if (rewritten) return fetch(rewritten);
+        // Single-item lookups (/Items/fed_X, /Items/fedlib_X) and image fetches are now
+        // handled by FederationInterceptMiddleware on the server. Letting them flow through
+        // gets the REAL peer metadata back instead of the synthetic '(federated)' stub the
+        // client was returning here.
         return null;
     }
 

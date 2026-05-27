@@ -21,14 +21,18 @@ public class FederationInterceptMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly MediaBrowser.Controller.IServerApplicationHost _appHost;
     private readonly ILogger<FederationInterceptMiddleware> _logger;
 
-    public FederationInterceptMiddleware(RequestDelegate next, IHttpClientFactory httpClientFactory, ILogger<FederationInterceptMiddleware> logger)
+    public FederationInterceptMiddleware(RequestDelegate next, IHttpClientFactory httpClientFactory, MediaBrowser.Controller.IServerApplicationHost appHost, ILogger<FederationInterceptMiddleware> logger)
     {
         _next = next;
         _httpClientFactory = httpClientFactory;
+        _appHost = appHost;
         _logger = logger;
     }
+
+    private string LocalServerId => _appHost.SystemId ?? string.Empty;
 
     public async Task InvokeAsync(HttpContext ctx)
     {
@@ -177,7 +181,7 @@ public class FederationInterceptMiddleware
             var dict = new System.Collections.Generic.Dictionary<string, object?>();
             foreach (var p in doc.RootElement.EnumerateObject()) dict[p.Name] = JsonElementToObject(p.Value);
             dict["Id"] = fedId;
-            dict["ServerId"] = string.Empty;
+            dict["ServerId"] = LocalServerId;
             dict["ImageTags"] = new System.Collections.Generic.Dictionary<string, string> { ["Primary"] = "fed" };
             // SPA helpers like ThemeMediaPlayer + RatingHelper assume these fields exist on
             // every BaseItemDto; surface defaults so they don't blow up when the peer omitted
@@ -321,7 +325,7 @@ public class FederationInterceptMiddleware
             Name = "(federated)",
             Type = "Movie",
             MediaType = "Video",
-            ServerId = string.Empty,
+            ServerId = string.Empty, // overridden where instance available
             ImageTags = new { Primary = "fed" },
             IsFolder = false,
             UserData = new { Played = false, IsFavorite = false, PlaybackPositionTicks = 0L, PlayCount = 0 }
@@ -339,7 +343,7 @@ public class FederationInterceptMiddleware
             Name = "Library",
             Type = "CollectionFolder",
             CollectionType = "movies",
-            ServerId = string.Empty,
+            ServerId = string.Empty, // overridden where instance available
             ImageTags = new { },
             IsFolder = true
         };
