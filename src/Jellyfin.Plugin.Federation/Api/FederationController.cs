@@ -2103,7 +2103,7 @@ h1{{font-weight:400;font-size:1.2rem}}
                                 var match = library.GetItemList(lookup).FirstOrDefault();
                                 if (match is not null) { localId = match.Id.ToString("N"); localKind = "local"; }
                             }
-                            catch { /* skip */ }
+                            catch (Exception ex) { _logger.LogDebug(ex, "TMDB/IMDB local-match lookup failed for item {Id}", id); }
                         }
                     }
                     rows.Add(new
@@ -2214,7 +2214,7 @@ h1{{font-weight:400;font-size:1.2rem}}
                         displayName = n.GetString() ?? code;
                 }
             }
-            catch { /* fall back to code */ }
+            catch (Exception ex) { _logger.LogDebug(ex, "i18n lang.name lookup failed for {Code}; using code as displayName", code); }
             rows.Add(new { code, name = displayName });
         }
         return Ok(rows);

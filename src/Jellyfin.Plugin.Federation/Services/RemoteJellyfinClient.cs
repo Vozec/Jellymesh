@@ -499,7 +499,8 @@ public class RemoteJellyfinClient
             };
             using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
             string? body = null;
-            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Reading peer error-body failed; HttpStatus alone will be returned"); }
             return new HandshakeCallResult { HttpStatus = (int)resp.StatusCode, Body = body };
         }
         catch (Exception ex)
@@ -534,7 +535,8 @@ public class RemoteJellyfinClient
             };
             using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
             string? body = null;
-            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Reading peer error-body failed; HttpStatus alone will be returned"); }
             return new HandshakeCallResult { HttpStatus = (int)resp.StatusCode, Body = body };
         }
         catch (Exception ex)
@@ -570,7 +572,8 @@ public class RemoteJellyfinClient
             };
             using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
             string? body = null;
-            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Reading peer error-body failed; HttpStatus alone will be returned"); }
             return new HandshakeCallResult { HttpStatus = (int)resp.StatusCode, Body = body };
         }
         catch (Exception ex)
@@ -605,7 +608,8 @@ public class RemoteJellyfinClient
             };
             using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
             string? body = null;
-            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            try { body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Reading peer error-body failed; HttpStatus alone will be returned"); }
             return new HandshakeCallResult { HttpStatus = (int)resp.StatusCode, Body = body };
         }
         catch (Exception ex)
