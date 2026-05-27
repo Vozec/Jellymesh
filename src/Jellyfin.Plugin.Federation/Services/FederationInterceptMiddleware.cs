@@ -497,7 +497,12 @@ public class FederationInterceptMiddleware
             if (doc.RootElement.TryGetProperty("PositionTicks", out var pt) && pt.ValueKind == JsonValueKind.Number)
                 positionTicks = pt.GetInt64();
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            // Non-JSON or shape-unexpected: not a fed_X session, fall through to local handler.
+            _logger.LogDebug(ex, "TryForwardPlaybackSession body parse skip");
+            return false;
+        }
         if (fedId is null) return false;
 
         var rest = fedId.Substring("fed_".Length);
