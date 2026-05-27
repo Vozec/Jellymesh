@@ -450,7 +450,7 @@ public class FederationInterceptMiddleware
 
     private async Task<bool> TryForwardPlaybackSession(HttpContext ctx)
     {
-        // Read the JSON body, sniff ItemId / NowPlayingItemId. If fed_X, forward this event
+        // Sniff ItemId / NowPlayingItemId in the JSON body. If fed_X, forward this event
         // to the source peer with its API key + the unwrapped remote id, then return 204 so
         // the local server doesn't log 'PlaybackStart reported with null media info'.
         ctx.Request.EnableBuffering();
@@ -463,6 +463,7 @@ public class FederationInterceptMiddleware
         if (string.IsNullOrEmpty(body)) return false;
 
         string? fedId = null;
+        long? positionTicks = null;
         try
         {
             using var doc = JsonDocument.Parse(body);
@@ -474,6 +475,8 @@ public class FederationInterceptMiddleware
                     if (!string.IsNullOrEmpty(s) && s!.StartsWith("fed_", StringComparison.Ordinal)) { fedId = s; break; }
                 }
             }
+            if (doc.RootElement.TryGetProperty("PositionTicks", out var pt) && pt.ValueKind == JsonValueKind.Number)
+                positionTicks = pt.GetInt64();
         }
         catch { return false; }
         if (fedId is null) return false;
@@ -490,15 +493,6 @@ public class FederationInterceptMiddleware
 
         // Rewrite both ItemId + MediaSourceId (some events carry both) to the bare remote id.
         var rewritten = System.Text.RegularExpressions.Regex.Replace(body, "\"fed_" + peerN + "_[^\"]+\"", "\"" + remoteId + "\"");
-        long? positionTicks = null;
-        try
-        {
-            using var doc = JsonDocument.Parse(rewritten);
-            if (doc.RootElement.TryGetProperty("PositionTicks", out var pt) && pt.ValueKind == JsonValueKind.Number)
-                positionTicks = pt.GetInt64();
-        }
-        catch { /* body shape doesn't matter past this point */ }
-
         try
         {
             var http = _httpClientFactory.CreateClient();
@@ -534,12 +528,16 @@ public class FederationInterceptMiddleware
         return true;
     }
 
+    // Cache: peer id → resolved RemoteUserId. Avoids burning a /Users round trip on every
+    // playback Progress tick. Lives for the process lifetime; an admin id change requires
+    // a Jellyfin restart, which clears this anyway.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _peerAdminUserIdCache = new();
+
     private async Task WritePeerUserData(HttpClient http, Configuration.RemoteServer peer, string remoteItemId, long positionTicks, CancellationToken ct)
     {
-        // Resolve the peer's user id once and cache on the RemoteServer object so the next
-        // call skips the /Users probe. Without this each Progress tick would burn an extra
-        // round trip just to look up the same admin user.
-        var uid = peer.RemoteUserId;
+        var uid = !string.IsNullOrEmpty(peer.RemoteUserId)
+            ? peer.RemoteUserId
+            : (_peerAdminUserIdCache.TryGetValue(peer.Id, out var cached) ? cached : null);
         if (string.IsNullOrEmpty(uid))
         {
             try
@@ -556,7 +554,7 @@ public class FederationInterceptMiddleware
                     if (first.ValueKind == JsonValueKind.Object && first.TryGetProperty("Id", out var idv))
                     {
                         uid = idv.GetString();
-                        if (!string.IsNullOrEmpty(uid)) peer.RemoteUserId = uid;
+                        if (!string.IsNullOrEmpty(uid)) _peerAdminUserIdCache[peer.Id] = uid!;
                     }
                 }
             }
