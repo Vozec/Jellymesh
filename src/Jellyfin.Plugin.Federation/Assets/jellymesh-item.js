@@ -91,182 +91,20 @@
         return new Response(JSON.stringify(obj), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
 
-    function rewriteImageUrl(url) {
-        const m = url.match(/\/Items\/(fed_[0-9a-fA-F]{32}_[^/?]+)\/Images\/([^/?]+)/);
-        if (!m) return null;
-        const parsed = parseFedItem(m[1]);
-        if (!parsed) return null;
-        return `/Federation/Image/${parsed.peerId.replace(/-/g, '')}/${parsed.itemId}/${m[2]}?api_key=${encodeURIComponent(token())}`;
-    }
+    // FederationInterceptMiddleware on the server side handles every wire-level redirect now:
+    //   - /Items/fed_X            -> proxied BaseItemDto with rewritten Id/People/MediaSources
+    //   - /Items/fed_X/Images/Y   -> peer image bytes via /Federation/Image
+    //   - /Items/fed_X/PlaybackInfo -> peer MediaSources with /Federation/Stream paths
+    //   - /Items?ParentId=fedlib_X  -> peer items list
+    //   - /Items?ParentId=<local>   -> wrapped Jellyfin response with peer items appended
+    //   - /Items/fed_X/Similar|ThemeMedia|Intros|... -> shape-correct empty/stub payloads
+    //
+    // No more window.fetch / XMLHttpRequest / ApiClient monkey-patching on the client side.
+    // The only thing this script still does is paint the visual 'Remote' chip on cards bound
+    // to a fed_ id + the dashboard library panel + nav link.
 
-    function handleHookedRequest(url, originalArgs) {
-        // /Items?ParentId=fedlib_... or /Users/{uid}/Items?ParentId=fedlib_...
-        const q = getQuery(url);
-        if (q.ParentId && q.ParentId.startsWith(FED_LIB_PREFIX)) {
-            const parsed = parseFedLib(q.ParentId);
-            if (!parsed) return null;
-            const limit = Math.min(parseInt(q.Limit, 10) || 100, 200);
-            return jApi(`/Federation/Peers/${parsed.peerId}/Libraries/${encodeURIComponent(parsed.libId)}/Items?limit=${limit}`)
-                .then((data) => {
-                    const peerN = parsed.peerId.replace(/-/g, '');
-                    const items = ((data && data.items) || []).map((it) => mapPeerItem(it, peerN));
-                    return jsonResponse({ Items: items, TotalRecordCount: items.length, StartIndex: 0 });
-                });
-        }
-        // /Items?ParentId=<local_lib> where the local lib has merged-in peer libs.
-        // Forward original request to the server, then concat the peer items into the
-        // response so the user sees them alongside their local items.
-        if (q.ParentId && /^[0-9a-fA-F]{32}$/.test(q.ParentId)) {
-            return ensureMergeConfig().then(async (settings) => {
-                const merges = (settings || []).filter((s) =>
-                    s.Enabled !== false &&
-                    s.MergeWithLocalLibraryId &&
-                    s.MergeWithLocalLibraryId.replace(/-/g, '') === q.ParentId);
-                const origResp = await _origFetch.apply(window, originalArgs);
-                if (merges.length === 0 || !origResp.ok) return origResp;
-                const data = await origResp.clone().json().catch(() => null);
-                if (!data || !Array.isArray(data.Items)) return origResp;
-                const limit = Math.min(parseInt(q.Limit, 10) || 100, 200);
-                for (const m of merges) {
-                    try {
-                        const peerData = await jApi(`/Federation/Peers/${m.PeerId}/Libraries/${encodeURIComponent(m.LibraryId)}/Items?limit=${limit}`);
-                        const peerN = m.PeerId.replace(/-/g, '');
-                        const items = ((peerData && peerData.items) || []).map((it) => mapPeerItem(it, peerN));
-                        data.Items = data.Items.concat(items);
-                        data.TotalRecordCount = (data.TotalRecordCount || 0) + items.length;
-                    } catch (_) { /* peer offline mid-render; skip */ }
-                }
-                return jsonResponse(data);
-            });
-        }
-        // Single-item lookups (/Items/fed_X, /Items/fedlib_X) and image fetches are now
-        // handled by FederationInterceptMiddleware on the server. Letting them flow through
-        // gets the REAL peer metadata back instead of the synthetic '(federated)' stub the
-        // client was returning here.
-        return null;
-    }
-
-    const _origFetch = window.fetch;
-    // Merge config cached in-process; refreshed at intervals so saves in the dashboard
-    // panel propagate to all open tabs within 30 s. ensureMergeConfig() awaits the first
-    // load so the intercepted request on the very first movies.html mount sees the
-    // merge mappings (otherwise the cache is still null and merge silently no-ops).
-    let mergeConfigCache = null;
-    let mergeConfigInflight = null;
-    function refreshMergeConfig() {
-        // ApiClient might not be defined yet (we load very early in <head>). When token() returns
-        // 'undefined' the server replies 401 and the cache is left stale. Defer until ready.
-        if (!window.ApiClient || !ApiClient.accessToken || !ApiClient.accessToken()) {
-            mergeConfigInflight = new Promise((resolve) => {
-                const wait = setInterval(() => {
-                    if (window.ApiClient && ApiClient.accessToken && ApiClient.accessToken()) {
-                        clearInterval(wait);
-                        resolve(refreshMergeConfig());
-                    }
-                }, 200);
-            });
-            return mergeConfigInflight;
-        }
-        mergeConfigInflight = jApi('/Federation/PeerLibraryConfig').then((cfg) => {
-            mergeConfigCache = (cfg && cfg.settings) || [];
-            mergeConfigInflight = null;
-            return mergeConfigCache;
-        }).catch(() => {
-            mergeConfigCache = mergeConfigCache || [];
-            mergeConfigInflight = null;
-            return mergeConfigCache;
-        });
-        return mergeConfigInflight;
-    }
-    function ensureMergeConfig() {
-        if (mergeConfigCache !== null) return Promise.resolve(mergeConfigCache);
-        return mergeConfigInflight || refreshMergeConfig();
-    }
-    refreshMergeConfig();
-    setInterval(refreshMergeConfig, 30000);
-
-    window.fetch = function (input, init) {
-        const url = typeof input === 'string' ? input : (input && input.url);
-        const isFederated = url && (url.indexOf(FED_LIB_PREFIX) >= 0 || url.indexOf(FED_ITEM_PREFIX) >= 0);
-        const looksLikeItemsList = url && /\/Items(\?|$)/.test(url) && url.indexOf('ParentId=') > 0;
-        if (isFederated || looksLikeItemsList) {
-            const hooked = handleHookedRequest(url, arguments);
-            if (hooked) return Promise.resolve(hooked);
-        }
-        return _origFetch.apply(this, arguments);
-    };
-
-    // XMLHttpRequest path: Jellyfin's legacy ApiClient uses XHR for many endpoints, so the
-    // fetch hook alone misses them. Intercept open() to rewrite federated URLs the same way.
-    const _origXhrOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function (method, url) {
-        if (typeof url === 'string' && url.indexOf(FED_ITEM_PREFIX) >= 0) {
-            const rewritten = rewriteImageUrl(url);
-            if (rewritten) {
-                arguments[1] = rewritten;
-                return _origXhrOpen.apply(this, arguments);
-            }
-        }
-        // Items list and metadata XHRs are harder to rewrite synchronously here; we leave
-        // them to flow into the fetch path or to fail benignly. The user-visible covers
-        // and the items grid (handled via fetch by modern Jellyfin) are the priority.
-        return _origXhrOpen.apply(this, arguments);
-    };
-
-    // ApiClient.getImageUrl is called by the SPA to build <img src> attribute values for
-    // posters - those never go through fetch, so we patch the getter directly. When the
-    // itemId is federated, return our proxy URL; otherwise fall back to the original.
-    function patchApiClient() {
-        const ac = window.ApiClient;
-        if (!ac || ac._jmPatched) { setTimeout(patchApiClient, 200); return; }
-        ac._jmPatched = true;
-        if (typeof ac.getImageUrl === 'function') {
-            const origGetImage = ac.getImageUrl.bind(ac);
-            ac.getImageUrl = function (itemId, options) {
-                if (typeof itemId === 'string' && itemId.startsWith(FED_ITEM_PREFIX)) {
-                    const p = parseFedItem(itemId);
-                    if (p) {
-                        const type = (options && options.type) || 'Primary';
-                        return `/Federation/Image/${p.peerId.replace(/-/g, '')}/${p.itemId}/${type}?api_key=${encodeURIComponent(token())}`;
-                    }
-                }
-                return origGetImage(itemId, options);
-            };
-        }
-        if (typeof ac.getScaledImageUrl === 'function') {
-            const orig = ac.getScaledImageUrl.bind(ac);
-            ac.getScaledImageUrl = function (itemId, options) {
-                if (typeof itemId === 'string' && itemId.startsWith(FED_ITEM_PREFIX)) {
-                    const p = parseFedItem(itemId);
-                    if (p) {
-                        const type = (options && options.type) || 'Primary';
-                        return `/Federation/Image/${p.peerId.replace(/-/g, '')}/${p.itemId}/${type}?api_key=${encodeURIComponent(token())}`;
-                    }
-                }
-                return orig(itemId, options);
-            };
-        }
-    }
-    setTimeout(patchApiClient, 200);
-
-    // Last-resort: any <img> the SPA already rendered with src='/Items/fed_*/Images/*' (before
-    // our ApiClient patch landed) shows a broken image. MutationObserver rewrites those src
-    // attributes inline. Same logic also fires for background-image inline styles on
-    // .cardImage elements.
     function rewriteFedImages(root) {
-        root.querySelectorAll('img[src*="/Items/fed_"]').forEach((img) => {
-            const newSrc = rewriteImageUrl(img.src);
-            if (newSrc && newSrc !== img.src) img.src = newSrc;
-        });
-        root.querySelectorAll('[style*="/Items/fed_"]').forEach((el) => {
-            const bg = el.style.backgroundImage;
-            if (!bg) return;
-            const m = bg.match(/url\(["']?([^"')]+)["']?\)/);
-            if (!m) return;
-            const newUrl = rewriteImageUrl(m[1]);
-            if (newUrl && newUrl !== m[1]) el.style.backgroundImage = `url('${newUrl}')`;
-        });
-        // Native cards bound to a federated id: stamp a 'Remote' chip on top so the user
+        // Native cards bound to a federated id get a 'Remote' chip overlay.
         // sees at a glance that it's not actually on their disk. We attach to .cardImageContainer
         // (Jellyfin's own poster container) so the chip overlays the image area only.
         root.querySelectorAll('[data-id^="fed_"]').forEach((card) => {

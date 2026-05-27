@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -63,6 +64,28 @@ public class FederationInterceptMiddleware
         {
             await _next(ctx).ConfigureAwait(false);
             return;
+        }
+
+        // /Items?ParentId=fedlib_X — list query for a federated library. The native
+        // movies.html SPA controller issues this; we synthesise an Items[] envelope from
+        // /Federation/Peers/{peer}/Libraries/{lib}/Items. Single-flight: any /Items request
+        // (with or without /Users/{uid} prefix) qualifies.
+        var pathIsItemsList = System.Text.RegularExpressions.Regex.IsMatch(path, @"^(?:/Users/[^/]+)?/Items$");
+        if (pathIsItemsList)
+        {
+            var parentId = ctx.Request.Query["ParentId"].ToString();
+            if (parentId.StartsWith("fedlib_", StringComparison.Ordinal))
+            {
+                await ProxyFedLibList(ctx, parentId).ConfigureAwait(false);
+                return;
+            }
+            // /Items?ParentId=<localLib> with merge mapping → forward to Jellyfin, then
+            // append peer items into the response. ResponseWrap below handles it.
+            if (IsLocalGuid(parentId) && HasMergeFor(parentId))
+            {
+                await AppendPeerItems(ctx, parentId).ConfigureAwait(false);
+                return;
+            }
         }
 
         // Match /Items/{fed_X}/Images/{type} OR /Items/{fed_X}/Images/{type}/{index}.
@@ -399,6 +422,177 @@ public class FederationInterceptMiddleware
             IsFolder = true
         };
         await ctx.Response.WriteAsync(JsonSerializer.Serialize(payload)).ConfigureAwait(false);
+    }
+
+    private static bool IsLocalGuid(string s) => s != null && System.Text.RegularExpressions.Regex.IsMatch(s, @"^[0-9a-fA-F]{32}$");
+
+    private static void ForwardAuth(HttpContext ctx, HttpRequestMessage req)
+    {
+        // Mirror every auth-bearing header the browser sent so the loopback hits a real user
+        // identity. jellyfin-web uses 'Authorization: MediaBrowser Token=...' for ApiClient
+        // requests + 'X-Emby-Token' for some legacy code paths. Forward both.
+        var auth = ctx.Request.Headers["Authorization"].ToString();
+        if (!string.IsNullOrEmpty(auth)) req.Headers.TryAddWithoutValidation("Authorization", auth);
+        var token = ctx.Request.Headers["X-Emby-Token"].ToString();
+        if (string.IsNullOrEmpty(token)) token = ctx.Request.Query["api_key"].ToString();
+        if (!string.IsNullOrEmpty(token)) req.Headers.TryAddWithoutValidation("X-Emby-Token", token);
+        var embyAuth = ctx.Request.Headers["X-Emby-Authorization"].ToString();
+        if (!string.IsNullOrEmpty(embyAuth)) req.Headers.TryAddWithoutValidation("X-Emby-Authorization", embyAuth);
+    }
+
+    private static bool HasMergeFor(string localLibId)
+    {
+        var settings = Plugin.Instance?.Configuration?.PeerLibrarySettings;
+        if (settings is null) return false;
+        var target = localLibId.Replace("-", string.Empty).ToLowerInvariant();
+        foreach (var s in settings)
+        {
+            if (s.Enabled && !string.IsNullOrEmpty(s.MergeWithLocalLibraryId)
+                && s.MergeWithLocalLibraryId.Replace("-", string.Empty).ToLowerInvariant() == target)
+                return true;
+        }
+        return false;
+    }
+
+    private async Task ProxyFedLibList(HttpContext ctx, string fedLibId)
+    {
+        // 'fedlib_<peerN>_<libId>' → peer items list. Synthesised as a flat BaseItemDto
+        // envelope matching what /Users/{uid}/Items would normally return.
+        var rest = fedLibId.Substring("fedlib_".Length);
+        var sep = rest.IndexOf('_');
+        if (sep <= 0) { ctx.Response.StatusCode = 400; return; }
+        var peerN = rest.Substring(0, sep);
+        var libId = rest.Substring(sep + 1);
+        if (!Guid.TryParseExact(peerN, "N", out var peerId)) { ctx.Response.StatusCode = 400; return; }
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(15);
+            // Forward via our own /Federation/Peers/.../Items so we reuse the auth + cache.
+            var limit = int.TryParse(ctx.Request.Query["Limit"].ToString(), out var l) ? l : 100;
+            limit = Math.Clamp(limit, 1, 200);
+            // Use the container-local listen port. ctx.Request.Host carries the browser-facing
+            // host (eg localhost:8098 with docker port mapping) which is unreachable from inside.
+            var localPort = ctx.Connection.LocalPort > 0 ? ctx.Connection.LocalPort : 8096;
+            var jellyfinHost = $"http://localhost:{localPort}";
+            using var req = new HttpRequestMessage(HttpMethod.Get,
+                $"{jellyfinHost}/Federation/Peers/{peerId}/Libraries/{Uri.EscapeDataString(libId)}/Items?limit={limit}");
+            ForwardAuth(ctx, req);
+            using var resp = await http.SendAsync(req, ctx.RequestAborted).ConfigureAwait(false);
+            using var stream = await resp.Content.ReadAsStreamAsync(ctx.RequestAborted).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+            var items = new System.Collections.Generic.List<object?>();
+            if (doc.RootElement.TryGetProperty("items", out var arr))
+            {
+                foreach (var el in arr.EnumerateArray()) items.Add(MapPeerItemDto(el, peerN));
+            }
+            ctx.Response.StatusCode = 200;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync(JsonSerializer.Serialize(new { Items = items, TotalRecordCount = items.Count, StartIndex = 0 })).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ProxyFedLibList failed for {Lib}", fedLibId);
+            ctx.Response.StatusCode = 502;
+        }
+    }
+
+    private async Task AppendPeerItems(HttpContext ctx, string localLibId)
+    {
+        // Forward to Jellyfin, capture the JSON, then concat peer items per merge config.
+        var bodyStream = ctx.Response.Body;
+        using var buffer = new MemoryStream();
+        ctx.Response.Body = buffer;
+        try { await _next(ctx).ConfigureAwait(false); }
+        finally { ctx.Response.Body = bodyStream; }
+
+        buffer.Position = 0;
+        if (ctx.Response.StatusCode < 200 || ctx.Response.StatusCode >= 300)
+        {
+            await buffer.CopyToAsync(ctx.Response.Body, ctx.RequestAborted).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            using var doc = await JsonDocument.ParseAsync(buffer, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+            var dict = new System.Collections.Generic.Dictionary<string, object?>();
+            foreach (var p in doc.RootElement.EnumerateObject()) dict[p.Name] = JsonElementToObject(p.Value);
+            var items = (dict.TryGetValue("Items", out var iObj) && iObj is System.Collections.Generic.List<object?> existing)
+                ? existing
+                : new System.Collections.Generic.List<object?>();
+
+            var settings = Plugin.Instance?.Configuration?.PeerLibrarySettings ?? new System.Collections.Generic.List<Configuration.PeerLibrarySetting>();
+            var targetNoHyphen = localLibId.Replace("-", string.Empty).ToLowerInvariant();
+            var merges = settings.Where(s => s.Enabled
+                && !string.IsNullOrEmpty(s.MergeWithLocalLibraryId)
+                && s.MergeWithLocalLibraryId.Replace("-", string.Empty).ToLowerInvariant() == targetNoHyphen).ToList();
+
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(15);
+            var localPort = ctx.Connection.LocalPort > 0 ? ctx.Connection.LocalPort : 8096;
+            var jellyfinHost = $"http://localhost:{localPort}";
+            var limit = int.TryParse(ctx.Request.Query["Limit"].ToString(), out var l) ? l : 100;
+            limit = Math.Clamp(limit, 1, 200);
+
+            foreach (var m in merges)
+            {
+                try
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Get,
+                        $"{jellyfinHost}/Federation/Peers/{m.PeerId}/Libraries/{Uri.EscapeDataString(m.LibraryId)}/Items?limit={limit}");
+                    ForwardAuth(ctx, req);
+                    using var r = await http.SendAsync(req, ctx.RequestAborted).ConfigureAwait(false);
+                    if (!r.IsSuccessStatusCode) continue;
+                    using var s = await r.Content.ReadAsStreamAsync(ctx.RequestAborted).ConfigureAwait(false);
+                    using var d = await JsonDocument.ParseAsync(s, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+                    var peerN = m.PeerId.ToString("N");
+                    if (d.RootElement.TryGetProperty("items", out var arr))
+                    {
+                        foreach (var el in arr.EnumerateArray()) items.Add(MapPeerItemDto(el, peerN));
+                    }
+                }
+                catch { /* peer unreachable; skip silently */ }
+            }
+            dict["Items"] = items;
+            dict["TotalRecordCount"] = items.Count;
+
+            ctx.Response.ContentType = "application/json";
+            var bytes = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(dict));
+            ctx.Response.ContentLength = bytes.Length;
+            await ctx.Response.Body.WriteAsync(bytes, ctx.RequestAborted).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AppendPeerItems failed for {Lib}", localLibId);
+            buffer.Position = 0;
+            await buffer.CopyToAsync(ctx.Response.Body, ctx.RequestAborted).ConfigureAwait(false);
+        }
+    }
+
+    private System.Collections.Generic.Dictionary<string, object?> MapPeerItemDto(JsonElement el, string peerN)
+    {
+        var rawId = el.TryGetProperty("id", out var idVal) ? idVal.GetString() : string.Empty;
+        var fedId = "fed_" + peerN + "_" + rawId;
+        return new System.Collections.Generic.Dictionary<string, object?>
+        {
+            ["Id"] = fedId,
+            ["Name"] = el.TryGetProperty("name", out var n) ? n.GetString() : null,
+            ["Type"] = el.TryGetProperty("type", out var t) ? t.GetString() : "Movie",
+            ["MediaType"] = "Video",
+            ["ServerId"] = LocalServerId,
+            ["ProductionYear"] = el.TryGetProperty("year", out var y) && y.ValueKind == JsonValueKind.Number ? y.GetInt32() : (object?)null,
+            ["ImageTags"] = new System.Collections.Generic.Dictionary<string, string> { ["Primary"] = "fed" },
+            ["BackdropImageTags"] = new System.Collections.Generic.List<object?>(),
+            ["IsFolder"] = false,
+            ["UserData"] = new System.Collections.Generic.Dictionary<string, object?>
+            {
+                ["Played"] = false,
+                ["IsFavorite"] = false,
+                ["PlaybackPositionTicks"] = 0L,
+                ["PlayCount"] = 0
+            }
+        };
     }
 
     private static async Task WriteEmptyList(HttpContext ctx)
