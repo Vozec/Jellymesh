@@ -294,7 +294,7 @@
             if (!host) return;
             const ribbon = document.createElement('div');
             ribbon.className = 'jm-remote-ribbon';
-            ribbon.textContent = 'REMOTE';
+            ribbon.textContent = 'Remote';
             // Make sure the container can host an absolute child.
             if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
             host.appendChild(ribbon);
@@ -346,7 +346,7 @@
             /* Peer-source chip overlaid on otherwise-native Jellyfin cards. */
             .jm-card-badge { position: absolute; top: 0.35em; right: 0.35em; background: rgba(59,111,164,0.92); color: #fff; padding: 0.1em 0.5em; border-radius: 0.7em; font-size: 0.7em; font-weight: 600; z-index: 1; pointer-events: none; }
             /* Native Jellyfin cards (movies.html merged view) get this band added by JS. */
-            .jm-remote-ribbon { position: absolute; top: 0; left: 0; right: 0; background: linear-gradient(180deg, rgba(59,111,164,0.95), rgba(59,111,164,0.7)); color: #fff; padding: 0.25em 0.5em; font-size: 0.72em; font-weight: 600; text-align: center; z-index: 2; pointer-events: none; letter-spacing: 0.04em; }
+            .jm-remote-ribbon { position: absolute; top: 0.5em; left: 0.5em; background: rgba(59,111,164,0.92); color: #fff; padding: 0.15em 0.55em; font-size: 0.7em; font-weight: 600; border-radius: 0.7em; z-index: 2; pointer-events: none; letter-spacing: 0.02em; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
 
             /* Dashboard libraries panel */
             #jm-dashlibs { margin: 1.5em 0; padding: 1.3em 1.4em; background: linear-gradient(180deg, #1a1a1a 0%, #161616 100%); border: 1px solid #2e2e2e; border-radius: 0.6em; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset; }
@@ -943,6 +943,10 @@
         ensureHomeSections();
         ensureNavLink();
         ensureDashboardLibrariesPanel();
+        // Cards rendered between mutations (Jellyfin's cardBuilder sometimes sets data-id
+        // after the node is in the DOM, which the MutationObserver attribute filter
+        // doesn't cover) still need the ribbon stamp.
+        rewriteFedImages(document);
     }
 
     document.addEventListener('DOMContentLoaded', () => {
