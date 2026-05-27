@@ -490,6 +490,15 @@ public class FederationInterceptMiddleware
 
         // Rewrite both ItemId + MediaSourceId (some events carry both) to the bare remote id.
         var rewritten = System.Text.RegularExpressions.Regex.Replace(body, "\"fed_" + peerN + "_[^\"]+\"", "\"" + remoteId + "\"");
+        long? positionTicks = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(rewritten);
+            if (doc.RootElement.TryGetProperty("PositionTicks", out var pt) && pt.ValueKind == JsonValueKind.Number)
+                positionTicks = pt.GetInt64();
+        }
+        catch { /* body shape doesn't matter past this point */ }
+
         try
         {
             var http = _httpClientFactory.CreateClient();
@@ -500,7 +509,22 @@ public class FederationInterceptMiddleware
             req.Headers.Add("X-Emby-Token", peer.ApiKey);
             req.Content = new System.Net.Http.StringContent(rewritten, System.Text.Encoding.UTF8, "application/json");
             using var resp = await http.SendAsync(req, ctx.RequestAborted).ConfigureAwait(false);
-            ctx.Response.StatusCode = (int)resp.StatusCode;
+
+            // Forwarding /Sessions/Playing/* without a real PlaySessionId can produce a 500 on
+            // the peer (no matching session). That's fine; the play-count + last-played event
+            // still registered. Always respond 204 to our local client so the SPA's progress
+            // ping doesn't surface as a network failure.
+            ctx.Response.StatusCode = 204;
+
+            // Position only lands in UserData when we write it explicitly: the /Sessions/Playing
+            // path needs a session id we don't have. Do this for Progress + Stopped so resume
+            // position on the peer matches what the federated viewer last saw.
+            if (positionTicks is { } pos && pos > 0
+                && (ctx.Request.Path.Value!.EndsWith("/Progress", StringComparison.Ordinal)
+                    || ctx.Request.Path.Value!.EndsWith("/Stopped", StringComparison.Ordinal)))
+            {
+                await WritePeerUserData(http, peer, remoteId, pos, ctx.RequestAborted).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
@@ -508,6 +532,52 @@ public class FederationInterceptMiddleware
             ctx.Response.StatusCode = 204;
         }
         return true;
+    }
+
+    private async Task WritePeerUserData(HttpClient http, Configuration.RemoteServer peer, string remoteItemId, long positionTicks, CancellationToken ct)
+    {
+        // Resolve the peer's user id once and cache on the RemoteServer object so the next
+        // call skips the /Users probe. Without this each Progress tick would burn an extra
+        // round trip just to look up the same admin user.
+        var uid = peer.RemoteUserId;
+        if (string.IsNullOrEmpty(uid))
+        {
+            try
+            {
+                using var probe = new HttpRequestMessage(HttpMethod.Get, $"{peer.BaseUrl.TrimEnd('/')}/Users");
+                probe.Headers.Add("X-Emby-Token", peer.ApiKey);
+                using var resp = await http.SendAsync(probe, ct).ConfigureAwait(false);
+                if (!resp.IsSuccessStatusCode) return;
+                using var s = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                using var doc = await JsonDocument.ParseAsync(s, cancellationToken: ct).ConfigureAwait(false);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    var first = doc.RootElement.EnumerateArray().FirstOrDefault();
+                    if (first.ValueKind == JsonValueKind.Object && first.TryGetProperty("Id", out var idv))
+                    {
+                        uid = idv.GetString();
+                        if (!string.IsNullOrEmpty(uid)) peer.RemoteUserId = uid;
+                    }
+                }
+            }
+            catch { return; }
+        }
+        if (string.IsNullOrEmpty(uid)) return;
+
+        try
+        {
+            var url = $"{peer.BaseUrl.TrimEnd('/')}/Users/{uid}/Items/{Uri.EscapeDataString(remoteItemId)}/UserData";
+            using var req = new HttpRequestMessage(HttpMethod.Post, url);
+            req.Headers.Add("X-Emby-Token", peer.ApiKey);
+            req.Content = new System.Net.Http.StringContent(
+                JsonSerializer.Serialize(new { PlaybackPositionTicks = positionTicks }),
+                System.Text.Encoding.UTF8, "application/json");
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "WritePeerUserData failed for {Peer} item {Id}", peer.Name, remoteItemId);
+        }
     }
 
     private static void ForwardAuth(HttpContext ctx, HttpRequestMessage req)
