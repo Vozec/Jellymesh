@@ -56,6 +56,14 @@ public class FederationInterceptMiddleware
                 await ProxyPlaybackInfo(ctx, pbMatch.Groups[1].Value).ConfigureAwait(false);
                 return;
             }
+            // /Sessions/Playing, /Sessions/Playing/Progress, /Sessions/Playing/Stopped:
+            // the SPA reports playback state with itemId=fed_X. Jellyfin's stock handler drops
+            // it because the item isn't in the local library, so peer never sees progress.
+            // Rewrite + forward to the source peer with our outbound API key.
+            if (System.Text.RegularExpressions.Regex.IsMatch(path, @"^/Sessions/Playing(?:/(?:Progress|Stopped))?$"))
+            {
+                if (await TryForwardPlaybackSession(ctx).ConfigureAwait(false)) return;
+            }
             await _next(ctx).ConfigureAwait(false);
             return;
         }
@@ -439,6 +447,68 @@ public class FederationInterceptMiddleware
     }
 
     private static bool IsLocalGuid(string s) => s != null && System.Text.RegularExpressions.Regex.IsMatch(s, @"^[0-9a-fA-F]{32}$");
+
+    private async Task<bool> TryForwardPlaybackSession(HttpContext ctx)
+    {
+        // Read the JSON body, sniff ItemId / NowPlayingItemId. If fed_X, forward this event
+        // to the source peer with its API key + the unwrapped remote id, then return 204 so
+        // the local server doesn't log 'PlaybackStart reported with null media info'.
+        ctx.Request.EnableBuffering();
+        string body;
+        using (var sr = new StreamReader(ctx.Request.Body, leaveOpen: true))
+        {
+            body = await sr.ReadToEndAsync().ConfigureAwait(false);
+            ctx.Request.Body.Position = 0;
+        }
+        if (string.IsNullOrEmpty(body)) return false;
+
+        string? fedId = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            foreach (var key in new[] { "ItemId", "NowPlayingItemId", "Id" })
+            {
+                if (doc.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String)
+                {
+                    var s = v.GetString();
+                    if (!string.IsNullOrEmpty(s) && s!.StartsWith("fed_", StringComparison.Ordinal)) { fedId = s; break; }
+                }
+            }
+        }
+        catch { return false; }
+        if (fedId is null) return false;
+
+        var rest = fedId.Substring("fed_".Length);
+        var sep = rest.IndexOf('_');
+        if (sep <= 0) return false;
+        var peerN = rest.Substring(0, sep);
+        var remoteId = rest.Substring(sep + 1);
+        if (!Guid.TryParseExact(peerN, "N", out var peerId)) return false;
+
+        var peer = Plugin.Instance?.Configuration?.RemoteServers.FirstOrDefault(p => p.Id == peerId);
+        if (peer is null || !peer.Enabled) { ctx.Response.StatusCode = 204; return true; }
+
+        // Rewrite both ItemId + MediaSourceId (some events carry both) to the bare remote id.
+        var rewritten = System.Text.RegularExpressions.Regex.Replace(body, "\"fed_" + peerN + "_[^\"]+\"", "\"" + remoteId + "\"");
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(10);
+            RemoteJellyfinClient.AddBasicAuth(http, peer);
+            var url = $"{peer.BaseUrl.TrimEnd('/')}{ctx.Request.Path}{ctx.Request.QueryString}";
+            using var req = new HttpRequestMessage(HttpMethod.Post, url);
+            req.Headers.Add("X-Emby-Token", peer.ApiKey);
+            req.Content = new System.Net.Http.StringContent(rewritten, System.Text.Encoding.UTF8, "application/json");
+            using var resp = await http.SendAsync(req, ctx.RequestAborted).ConfigureAwait(false);
+            ctx.Response.StatusCode = (int)resp.StatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Forward playback session for {FedId} failed", fedId);
+            ctx.Response.StatusCode = 204;
+        }
+        return true;
+    }
 
     private static void ForwardAuth(HttpContext ctx, HttpRequestMessage req)
     {
