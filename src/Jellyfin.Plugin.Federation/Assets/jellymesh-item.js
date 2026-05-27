@@ -173,6 +173,19 @@
     let mergeConfigCache = null;
     let mergeConfigInflight = null;
     function refreshMergeConfig() {
+        // ApiClient might not be defined yet (we load very early in <head>). When token() returns
+        // 'undefined' the server replies 401 and the cache is left stale. Defer until ready.
+        if (!window.ApiClient || !ApiClient.accessToken || !ApiClient.accessToken()) {
+            mergeConfigInflight = new Promise((resolve) => {
+                const wait = setInterval(() => {
+                    if (window.ApiClient && ApiClient.accessToken && ApiClient.accessToken()) {
+                        clearInterval(wait);
+                        resolve(refreshMergeConfig());
+                    }
+                }, 200);
+            });
+            return mergeConfigInflight;
+        }
         mergeConfigInflight = jApi('/Federation/PeerLibraryConfig').then((cfg) => {
             mergeConfigCache = (cfg && cfg.settings) || [];
             mergeConfigInflight = null;
@@ -756,9 +769,22 @@
     function ensureDashboardLibrariesPanel() {
         if (!location.hash.startsWith('#/dashboard/libraries')) return;
         if (document.getElementById('jm-dashlibs')) return;
-        // The Jellyfin libraries page renders 'addLibrary' / VirtualFolders list inside a
-        // .content-primary. We append our panel right after it.
-        const host = document.querySelector('.content-primary') || document.querySelector('.libraryPage');
+        // Jellyfin 10.10 renders the dashboard libraries page into one of several possible
+        // containers depending on which layout flavour is active (legacy emby vs new MUI).
+        // We try a list of selectors, and finally fall back to appending after the page's
+        // first <h1>/<h2> so we always land in the right section.
+        const host =
+            document.querySelector('.dashboardDocument .pageTabContent.is-active')
+            || document.querySelector('.dashboardDocument [data-role="content"]')
+            || document.querySelector('.dashboardDocument .content-primary')
+            || document.querySelector('#libraryPage .content-primary')
+            || document.querySelector('.libraryPage')
+            || document.querySelector('.dashboardContainer .MuiContainer-root')
+            || document.querySelector('.MuiContainer-root[role="region"]')
+            || (() => {
+                const h = document.querySelector('.dashboardDocument h2, .dashboardDocument h1');
+                return h ? h.parentElement : null;
+            })();
         if (!host) return;
         const panel = document.createElement('div');
         panel.id = 'jm-dashlibs';
