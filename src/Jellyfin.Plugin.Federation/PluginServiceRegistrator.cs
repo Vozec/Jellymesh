@@ -1,8 +1,6 @@
-using Jellyfin.Plugin.Federation.Channels;
 using Jellyfin.Plugin.Federation.Providers;
 using Jellyfin.Plugin.Federation.Services;
 using MediaBrowser.Controller;
-using MediaBrowser.Controller.Channels;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,7 +33,9 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<DiagnosticsService>();
         serviceCollection.AddHostedService<StartupReportService>();
         serviceCollection.AddSingleton<IMediaSourceProvider, FederatedMediaSourceProvider>();
-        serviceCollection.AddSingleton<IChannel, FriendsLibraryChannel>();
+        // FriendsLibraryChannel removed: the federated home sections + 'Merge into local
+        // library' flow replaced it. The channel showed up as a confusing 'Friends Library'
+        // entry alongside the user's real libraries.
         serviceCollection.AddHostedService<WatchStateSyncService>();
         serviceCollection.AddSingleton<PeerHealthRegistry>();
         serviceCollection.AddHostedService<HealthMonitorService>();
