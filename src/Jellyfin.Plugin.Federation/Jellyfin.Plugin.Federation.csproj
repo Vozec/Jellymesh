@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- net8 for Jellyfin 10.9/10.10. Jellyfin 10.11 requires net9. -->
+    <TargetFramework Condition="'$(JellyfinAbi)'!='' AND $(JellyfinAbi.StartsWith('10.11'))">net9.0</TargetFramework>
+    <TargetFramework Condition="'$(TargetFramework)'==''">net8.0</TargetFramework>
     <RootNamespace>Jellyfin.Plugin.Federation</RootNamespace>
     <AssemblyName>Jellyfin.Plugin.Federation</AssemblyName>
     <Nullable>enable</Nullable>

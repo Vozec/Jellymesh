@@ -249,7 +249,11 @@ public class FederationSyncTask : IScheduledTask
         {
             new TaskTriggerInfo
             {
+#if NET9_0_OR_GREATER
+                Type = MediaBrowser.Model.Tasks.TaskTriggerInfoType.IntervalTrigger,
+#else
                 Type = TaskTriggerInfo.TriggerInterval,
+#endif
                 IntervalTicks = TimeSpan.FromMinutes(minutes).Ticks
             }
         };
