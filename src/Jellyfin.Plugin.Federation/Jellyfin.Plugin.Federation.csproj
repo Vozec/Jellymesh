@@ -15,16 +15,16 @@
 
   <PropertyGroup>
     <!-- Override at build time: `dotnet build /p:JellyfinAbi=10.9.11` builds a 10.9-compatible
-         variant that pins Controller+Model to the matching nupkg. The resulting DLL must be
-         paired with a meta.json whose targetAbi matches. Note: 10.9 runtime ALSO needs the
-         plugin's Microsoft.Data.Sqlite version bumped down (10.9 hosts an older sqlite). -->
+         variant that pins Controller+Model + Sqlite to the matching set. -->
     <JellyfinAbi Condition="'$(JellyfinAbi)'==''">10.10.3</JellyfinAbi>
+    <SqliteVersion Condition="'$(SqliteVersion)'=='' AND $(JellyfinAbi.StartsWith('10.9'))">7.0.20</SqliteVersion>
+    <SqliteVersion Condition="'$(SqliteVersion)'==''">8.0.10</SqliteVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinAbi)" />
     <PackageReference Include="Jellyfin.Model" Version="$(JellyfinAbi)" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="$(SqliteVersion)" />
   </ItemGroup>
 
   <ItemGroup>
