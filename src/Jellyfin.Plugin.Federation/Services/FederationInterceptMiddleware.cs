@@ -17,6 +17,19 @@ namespace Jellyfin.Plugin.Federation.Services;
 /// BEFORE Jellyfin's MVC routing tries to bind itemId as a Guid (which rejects our
 /// federated ids with 400). For images we proxy to the peer; for metadata requests we
 /// return a stub DTO so the SPA's movies.html + details pages stop erroring.
+///
+/// Design rationale: Jellyfin's plugin model has no "virtual item provider" extension
+/// point for items that live outside the local library — IItemRepository is sealed
+/// to ItemsManager and IPostScanTask runs offline. Middleware is the only stable
+/// integration surface that lets us synthesise BaseItemDto payloads for ids the SPA
+/// asks about. Same applies to /Sessions/Playing/* — ISessionManager events fire only
+/// for items present in the local DB, so for fed_X writeback we intercept the POST
+/// and forward to the peer ourselves.
+///
+/// Response-body buffering for /Items?ParentId list responses is required because the
+/// upstream MVC controller returns the list shape we want to append to; we strip
+/// Accept-Encoding before _next so the response-compression middleware doesn't gzip
+/// our buffer.
 /// </summary>
 public class FederationInterceptMiddleware
 {
