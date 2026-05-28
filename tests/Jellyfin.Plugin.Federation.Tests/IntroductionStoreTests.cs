@@ -133,5 +133,11 @@ public class IntroductionStoreTests : IDisposable
         public string CachePath => DataPath;
         public string TempDirectory => DataPath;
         public string VirtualDataPath => DataPath;
+#if NET9_0_OR_GREATER
+        public string TrickplayPath => DataPath;
+        public string BackupPath => DataPath;
+        public void MakeSanityCheckOrThrow() { }
+        public void CreateAndCheckMarker(string a, string b, bool c) { }
+#endif
     }
 }
