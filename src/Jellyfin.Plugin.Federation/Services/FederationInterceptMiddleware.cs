@@ -559,7 +559,7 @@ public class FederationInterceptMiddleware
     // a Jellyfin restart, which clears this anyway.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _peerAdminUserIdCache = new();
 
-    private static string RewriteFedIdsForPeer(string body, string peerN, string remoteId)
+    internal static string RewriteFedIdsForPeer(string body, string peerN, string remoteId)
     {
         var fedPrefix = "fed_" + peerN + "_";
         try
