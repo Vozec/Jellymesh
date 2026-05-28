@@ -13,9 +13,16 @@
     <AssemblyVersion>0.9.1.0</AssemblyVersion>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- Override at build time: `dotnet build /p:JellyfinAbi=10.9.11` builds a 10.9-compatible
+         variant that pins Controller+Model to the matching nupkg + lowers targetAbi. The
+         resulting DLL must be paired with a matching meta.json. -->
+    <JellyfinAbi Condition="'$(JellyfinAbi)'==''">10.10.3</JellyfinAbi>
+  </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="Jellyfin.Controller" Version="10.10.3" />
-    <PackageReference Include="Jellyfin.Model" Version="10.10.3" />
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinAbi)" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinAbi)" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
   </ItemGroup>
 
