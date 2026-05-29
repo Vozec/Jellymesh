@@ -268,20 +268,35 @@ public class FederationInterceptMiddleware
             var http = _httpClientFactory.CreateClient("federation");
             http.Timeout = TimeSpan.FromSeconds(10);
             RemoteJellyfinClient.AddBasicAuth(http, peer);
-            var url = $"{peer.BaseUrl.TrimEnd('/')}/Users/{Uri.EscapeDataString(peer.RemoteUserId ?? string.Empty)}/Items/{Uri.EscapeDataString(remoteId)}";
-            if (string.IsNullOrEmpty(peer.RemoteUserId))
-                url = $"{peer.BaseUrl.TrimEnd('/')}/Items/{Uri.EscapeDataString(remoteId)}";
+            // With a configured RemoteUserId we can hit /Users/{uid}/Items/{id} (carries
+            // UserData). Without one, the bare /Items/{id} path 400s on Jellyfin, so use the
+            // list form /Items?Ids={id} (no user context needed) and unwrap Items[0].
+            const string fields = "Overview,Genres,Studios,People,Tags,ProviderIds,MediaStreams,MediaSources,RunTimeTicks,ProductionYear,PremiereDate,OfficialRating,CommunityRating,Taglines,ExternalUrls";
+            string url;
+            var byList = string.IsNullOrEmpty(peer.RemoteUserId);
+            if (byList)
+                url = $"{peer.BaseUrl.TrimEnd('/')}/Items?Ids={Uri.EscapeDataString(remoteId)}&Recursive=true&Fields={fields}";
+            else
+                url = $"{peer.BaseUrl.TrimEnd('/')}/Users/{Uri.EscapeDataString(peer.RemoteUserId!)}/Items/{Uri.EscapeDataString(remoteId)}?Fields={fields}";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Add("X-Emby-Token", peer.ApiKey);
             using var resp = await http.SendAsync(req, ctx.RequestAborted).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode) { await WriteStubItem(ctx, fedId).ConfigureAwait(false); return; }
             using var stream = await resp.Content.ReadAsStreamAsync(ctx.RequestAborted).ConfigureAwait(false);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+            // The list form wraps the item in { Items:[...] }; unwrap to the single DTO.
+            var itemRoot = doc.RootElement;
+            if (itemRoot.ValueKind == JsonValueKind.Object && itemRoot.TryGetProperty("Items", out var wrapArr) && wrapArr.ValueKind == JsonValueKind.Array)
+            {
+                var first = wrapArr.EnumerateArray().Cast<JsonElement?>().FirstOrDefault();
+                if (first is null || first.Value.ValueKind != JsonValueKind.Object) { await WriteStubItem(ctx, fedId).ConfigureAwait(false); return; }
+                itemRoot = first.Value;
+            }
             // Clone the entire DTO into a mutable dictionary so we can rewrite the few
             // identity fields without losing any of the rich metadata (overview, genres,
             // tags, mediastreams, runtime, studios, people, etc.).
             var dict = new System.Collections.Generic.Dictionary<string, object?>();
-            foreach (var p in doc.RootElement.EnumerateObject()) dict[p.Name] = JsonElementToObject(p.Value);
+            foreach (var p in itemRoot.EnumerateObject()) dict[p.Name] = JsonElementToObject(p.Value);
             dict["Id"] = fedId;
             dict["ServerId"] = LocalServerId;
             dict["ImageTags"] = new System.Collections.Generic.Dictionary<string, string> { ["Primary"] = "fed" };

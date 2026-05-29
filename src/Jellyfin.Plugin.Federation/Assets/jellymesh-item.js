@@ -293,7 +293,11 @@
             jApi('/Federation/Stats')
         ]).then(([cfg, stats]) => {
             if (cfg.layout === 'Off') return;
-            const peers = (stats.Peers || []).filter((p) => p.Enabled && p.Online);
+            // Gate on Enabled only. The Online flag comes from a health probe that runs every
+            // ~30s and is stale right after a (re)start, which would wrongly hide every peer
+            // section. renderPeerSection fetches each peer's libraries and silently skips peers
+            // that are genuinely unreachable, so an offline peer simply yields no section.
+            const peers = (stats.Peers || []).filter((p) => p.Enabled);
             if (peers.length === 0) return;
             if (cfg.layout === 'OneSectionAllPeers') {
                 renderCombinedSection(homeView, peers);
@@ -549,7 +553,15 @@
 
     // ----- 4b. Dashboard / libraries panel ----------------------------------
     function ensureDashboardLibrariesPanel() {
-        if (!location.hash.startsWith('#/dashboard/libraries')) return;
+        // ONLY the libraries root, not sub-routes like #/dashboard/libraries/metadata
+        // (the library display/metadata page) where the panel would land in the wrong host.
+        if (!/^#\/dashboard\/libraries(\?|$)/.test(location.hash)) {
+            // Left the libraries page: drop any panel we injected so it can't linger on the
+            // metadata sub-page or elsewhere.
+            const stale = document.getElementById('jm-dashlibs');
+            if (stale) stale.remove();
+            return;
+        }
         // Pick a host that is actually VISIBLE right now. Jellyfin caches dashboard pages
         // (data-dom-cache) and swaps the active .pageTabContent on navigation, so the panel
         // can end up stranded inside a hidden/detached page after you leave and come back.
@@ -740,9 +752,16 @@
         rewriteFedImages(document);
     }
 
+    function kick() { try { tick(); } catch (_) {} }
     document.addEventListener('DOMContentLoaded', () => {
         ensureStyle();
+        kick();
         setInterval(tick, 800);
     });
-    window.addEventListener('hashchange', () => setTimeout(tick, 400));
+    if (document.readyState !== 'loading') { ensureStyle(); kick(); }
+    // Run immediately on navigation (not after a 400ms delay) so injected UI appears at once;
+    // a couple of short retries cover the SPA rendering the new route asynchronously.
+    function onNav() { kick(); setTimeout(kick, 120); setTimeout(kick, 350); }
+    window.addEventListener('hashchange', onNav);
+    window.addEventListener('popstate', onNav);
 })();
