@@ -795,6 +795,11 @@ public class FederationInterceptMiddleware
             var limit = int.TryParse(ctx.Request.Query["Limit"].ToString(), out var l) ? l : 100;
             limit = Math.Clamp(limit, 1, 200);
 
+            // Dedup the same film coming from several merged peers (and from our local library):
+            // seed seen-keys from the local items already in the response, then skip any peer
+            // item whose title+year already appeared.
+            var seen = SeedDedupKeys(items);
+
             foreach (var m in merges)
             {
                 try
@@ -809,7 +814,11 @@ public class FederationInterceptMiddleware
                     var peerN = m.PeerId.ToString("N");
                     if (d.RootElement.TryGetProperty("items", out var arr))
                     {
-                        foreach (var el in arr.EnumerateArray()) items.Add(MapPeerItemDto(el, peerN));
+                        foreach (var el in arr.EnumerateArray())
+                        {
+                            if (!seen.Add(PeerElementDedupKey(el))) continue;
+                            items.Add(MapPeerItemDto(el, peerN));
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -874,6 +883,8 @@ public class FederationInterceptMiddleware
             var limit = int.TryParse(ctx.Request.Query["Limit"].ToString(), out var l) ? l : 16;
             limit = Math.Clamp(limit, 1, 50);
 
+            var seen = SeedDedupKeys(items);
+
             foreach (var m in merges)
             {
                 try
@@ -888,7 +899,11 @@ public class FederationInterceptMiddleware
                     var peerN = m.PeerId.ToString("N");
                     if (d.RootElement.TryGetProperty("items", out var arr))
                     {
-                        foreach (var el in arr.EnumerateArray()) items.Add(MapPeerItemDto(el, peerN));
+                        foreach (var el in arr.EnumerateArray())
+                        {
+                            if (!seen.Add(PeerElementDedupKey(el))) continue;
+                            items.Add(MapPeerItemDto(el, peerN));
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -908,6 +923,32 @@ public class FederationInterceptMiddleware
             buffer.Position = 0;
             await buffer.CopyToAsync(ctx.Response.Body, ctx.RequestAborted).ConfigureAwait(false);
         }
+    }
+
+    // Title+year dedup key so the same film merged from several peers (or already present
+    // locally) collapses to one card. Lower-cased, trimmed; year optional.
+    private static string DedupKey(string? name, string? year)
+        => (name ?? string.Empty).Trim().ToLowerInvariant() + "|" + (year ?? string.Empty);
+
+    private static System.Collections.Generic.HashSet<string> SeedDedupKeys(System.Collections.Generic.List<object?> items)
+    {
+        var seen = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+        foreach (var it in items)
+        {
+            if (it is not System.Collections.Generic.Dictionary<string, object?> d) continue;
+            var name = d.TryGetValue("Name", out var n) ? n as string : null;
+            string? year = null;
+            if (d.TryGetValue("ProductionYear", out var y) && y is not null) year = Convert.ToString(y, System.Globalization.CultureInfo.InvariantCulture);
+            seen.Add(DedupKey(name, year));
+        }
+        return seen;
+    }
+
+    private static string PeerElementDedupKey(JsonElement el)
+    {
+        var name = el.TryGetProperty("name", out var n) ? n.GetString() : null;
+        string? year = el.TryGetProperty("year", out var y) && y.ValueKind == JsonValueKind.Number ? y.GetInt32().ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+        return DedupKey(name, year);
     }
 
     private System.Collections.Generic.Dictionary<string, object?> MapPeerItemDto(JsonElement el, string peerN)
