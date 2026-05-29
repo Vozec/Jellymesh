@@ -209,7 +209,7 @@ public class FederationInterceptMiddleware
 
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.Timeout = TimeSpan.FromSeconds(15);
             RemoteJellyfinClient.AddBasicAuth(http, peer);
             // Rebuild the upstream query (fillHeight/fillWidth/quality) from the parsed
@@ -265,7 +265,7 @@ public class FederationInterceptMiddleware
 
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.Timeout = TimeSpan.FromSeconds(10);
             RemoteJellyfinClient.AddBasicAuth(http, peer);
             var url = $"{peer.BaseUrl.TrimEnd('/')}/Users/{Uri.EscapeDataString(peer.RemoteUserId ?? string.Empty)}/Items/{Uri.EscapeDataString(remoteId)}";
@@ -393,7 +393,7 @@ public class FederationInterceptMiddleware
             using (var reader = new System.IO.StreamReader(ctx.Request.Body))
                 body = await reader.ReadToEndAsync().ConfigureAwait(false);
 
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.Timeout = TimeSpan.FromSeconds(15);
             RemoteJellyfinClient.AddBasicAuth(http, peer);
             var qs = ctx.Request.QueryString.Value ?? string.Empty;
@@ -544,7 +544,7 @@ public class FederationInterceptMiddleware
         var rewritten = RewriteFedIdsForPeer(body, peerN, remoteId);
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.Timeout = TimeSpan.FromSeconds(10);
             RemoteJellyfinClient.AddBasicAuth(http, peer);
             var url = $"{peer.BaseUrl.TrimEnd('/')}{ctx.Request.Path}{ctx.Request.QueryString}";
@@ -722,7 +722,7 @@ public class FederationInterceptMiddleware
         if (!Guid.TryParseExact(peerN, "N", out var peerId)) { ctx.Response.StatusCode = 400; return; }
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.Timeout = TimeSpan.FromSeconds(15);
             // Forward via our own /Federation/Peers/.../Items so we reuse the auth + cache.
             var limit = int.TryParse(ctx.Request.Query["Limit"].ToString(), out var l) ? l : 100;
@@ -788,7 +788,7 @@ public class FederationInterceptMiddleware
                 && !string.IsNullOrEmpty(s.MergeWithLocalLibraryId)
                 && s.MergeWithLocalLibraryId.Replace("-", string.Empty).ToLowerInvariant() == targetNoHyphen).ToList();
 
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.Timeout = TimeSpan.FromSeconds(15);
             var localPort = ctx.Connection.LocalPort > 0 ? ctx.Connection.LocalPort : 8096;
             var jellyfinHost = $"http://localhost:{localPort}";
@@ -867,7 +867,7 @@ public class FederationInterceptMiddleware
                 && !string.IsNullOrEmpty(s.MergeWithLocalLibraryId)
                 && s.MergeWithLocalLibraryId.Replace("-", string.Empty).ToLowerInvariant() == targetNoHyphen).ToList();
 
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.Timeout = TimeSpan.FromSeconds(15);
             var localPort = ctx.Connection.LocalPort > 0 ? ctx.Connection.LocalPort : 8096;
             var jellyfinHost = $"http://localhost:{localPort}";

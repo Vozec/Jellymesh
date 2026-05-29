@@ -54,10 +54,14 @@
             card.dataset.jmRibbon = 'yes';
         });
         // Details page hero poster + backdrop also gets a Remote chip when the route is on
-        // a federated item. Jellyfin renders the poster inside .detailImageContainer + the
-        // backdrop is a sibling .itemBackdrop; we attach to whichever exists.
+        // a federated item. IMPORTANT: only attach to the already-sized image boxes
+        // (.cardImageContainer = the poster, .itemBackdrop = the backdrop). Do NOT touch
+        // .detailImageContainer: Jellyfin gives it height:0 and positions the poster .card
+        // absolutely against the nearest positioned ancestor; flipping the container to
+        // position:relative re-anchors that absolute card onto a 0-height box, so the poster
+        // breaks out and renders huge/centered over the page.
         if (location.hash.startsWith('#/details') && /[?&]id=fed_/.test(location.hash)) {
-            ['.detailImageContainer', '.itemBackdrop', '.detailLogoContainer', '.cardImageContainer'].forEach((sel) => {
+            ['.itemBackdrop', '.cardImageContainer'].forEach((sel) => {
                 root.querySelectorAll(sel).forEach((host) => {
                     if (host.dataset.jmDetailsRibbon === 'yes') return;
                     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';

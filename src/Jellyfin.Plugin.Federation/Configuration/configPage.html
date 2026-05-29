@@ -1000,7 +1000,7 @@
                     }
                     var html = '<div style="max-height:30vh;overflow-y:auto;border:1px solid #333;border-radius:0.3em;">';
                     rows.forEach(function (r) {
-                        var tags = (r.tags || []).map(function (tag) { return '<span class="jm-chip">' + tag + '</span>'; }).join('');
+                        var tags = (r.tags || []).map(function (tag) { return '<span class="jm-chip">' + esc(tag) + '</span>'; }).join('');
                         html += '<label style="display:flex;align-items:center;gap:0.6em;padding:0.5em;border-bottom:1px solid #2a2a2a;cursor:pointer;">'
                             + '<input type="radio" name="intro-target" value="' + esc(r.url) + '" />'
                             + '<span><strong>' + esc(r.name || r.url) + '</strong> <span style="color:#888;font-size:0.85em;">' + esc(r.url) + '</span> ' + tags + '</span>'
