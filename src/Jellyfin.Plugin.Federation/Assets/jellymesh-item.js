@@ -61,7 +61,9 @@
         // position:relative re-anchors that absolute card onto a 0-height box, so the poster
         // breaks out and renders huge/centered over the page.
         if (location.hash.startsWith('#/details') && /[?&]id=fed_/.test(location.hash)) {
-            ['.itemBackdrop', '.cardImageContainer'].forEach((sel) => {
+            // Poster only. The backdrop (.itemBackdrop) spans the whole header, so a chip there
+            // floats alone in the top-left corner — drop it, the poster chip is enough.
+            ['.cardImageContainer'].forEach((sel) => {
                 root.querySelectorAll(sel).forEach((host) => {
                     if (host.dataset.jmDetailsRibbon === 'yes') return;
                     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
