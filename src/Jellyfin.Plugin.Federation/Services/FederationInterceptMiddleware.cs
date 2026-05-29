@@ -212,11 +212,18 @@ public class FederationInterceptMiddleware
             var http = _httpClientFactory.CreateClient();
             http.Timeout = TimeSpan.FromSeconds(15);
             RemoteJellyfinClient.AddBasicAuth(http, peer);
-            // Pass through the upstream Jellyfin's query string (fillHeight/fillWidth/quality)
-            // minus our injected tag/api_key sentinels.
-            var qs = ctx.Request.QueryString.Value ?? string.Empty;
-            qs = System.Text.RegularExpressions.Regex.Replace(qs, @"([?&])(api_key|tag)=[^&]*", "$1");
-            qs = qs.Replace("?&", "?").TrimEnd('?', '&');
+            // Rebuild the upstream query (fillHeight/fillWidth/quality) from the parsed
+            // collection, dropping our injected tag/api_key sentinels. Rebuilding via
+            // QueryString.Create avoids the dangling '&&' a regex-strip leaves behind when
+            // a removed key sits in the middle of the string.
+            var qb = new Microsoft.AspNetCore.Http.QueryString();
+            foreach (var kv in ctx.Request.Query)
+            {
+                if (kv.Key.Equals("api_key", StringComparison.OrdinalIgnoreCase)
+                    || kv.Key.Equals("tag", StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var v in kv.Value) qb = qb.Add(kv.Key, v ?? string.Empty);
+            }
+            var qs = qb.Value ?? string.Empty;
             // imageType may include an index suffix (e.g. 'Backdrop/0'); escape per segment
             // so the slash stays a path separator rather than %2F which peers reject.
             var imageTypePath = string.Join('/', imageType.Split('/').Select(Uri.EscapeDataString));
@@ -226,7 +233,10 @@ public class FederationInterceptMiddleware
             using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ctx.RequestAborted).ConfigureAwait(false);
             ctx.Response.StatusCode = (int)resp.StatusCode;
             if (resp.Content.Headers.ContentType?.MediaType is { } ct) ctx.Response.ContentType = ct;
-            ctx.Response.Headers["Cache-Control"] = "public, max-age=600";
+            // Only cache successful responses, and mark private: the bytes were fetched with the
+            // peer's credentials so a shared proxy cache must not serve them to other users.
+            if (resp.IsSuccessStatusCode)
+                ctx.Response.Headers["Cache-Control"] = "private, max-age=600";
             await resp.Content.CopyToAsync(ctx.Response.Body, ctx.RequestAborted).ConfigureAwait(false);
         }
         catch (Exception ex)

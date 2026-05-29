@@ -68,6 +68,20 @@
     #FederationConfigPage .jm-progress-bar.done > i { background: #4a8c52; }
     #FederationConfigPage .jm-progress-bar.failed > i { background: #c44; }
     #FederationConfigPage .jm-progress-bar.skipped > i { background: #666; }
+    /* Federated-libraries management (native section, replaces the old JS-injected dashboard panel). */
+    #FederationConfigPage .jm-peerlib-block { background: #1c1c1c; border: 1px solid #2e2e2e; border-radius: 0.5em; margin: 0.6em 0; overflow: hidden; }
+    #FederationConfigPage .jm-peerlib-head { display: flex; align-items: center; gap: 0.6em; padding: 0.6em 0.9em; background: #232323; border-bottom: 1px solid #2e2e2e; }
+    #FederationConfigPage .jm-peerlib-head h4 { margin: 0; font-size: 1em; flex: 1; }
+    #FederationConfigPage .jm-peerlib-status { font-size: 0.78em; padding: 0.15em 0.6em; border-radius: 0.8em; font-weight: 600; }
+    #FederationConfigPage .jm-peerlib-status.online { background: rgba(74,144,80,0.25); color: #b6e0ba; border: 1px solid rgba(74,144,80,0.5); }
+    #FederationConfigPage .jm-peerlib-status.offline { background: rgba(180,60,60,0.2); color: #f0b0b0; border: 1px solid rgba(180,60,60,0.5); }
+    #FederationConfigPage .jm-peerlib-rows { padding: 0.3em 0.8em; }
+    #FederationConfigPage .jm-peerlib-row { display: grid; grid-template-columns: 2fr auto auto 1.6fr auto; gap: 0.9em; align-items: center; padding: 0.55em 0.3em; border-bottom: 1px solid #262626; }
+    #FederationConfigPage .jm-peerlib-row:last-child { border-bottom: none; }
+    #FederationConfigPage .jm-peerlib-name strong { display: block; }
+    #FederationConfigPage .jm-peerlib-name small { color: #888; font-size: 0.8em; }
+    #FederationConfigPage .jm-peerlib-toggle { display: inline-flex; align-items: center; gap: 0.35em; color: #bbb; font-size: 0.86em; cursor: pointer; user-select: none; white-space: nowrap; }
+    #FederationConfigPage .jm-peerlib-empty { padding: 0.9em; color: #888; font-style: italic; text-align: center; }
 </style>
     <div data-role="content">
         <div class="content-primary">
@@ -87,6 +101,7 @@
                 <div class="jm-tile-grid">
                     <button type="button" class="jm-tile" data-modal="dlg-settings"><span class="jm-tile-icon">⚙</span><span class="jm-tile-label" data-i18n="tile.settings">Settings</span><div class="jm-tile-hint" data-i18n="tile.settings.hint">General + language + sync</div></button>
                     <button type="button" class="jm-tile" data-modal="dlg-peers"><span class="jm-tile-icon">🌐</span><span class="jm-tile-label" data-i18n="tile.peers">Peers</span><div class="jm-tile-hint" data-i18n="tile.peers.hint">Configured peer servers</div></button>
+                    <button type="button" class="jm-tile" data-modal="dlg-peerlibs"><span class="jm-tile-icon">📚</span><span class="jm-tile-label" data-i18n="tile.peerlibs">Federated libraries</span><div class="jm-tile-hint" data-i18n="tile.peerlibs.hint">Toggle / hide / merge peer libraries</div></button>
                     <button type="button" class="jm-tile" data-modal="dlg-handshake"><span class="jm-tile-icon">🤝</span><span class="jm-tile-label" data-i18n="tile.handshake">Direct handshake</span><div class="jm-tile-hint" data-i18n="tile.handshake.hint">Request access / invite</div><span class="jm-tile-badge" id="JmBadgeHandshake" style="display:none;"></span></button>
                     <button type="button" class="jm-tile" data-modal="dlg-intros"><span class="jm-tile-icon">↪</span><span class="jm-tile-label" data-i18n="tile.intros">Introductions</span><div class="jm-tile-hint" data-i18n="tile.intros.hint">Via existing peers</div><span class="jm-tile-badge" id="JmBadgeIntros" style="display:none;"></span></button>
                     <button type="button" class="jm-tile" data-modal="dlg-requests"><span class="jm-tile-icon">📝</span><span class="jm-tile-label" data-i18n="tile.requests">Content requests</span><div class="jm-tile-hint" data-i18n="tile.requests.hint">Ask for films</div><span class="jm-tile-badge" id="JmBadgeRequests" style="display:none;"></span></button>
@@ -219,6 +234,26 @@
                 <button is="emby-button" type="button" id="AddRemoteServer" class="raised">
                     <span data-i18n="peers.add">Add peer server</span>
                 </button>
+                    </div>
+                </div></div>
+
+                <div class="jm-modal-overlay" data-modal-id="dlg-peerlibs"><div class="jm-modal-card">
+                    <div class="jm-modal-head"><h3 data-i18n="tile.peerlibs">Federated libraries</h3><button type="button" class="jm-modal-close">×</button></div>
+                    <div class="jm-modal-body">
+                <p style="margin:0 0 0.8em;color:#aaa;font-size:0.92em;" data-i18n="peerlibs.intro">Libraries shared by your peers. Toggle visibility, hide from the home page, or merge a peer library into one of your local libraries.</p>
+                <div style="display:flex;align-items:center;gap:0.8em;flex-wrap:wrap;margin-bottom:0.9em;">
+                    <label class="jm-field" style="display:flex;align-items:center;gap:0.5em;">
+                        <span style="color:#aaa;font-size:0.9em;" data-i18n="peerlibs.layout">Home layout</span>
+                        <select id="PeerLibsLayout" style="min-width:12em;">
+                            <option value="SectionPerPeer" data-i18n="peerlibs.layout.per_peer">One section per peer</option>
+                            <option value="SingleCombined" data-i18n="peerlibs.layout.combined">Single combined section</option>
+                        </select>
+                    </label>
+                    <button type="button" class="jm-btn" id="PeerLibsRefresh"><span data-i18n="peerlibs.refresh">Refresh</span></button>
+                    <button type="button" class="jm-btn" id="PeerLibsSyncNow"><span data-i18n="peerlibs.sync">Sync now</span></button>
+                </div>
+                <div id="PeerLibsProgress" style="display:none;background:#1c1c1c;border:1px solid #2e2e2e;border-radius:0.4em;padding:0.6em 0.9em;margin-bottom:0.6em;"></div>
+                <div id="PeerLibsBody"><div class="jm-peerlib-empty" data-i18n="common.loading">Loading…</div></div>
                     </div>
                 </div></div>
 
@@ -1385,6 +1420,7 @@
                 renderInviteTokens((jmLastConfig && jmLastConfig.AccessRequestInviteTokens) || []);
                 renderHandshakeLists();
                 renderBlocklist();
+                loadPeerLibs(false);
             });
         });
 
@@ -1432,6 +1468,111 @@
             });
             return false;
         });
+
+        // ---- Federated libraries (native section; replaces the old JS-injected dashboard panel) ----
+        function jfetch(path, opts) {
+            var o = { url: ApiClient.getUrl(path), type: (opts && opts.method) || 'GET' };
+            if (!opts || !opts.method || opts.method === 'GET') o.dataType = 'json';
+            if (opts && opts.body) { o.data = opts.body; o.contentType = 'application/json'; }
+            return ApiClient.fetch(o);
+        }
+        function renderPeerLibRow(peer, lib, settings, localLibs) {
+            var setting = (settings || []).find(function (s) { return s.PeerId === peer.Id && s.LibraryId === lib.id; }) || {};
+            var enabled = setting.Enabled !== false;
+            var hidden = !!setting.HideFromHomepage;
+            var mergeTarget = setting.MergeWithLocalLibraryId || '';
+            var opts = ['<option value="">' + t('peerlibs.no_merge') + '</option>'].concat((localLibs || []).map(function (ll) {
+                return '<option value="' + esc(ll.ItemId) + '"' + (mergeTarget === ll.ItemId ? ' selected' : '') + '>' + esc(ll.Name) + '</option>';
+            })).join('');
+            return '<div class="jm-peerlib-row" data-jm-peer="' + esc(peer.Id) + '" data-jm-lib="' + esc(lib.id) + '">'
+                + '<div class="jm-peerlib-name"><strong>' + esc(lib.name) + '</strong><small>' + esc(lib.type || 'mixed') + '</small></div>'
+                + '<label class="jm-peerlib-toggle"><input type="checkbox" class="jm-pl-enabled"' + (enabled ? ' checked' : '') + ' /> ' + t('peerlibs.enabled') + '</label>'
+                + '<label class="jm-peerlib-toggle"><input type="checkbox" class="jm-pl-hide"' + (hidden ? ' checked' : '') + ' /> ' + t('peerlibs.hide_home') + '</label>'
+                + '<label class="jm-peerlib-toggle"><span style="color:#aaa;">' + t('peerlibs.merge_into') + '</span><select class="jm-pl-merge">' + opts + '</select></label>'
+                + '<button type="button" class="jm-btn primary jm-pl-save">' + t('peerlibs.save') + '</button>'
+                + '</div>';
+        }
+        function loadPeerLibs(forceRefresh) {
+            var body = document.getElementById('PeerLibsBody');
+            if (!body) return;
+            Promise.all([
+                jfetch('Federation/Stats'),
+                jfetch('Federation/PeerLibraryConfig'),
+                jfetch('Library/VirtualFolders')
+            ]).then(function (res) {
+                var stats = res[0], cfg = res[1], localLibs = res[2];
+                var sel = document.getElementById('PeerLibsLayout');
+                if (sel) sel.value = (cfg && cfg.layout) || 'SectionPerPeer';
+                var peers = ((stats && stats.Peers) || []).filter(function (p) { return p.Enabled; });
+                if (peers.length === 0) { body.innerHTML = '<div class="jm-peerlib-empty">' + t('peerlibs.no_peers') + '</div>'; return; }
+                body.innerHTML = '';
+                peers.forEach(function (peer) {
+                    var block = document.createElement('div');
+                    block.className = 'jm-peerlib-block';
+                    block.innerHTML = '<div class="jm-peerlib-head"><h4>' + esc(peer.Name) + '</h4>'
+                        + '<span class="jm-peerlib-status ' + (peer.Online ? 'online' : 'offline') + '">' + (peer.Online ? 'online' : 'offline') + '</span></div>'
+                        + '<div class="jm-peerlib-rows" data-jm-libs><div class="jm-peerlib-empty">' + t('common.loading') + '</div></div>';
+                    body.appendChild(block);
+                    jfetch('Federation/Peers/' + peer.Id + '/Libraries' + (forceRefresh ? '?refresh=1' : '')).then(function (libs) {
+                        var tbl = block.querySelector('[data-jm-libs]');
+                        if (!libs || libs.length === 0) { tbl.innerHTML = '<div class="jm-peerlib-empty">' + t('peerlibs.no_libs') + '</div>'; return; }
+                        tbl.innerHTML = libs.map(function (lib) { return renderPeerLibRow(peer, lib, (cfg && cfg.settings) || [], localLibs || []); }).join('');
+                    }).catch(function () { block.querySelector('[data-jm-libs]').innerHTML = '<div class="jm-peerlib-empty">' + t('peerlibs.unreachable') + '</div>'; });
+                });
+            }).catch(function () { body.innerHTML = '<div class="jm-peerlib-empty" style="color:#e88;">' + t('peerlibs.load_failed') + '</div>'; });
+        }
+        // Save a single row + layout via the page container (delegated; survives re-render).
+        document.querySelector('#FederationConfigPage').addEventListener('click', function (e) {
+            if (!e.target.classList || !e.target.classList.contains('jm-pl-save')) return;
+            var row = e.target.closest('[data-jm-peer]');
+            if (!row) return;
+            var setting = {
+                PeerId: row.dataset.jmPeer,
+                LibraryId: row.dataset.jmLib,
+                Enabled: row.querySelector('.jm-pl-enabled').checked,
+                HideFromHomepage: row.querySelector('.jm-pl-hide').checked,
+                MergeWithLocalLibraryId: row.querySelector('.jm-pl-merge').value || null
+            };
+            var layoutSel = document.getElementById('PeerLibsLayout');
+            var payload = { Settings: [setting] };
+            if (layoutSel) payload.Layout = layoutSel.value;
+            jfetch('Federation/PeerLibraryConfig', { method: 'POST', body: JSON.stringify(payload) })
+                .then(function () { jmToast(t('peerlibs.saved')); })
+                .catch(function () { jmToast(t('peerlibs.save_failed'), 'error'); });
+        });
+        document.getElementById('PeerLibsRefresh').addEventListener('click', function () { loadPeerLibs(true); });
+        document.getElementById('PeerLibsLayout').addEventListener('change', function () {
+            jfetch('Federation/PeerLibraryConfig', { method: 'POST', body: JSON.stringify({ Layout: this.value }) })
+                .then(function () { jmToast(t('peerlibs.saved')); }).catch(function () { jmToast(t('peerlibs.save_failed'), 'error'); });
+        });
+        document.getElementById('PeerLibsSyncNow').addEventListener('click', function () {
+            var btn = this; btn.disabled = true;
+            jfetch('Federation/Sync/Trigger', { method: 'POST' })
+                .then(function () { jmToast(t('diag.sync.started')); pollPeerLibsSync(function () { btn.disabled = false; loadPeerLibs(true); }); })
+                .catch(function () { jmToast(t('peerlibs.save_failed'), 'error'); btn.disabled = false; });
+        });
+        function pollPeerLibsSync(onDone) {
+            var host = document.getElementById('PeerLibsProgress');
+            if (!host || host.dataset.jmPolling === 'yes') return;
+            host.dataset.jmPolling = 'yes';
+            var ticks = 0;
+            var interval = setInterval(function () {
+                jfetch('Federation/Sync/Progress').then(function (p) {
+                    ticks++;
+                    if (!p.peers || p.peers.length === 0) { if (!p.running && ticks > 2) stop(); host.style.display = 'none'; return; }
+                    host.style.display = 'block';
+                    host.innerHTML = p.peers.map(function (pr) {
+                        var cls = (pr.phase === 'Done' || pr.phase === 'Failed' || pr.phase === 'Skipped') ? pr.phase.toLowerCase() : '';
+                        var items = pr.itemsTotal > 0 ? pr.itemsSeen + ' / ' + pr.itemsTotal : (pr.itemsSeen ? String(pr.itemsSeen) : '');
+                        var detail = [pr.phase, pr.detail, items].filter(Boolean).join(' · ');
+                        return '<div class="jm-progress-row"><div><div class="jm-progress-name">' + esc(pr.peerName) + '</div><div class="jm-progress-detail">' + esc(detail) + '</div></div>'
+                            + '<div class="jm-progress-pct">' + pr.percent + '%</div><div class="jm-progress-bar ' + cls + '"><i style="width:' + pr.percent + '%;"></i></div></div>';
+                    }).join('');
+                    if (!p.running) setTimeout(function () { host.style.display = 'none'; stop(); }, 2000);
+                }).catch(function () {});
+            }, 800);
+            function stop() { clearInterval(interval); delete host.dataset.jmPolling; if (typeof onDone === 'function') onDone(); }
+        }
     </script>
 </div>
 </body>

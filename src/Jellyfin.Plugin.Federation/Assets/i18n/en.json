@@ -1,18 +1,15 @@
 {
   "lang.name": "English",
-
   "title": "Jellymesh",
   "subtitle": "Federate Jellyfin servers, dedupe libraries, share watch state.",
   "lang.label": "Dashboard language",
   "save": "Save",
-
   "status.peers": "{count} peers ({online} online)",
   "status.cached": "{count} cached items",
   "status.dedup": "dedup ratio {ratio}",
   "status.unavailable": "Status unavailable (HTTP {code})",
   "status.loading": "Loading status...",
   "status.summary": "{peers} peers ({online} online) - {cached} cached items - dedup ratio {ratio}",
-
   "tile.settings": "Settings",
   "tile.settings.hint": "General, language and sync",
   "tile.peers": "Peers",
@@ -29,7 +26,6 @@
   "tile.privacy.hint": "Master switches and blocklist",
   "tile.diag": "Diagnostics",
   "tile.diag.hint": "Stats and audit log",
-
   "sync.interval": "Sync interval (minutes)",
   "public.url": "Our public base URL (advertised to peers; may differ from this server's bind URL)",
   "public.basic.user": "Basic auth user",
@@ -51,7 +47,6 @@
   "settings.intros.hop": "Hop cap (empty = no cap)",
   "settings.intros.rate_h": "Rate per hour (per introducer)",
   "settings.intros.rate_d": "Rate per day (per introducer)",
-
   "peers.empty": "No peer servers configured. Add one or send/receive an access request.",
   "peers.section.basic": "Basic",
   "peers.section.auth": "Authentication",
@@ -87,7 +82,6 @@
   "peers.field.tags.placeholder": "family, friends, public",
   "peers.field.remoteuser.placeholder": "Peer user id we push UserData to",
   "peers.field.localuser.placeholder": "Our user id we mirror peer state into",
-
   "shares.empty": "No share keys yet.",
   "shares.libs.all": "(all)",
   "shares.libs.label": "libs",
@@ -125,14 +119,12 @@
   "shares.mint.libraries.button": "All libraries",
   "shares.mint.bound.placeholder": "https://alice.example",
   "shares.mint.done.toast": "Share key generated:\n\n{key}\n\nHand it to your friend.",
-
   "libs.pick.title": "Pick libraries to share",
   "libs.pick.hint": "Uncheck all to share every library.",
   "libs.pick.empty": "No libraries found.",
   "libs.pick.apply": "Apply",
   "libs.pick.error": "Cannot load libraries",
   "libs.pick.error.body": "Library API returned an error.",
-
   "requests.intro": "Ask peers to add a film, or triage what peers asked from you.",
   "requests.send.summary": "Send a request to a peer",
   "requests.send.peer": "Peer",
@@ -158,7 +150,6 @@
   "requests.action.declined": "declined",
   "requests.action.dismissed": "dismissed",
   "requests.action.dismiss": "dismiss",
-
   "intros.intro": "Ask an existing peer to introduce you a new contact, or triage incoming introduction requests.",
   "intros.send.header": "Send an introduction",
   "intros.step1": "Pick which existing peer will act as introducer (they must trust us).",
@@ -193,13 +184,11 @@
   "intros.introducer.dropdown.placeholder": "- pick a peer (introducer) -",
   "intros.note": "Note (optional)",
   "intros.send.result.toast": "Result: {result}",
-
   "privacy.desc": "Master switches for unsolicited inbound contact. Turn off to refuse all new requests regardless of any per-key or per-token rule.",
   "privacy.access": "Accept inbound /Federation/AccessRequest (peers asking for access)",
   "privacy.invites": "Accept inbound /Federation/InviteOffer (peers pushing pre-minted keys)",
   "privacy.intro": "Accept inbound /Federation/Introduce + /Introduced (peer-mediated introductions)",
   "privacy.directory": "Publish our peer list (name + URL only) to trusted peers so they can browse who to be introduced to.",
-
   "handshake.desc": "Bootstrap a peering without going through a third party. The other side's admin approves before any key crosses the wire.",
   "handshake.access.gating": "Access request gating (inbound, when admin enables them above)",
   "handshake.access.open": "Open: accept access requests from any origin (rate-limited per IP)",
@@ -219,7 +208,6 @@
   "handshake.access.tokens.copied": "Copied.",
   "handshake.access.tokens.created.title": "Invite token created",
   "handshake.access.tokens.created.body": "Hand this token to the peer:",
-
   "handshake.request.send": "Request access from a peer",
   "handshake.request.target": "Target URL",
   "handshake.request.basic.user": "Target Basic user (optional)",
@@ -232,7 +220,6 @@
   "handshake.request.sent.title": "Access request sent",
   "handshake.request.sent.body": "Wait for the peer admin to approve.",
   "handshake.request.fail": "Send failed: HTTP {code}",
-
   "handshake.invite.send": "Invite a peer (push a pre-minted key)",
   "handshake.invite.target": "Target URL",
   "handshake.invite.basic.user": "Target Basic user (optional)",
@@ -243,7 +230,6 @@
   "handshake.invite.sent.title": "Invite sent",
   "handshake.invite.sent.body": "The peer admin will accept on their dashboard.",
   "handshake.invite.fail": "Invite failed: HTTP {code}",
-
   "handshake.inbound": "Inbound handshake (waiting for our approval)",
   "handshake.outbound": "Outbound handshake",
   "handshake.row.mutual": "[mutual]",
@@ -263,7 +249,6 @@
   "handshake.row.accept.fail": "Accept failed: HTTP {code}",
   "handshake.inbound.empty": "No inbound.",
   "handshake.outbound.empty": "No outbound.",
-
   "handshake.blocklist": "Blocked peers",
   "handshake.blocklist.empty": "(nobody blocked.)",
   "handshake.blocklist.add": "Block this URL",
@@ -279,7 +264,6 @@
   "handshake.access.tokens.unlabelled": "unlabelled",
   "handshake.access.tokens.row.uses": "uses",
   "handshake.access.tokens.row.expires": "expires",
-
   "diag.status": "Federation status",
   "diag.run": "Run diagnostics",
   "diag.audit": "Recent inbound activity",
@@ -313,10 +297,28 @@
   "stats.table.last_check": "Last check",
   "stats.top_streamed": "Top streamed items:",
   "stats.updated": "Updated {when}",
-
   "common.ok": "OK",
   "common.cancel": "Cancel",
   "common.confirm": "Confirm",
   "common.close": "Close",
-  "common.loading": "Loading..."
+  "common.loading": "Loading...",
+  "tile.peerlibs": "Federated libraries",
+  "tile.peerlibs.hint": "Toggle / hide / merge peer libraries",
+  "peerlibs.intro": "Libraries shared by your peers. Toggle visibility, hide from the home page, or merge a peer library into one of your local libraries.",
+  "peerlibs.layout": "Home layout",
+  "peerlibs.layout.per_peer": "One section per peer",
+  "peerlibs.layout.combined": "Single combined section",
+  "peerlibs.refresh": "Refresh",
+  "peerlibs.sync": "Sync now",
+  "peerlibs.no_peers": "No peers configured.",
+  "peerlibs.no_libs": "No libraries shared (or peer offline).",
+  "peerlibs.unreachable": "Unreachable.",
+  "peerlibs.load_failed": "Failed to load peer/library config.",
+  "peerlibs.no_merge": "No merge",
+  "peerlibs.enabled": "Enabled",
+  "peerlibs.hide_home": "Hide from home",
+  "peerlibs.merge_into": "Merge into",
+  "peerlibs.save": "Save",
+  "peerlibs.saved": "Saved.",
+  "peerlibs.save_failed": "Save failed."
 }

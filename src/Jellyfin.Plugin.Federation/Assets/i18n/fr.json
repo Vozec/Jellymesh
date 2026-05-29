@@ -1,18 +1,15 @@
 {
   "lang.name": "Français",
-
   "title": "Jellymesh",
   "subtitle": "Fédérez vos serveurs Jellyfin, dédupliquez les bibliothèques, partagez l'état de lecture.",
   "lang.label": "Langue du tableau de bord",
   "save": "Enregistrer",
-
   "status.peers": "{count} pairs ({online} en ligne)",
   "status.cached": "{count} éléments en cache",
   "status.dedup": "ratio de déduplication {ratio}",
   "status.unavailable": "Statut indisponible (HTTP {code})",
   "status.loading": "Chargement du statut...",
   "status.summary": "{peers} pairs ({online} en ligne) - {cached} éléments en cache - ratio de déduplication {ratio}",
-
   "tile.settings": "Paramètres",
   "tile.settings.hint": "Général, langue et synchro",
   "tile.peers": "Pairs",
@@ -29,7 +26,6 @@
   "tile.privacy.hint": "Interrupteurs et blocklist",
   "tile.diag": "Diagnostics",
   "tile.diag.hint": "Stats et journal",
-
   "sync.interval": "Intervalle de synchro (minutes)",
   "public.url": "Notre URL publique (annoncée aux pairs ; peut différer de l'URL de bind du serveur)",
   "public.basic.user": "Utilisateur Basic auth",
@@ -51,7 +47,6 @@
   "settings.intros.hop": "Cap de hops (vide = sans cap)",
   "settings.intros.rate_h": "Limite par heure (par introducteur)",
   "settings.intros.rate_d": "Limite par jour (par introducteur)",
-
   "peers.empty": "Aucun pair configuré. Ajoutez-en un ou envoyez/recevez une demande d'accès.",
   "peers.section.basic": "Général",
   "peers.section.auth": "Authentification",
@@ -87,7 +82,6 @@
   "peers.field.tags.placeholder": "famille, amis, public",
   "peers.field.remoteuser.placeholder": "ID utilisateur du pair vers qui pousser UserData",
   "peers.field.localuser.placeholder": "ID utilisateur local où miroirer l'état du pair",
-
   "shares.empty": "Aucune clé de partage.",
   "shares.libs.all": "(toutes)",
   "shares.libs.label": "bibliothèques",
@@ -125,14 +119,12 @@
   "shares.mint.libraries.button": "Toutes les bibliothèques",
   "shares.mint.bound.placeholder": "https://alice.example",
   "shares.mint.done.toast": "Clé de partage générée :\n\n{key}\n\nTransmettez-la à votre ami.",
-
   "libs.pick.title": "Choisir les bibliothèques à partager",
   "libs.pick.hint": "Tout décocher pour partager toutes les bibliothèques.",
   "libs.pick.empty": "Aucune bibliothèque trouvée.",
   "libs.pick.apply": "Appliquer",
   "libs.pick.error": "Impossible de charger les bibliothèques",
   "libs.pick.error.body": "L'API Library a renvoyé une erreur.",
-
   "requests.intro": "Demandez aux pairs d'ajouter un film, ou triez ce que les pairs vous ont demandé.",
   "requests.send.summary": "Envoyer une demande à un pair",
   "requests.send.peer": "Pair",
@@ -158,7 +150,6 @@
   "requests.action.declined": "refusé",
   "requests.action.dismissed": "rejeté",
   "requests.action.dismiss": "rejeter",
-
   "intros.intro": "Demandez à un pair existant de vous introduire un nouveau contact, ou triez les demandes d'introduction entrantes.",
   "intros.send.header": "Envoyer une introduction",
   "intros.step1": "Choisissez quel pair existant servira d'introducteur (il doit nous faire confiance).",
@@ -193,13 +184,11 @@
   "intros.introducer.dropdown.placeholder": "- choisir un pair (introducteur) -",
   "intros.note": "Note (optionnel)",
   "intros.send.result.toast": "Résultat : {result}",
-
   "privacy.desc": "Interrupteurs maîtres pour les contacts entrants non sollicités. Désactiver refuse toute nouvelle demande peu importe les règles par clé ou par token.",
   "privacy.access": "Accepter les /Federation/AccessRequest entrants (pairs qui demandent l'accès)",
   "privacy.invites": "Accepter les /Federation/InviteOffer entrants (pairs qui poussent des clés pré-générées)",
   "privacy.intro": "Accepter les /Federation/Introduce + /Introduced entrants (introductions via pairs)",
   "privacy.directory": "Publier notre liste de pairs (nom + URL seulement) aux pairs de confiance pour qu'ils choisissent à qui être introduits.",
-
   "handshake.desc": "Établir un peering sans passer par un tiers. L'admin du destinataire valide avant qu'aucune clé ne soit échangée.",
   "handshake.access.gating": "Filtrage des demandes d'accès (entrant, si activé plus haut)",
   "handshake.access.open": "Ouvert : accepter les demandes d'accès de toute origine (rate-limit par IP)",
@@ -219,7 +208,6 @@
   "handshake.access.tokens.copied": "Copié.",
   "handshake.access.tokens.created.title": "Token d'invitation créé",
   "handshake.access.tokens.created.body": "Transmettez ce token au pair :",
-
   "handshake.request.send": "Demander l'accès à un pair",
   "handshake.request.target": "URL cible",
   "handshake.request.basic.user": "Utilisateur Basic cible (optionnel)",
@@ -232,7 +220,6 @@
   "handshake.request.sent.title": "Demande envoyée",
   "handshake.request.sent.body": "Attendez que l'admin du pair l'approuve.",
   "handshake.request.fail": "Échec : HTTP {code}",
-
   "handshake.invite.send": "Inviter un pair (pousser une clé pré-générée)",
   "handshake.invite.target": "URL cible",
   "handshake.invite.basic.user": "Utilisateur Basic cible (optionnel)",
@@ -243,7 +230,6 @@
   "handshake.invite.sent.title": "Invitation envoyée",
   "handshake.invite.sent.body": "L'admin du pair l'acceptera sur son tableau de bord.",
   "handshake.invite.fail": "Échec : HTTP {code}",
-
   "handshake.inbound": "Handshake entrant (en attente de notre approbation)",
   "handshake.outbound": "Handshake sortant",
   "handshake.row.mutual": "[mutuel]",
@@ -263,7 +249,6 @@
   "handshake.row.accept.fail": "Échec d'acceptation : HTTP {code}",
   "handshake.inbound.empty": "Aucun entrant.",
   "handshake.outbound.empty": "Aucun sortant.",
-
   "handshake.blocklist": "Pairs bloqués",
   "handshake.blocklist.empty": "(personne de bloqué.)",
   "handshake.blocklist.add": "Bloquer cette URL",
@@ -279,7 +264,6 @@
   "handshake.access.tokens.unlabelled": "sans libellé",
   "handshake.access.tokens.row.uses": "usages",
   "handshake.access.tokens.row.expires": "expire",
-
   "diag.status": "Statut de la fédération",
   "diag.run": "Lancer les diagnostics",
   "diag.audit": "Activité entrante récente",
@@ -313,10 +297,28 @@
   "stats.table.last_check": "Dernier check",
   "stats.top_streamed": "Éléments les plus diffusés :",
   "stats.updated": "Mis à jour {when}",
-
   "common.ok": "OK",
   "common.cancel": "Annuler",
   "common.confirm": "Confirmer",
   "common.close": "Fermer",
-  "common.loading": "Chargement..."
+  "common.loading": "Chargement...",
+  "tile.peerlibs": "Bibliothèques fédérées",
+  "tile.peerlibs.hint": "Activer / masquer / fusionner les bibliothèques des pairs",
+  "peerlibs.intro": "Bibliothèques partagées par vos pairs. Activez la visibilité, masquez de l'accueil, ou fusionnez une bibliothèque distante dans une de vos bibliothèques locales.",
+  "peerlibs.layout": "Disposition accueil",
+  "peerlibs.layout.per_peer": "Une section par pair",
+  "peerlibs.layout.combined": "Une seule section combinée",
+  "peerlibs.refresh": "Rafraîchir",
+  "peerlibs.sync": "Synchroniser",
+  "peerlibs.no_peers": "Aucun pair configuré.",
+  "peerlibs.no_libs": "Aucune bibliothèque partagée (ou pair hors ligne).",
+  "peerlibs.unreachable": "Injoignable.",
+  "peerlibs.load_failed": "Échec du chargement de la config pairs/bibliothèques.",
+  "peerlibs.no_merge": "Pas de fusion",
+  "peerlibs.enabled": "Activée",
+  "peerlibs.hide_home": "Masquer de l'accueil",
+  "peerlibs.merge_into": "Fusionner dans",
+  "peerlibs.save": "Enregistrer",
+  "peerlibs.saved": "Enregistré.",
+  "peerlibs.save_failed": "Échec de l'enregistrement."
 }

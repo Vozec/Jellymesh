@@ -538,24 +538,33 @@
     // ----- 4b. Dashboard / libraries panel ----------------------------------
     function ensureDashboardLibrariesPanel() {
         if (!location.hash.startsWith('#/dashboard/libraries')) return;
-        if (document.getElementById('jm-dashlibs')) return;
-        // Jellyfin 10.10 renders the dashboard libraries page into one of several possible
-        // containers depending on which layout flavour is active (legacy emby vs new MUI).
-        // We try a list of selectors, and finally fall back to appending after the page's
-        // first <h1>/<h2> so we always land in the right section.
+        // Pick a host that is actually VISIBLE right now. Jellyfin caches dashboard pages
+        // (data-dom-cache) and swaps the active .pageTabContent on navigation, so the panel
+        // can end up stranded inside a hidden/detached page after you leave and come back.
+        // We resolve the live host each tick and self-heal below.
+        const visible = (el) => el && el.offsetParent !== null;
         const host =
-            document.querySelector('.dashboardDocument .pageTabContent.is-active')
-            || document.querySelector('.dashboardDocument [data-role="content"]')
-            || document.querySelector('.dashboardDocument .content-primary')
-            || document.querySelector('#libraryPage .content-primary')
-            || document.querySelector('.libraryPage')
-            || document.querySelector('.dashboardContainer .MuiContainer-root')
-            || document.querySelector('.MuiContainer-root[role="region"]')
+            [
+                document.querySelector('.dashboardDocument .pageTabContent.is-active'),
+                document.querySelector('.dashboardDocument [data-role="content"]'),
+                document.querySelector('.dashboardDocument .content-primary'),
+                document.querySelector('#libraryPage .content-primary'),
+                document.querySelector('.libraryPage'),
+                document.querySelector('.dashboardContainer .MuiContainer-root'),
+                document.querySelector('.MuiContainer-root[role="region"]')
+            ].find(visible)
             || (() => {
                 const h = document.querySelector('.dashboardDocument h2, .dashboardDocument h1');
-                return h ? h.parentElement : null;
+                return h && visible(h) ? h.parentElement : null;
             })();
         if (!host) return;
+        // Self-heal: if a panel already lives inside the current visible host, keep it.
+        // Otherwise drop any stale/stranded copy and rebuild into the live host.
+        const existing = document.getElementById('jm-dashlibs');
+        if (existing) {
+            if (host.contains(existing) && visible(existing)) return;
+            existing.remove();
+        }
         const panel = document.createElement('div');
         panel.id = 'jm-dashlibs';
         panel.innerHTML = `
