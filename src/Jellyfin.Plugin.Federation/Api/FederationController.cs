@@ -2061,6 +2061,12 @@ h1{{font-weight:400;font-size:1.2rem}}
                 {
                     var id = el.TryGetProperty("Id", out var iid) ? iid.GetString() : null;
                     if (id is null) continue;
+                    // Never re-export items the serving peer itself federated from a third
+                    // party: its merge middleware injects fed_<peer>_<id> entries into the
+                    // library response, which would otherwise reach us as duplicates (e.g. the
+                    // same film a peer pulls from two of its own peers) and create A->C->B
+                    // federation loops. We only want the peer's OWN local content.
+                    if (id.StartsWith("fed_", StringComparison.Ordinal)) continue;
                     var video = "";
                     if (el.TryGetProperty("MediaStreams", out var ms) && ms.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {

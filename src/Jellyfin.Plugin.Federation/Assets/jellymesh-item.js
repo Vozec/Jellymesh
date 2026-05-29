@@ -44,6 +44,9 @@
         // (Jellyfin's own poster container) so the chip overlays the image area only.
         root.querySelectorAll('[data-id^="fed_"]').forEach((card) => {
             if (card.dataset.jmRibbon === 'yes') return;
+            // Never tag a library jacket (CollectionFolder): a merged library mixes local +
+            // remote, so 'Remote' on its cover is misleading. Only individual federated items.
+            if (card.getAttribute('data-type') === 'CollectionFolder' || card.getAttribute('data-isfolder') === 'true') return;
             const host = card.querySelector('.cardImageContainer, .cardImage, .cardScalable');
             if (!host) return;
             const ribbon = document.createElement('div');
@@ -61,10 +64,14 @@
         // position:relative re-anchors that absolute card onto a 0-height box, so the poster
         // breaks out and renders huge/centered over the page.
         if (location.hash.startsWith('#/details') && /[?&]id=fed_/.test(location.hash)) {
-            // Poster only. The backdrop (.itemBackdrop) spans the whole header, so a chip there
-            // floats alone in the top-left corner — drop it, the poster chip is enough.
-            ['.cardImageContainer'].forEach((sel) => {
-                root.querySelectorAll(sel).forEach((host) => {
+            // Poster only, and ONLY inside the visible detail page. The SPA keeps other routes
+            // (home, movies) cached in the DOM, so a document-wide '.cardImageContainer' query
+            // would stamp 'Remote' onto unrelated cards there (e.g. a merged library jacket on
+            // the home page). Scope to the active itemDetailPage's poster container.
+            const activeDetail = Array.from(document.querySelectorAll('.itemDetailPage, #itemDetailPage'))
+                .find((pg) => pg.offsetParent !== null) || null;
+            const posters = activeDetail ? activeDetail.querySelectorAll('.detailImageContainer .cardImageContainer') : [];
+            posters.forEach((host) => {
                     if (host.dataset.jmDetailsRibbon === 'yes') return;
                     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
                     const chip = document.createElement('div');
@@ -72,7 +79,6 @@
                     chip.textContent = 'Remote';
                     host.appendChild(chip);
                     host.dataset.jmDetailsRibbon = 'yes';
-                });
             });
         }
     }
