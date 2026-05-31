@@ -30,8 +30,9 @@ public class FederationController : ControllerBase
         _logger = logger;
     }
 
+    [AllowAnonymous]
     [HttpGet("Stream/{serverId}/{itemId}")]
-    public async Task<IActionResult> Stream(string serverId, string itemId, [FromQuery] string? sourceId, CancellationToken ct)
+    public async Task<IActionResult> Stream(string serverId, string itemId, [FromQuery] string? sourceId, [FromQuery(Name = "fst")] string? fst, CancellationToken ct)
     {
         var config = Plugin.Instance?.Configuration;
         if (config is null) return NotFound();
@@ -39,10 +40,16 @@ public class FederationController : ControllerBase
         // the peer's URL space under our auth context.
         if (!Guid.TryParseExact(itemId, "N", out _) && !Guid.TryParse(itemId, out _)) return BadRequest();
 
+        // This is reachable by a bare <video src> (alternate-version sources from a peer), which
+        // can't send a session token. Accept a signed fst token OR a real Jellyfin session.
+        var authed = Services.FederationInterceptMiddleware.VerifyMediaToken(fst, serverId, itemId)
+            || (User?.Identity?.IsAuthenticated ?? false);
+        if (!authed) return Unauthorized();
+
         var server = config.RemoteServers.FirstOrDefault(s => s.Id.ToString("N") == serverId);
         if (server is null || !server.Enabled) return NotFound();
 
-        var http = _httpClientFactory.CreateClient();
+        var http = _httpClientFactory.CreateClient("federation");
         Services.RemoteJellyfinClient.AddBasicAuth(http, server);
         var upstream = $"{server.BaseUrl.TrimEnd('/')}/Videos/{Uri.EscapeDataString(itemId)}/stream?static=true";
         if (!string.IsNullOrEmpty(sourceId))
@@ -280,6 +287,12 @@ public class FederationController : ControllerBase
             return BadRequest("NewPeerUrl and NewPeerKey required");
         if (payload.NewPeerUrl.Length > 512 || payload.NewPeerKey.Length > 256) return BadRequest("payload field too long");
         if (payload.IntroducedBy is { Length: > 256 }) return BadRequest("IntroducedBy too long");
+        // The pending note packs these fields with " :: " / "KEY=" / "BASIC=" delimiters that
+        // ApproveIntroduction parses back out. Reject the delimiters (and newlines) in the inputs
+        // so a malicious introducer can't inject a forged key or Basic creds on approval.
+        if (ContainsNoteDelimiter(payload.NewPeerKey) || ContainsNoteDelimiter(payload.IntroducedBy)
+            || ContainsNoteDelimiter(payload.BasicAuthUser) || ContainsNoteDelimiter(payload.BasicAuthPass))
+            return BadRequest("field contains a reserved delimiter");
         var key = ResolveShareKey(shareKey);
         if (key is null) return Unauthorized();
 
@@ -474,6 +487,8 @@ public class FederationController : ControllerBase
 
             lock (Plugin.ConfigWriteLock)
             {
+                if (!Services.SsrfGuard.IsSafePeerBaseUrl(pending.ForUrlCanonical, out var ssrfReason))
+                    return BadRequest($"peer url rejected: {ssrfReason}");
                 config.RemoteServers.Add(new Configuration.RemoteServer
                 {
                     Name = "Introduced - " + pending.ForUrlCanonical,
@@ -752,7 +767,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         var server = config.RemoteServers.FirstOrDefault(s => s.Id.ToString("N") == serverId);
         if (server is null || !server.Enabled) return NotFound();
 
-        var http = _httpClientFactory.CreateClient();
+        var http = _httpClientFactory.CreateClient("federation");
         Services.RemoteJellyfinClient.AddBasicAuth(http, server);
         var url = $"{server.BaseUrl.TrimEnd('/')}/Videos/{Uri.EscapeDataString(itemId)}/{Uri.EscapeDataString(mediaSourceId)}/Subtitles/{streamIndex}/Stream.{fmtLower}";
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -785,7 +800,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         var tracks = new List<SubtitleTrack>();
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.BaseAddress = new Uri(peer.BaseUrl.TrimEnd('/'));
             http.DefaultRequestHeaders.Add("X-Emby-Token", peer.ApiKey);
             Services.RemoteJellyfinClient.AddBasicAuth(http, peer);
@@ -852,7 +867,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         var server = config.RemoteServers.FirstOrDefault(s => s.Id.ToString("N") == serverId);
         if (server is null || !server.Enabled) return NotFound();
 
-        var http = _httpClientFactory.CreateClient();
+        var http = _httpClientFactory.CreateClient("federation");
         Services.RemoteJellyfinClient.AddBasicAuth(http, server);
         var url = $"{server.BaseUrl.TrimEnd('/')}/Items/{Uri.EscapeDataString(itemId)}/Images/{Uri.EscapeDataString(imageType)}";
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -871,6 +886,49 @@ h1{{font-weight:400;font-size:1.2rem}}
     [HttpGet("Audit/Recent")]
     public IActionResult RecentAudit([FromQuery] int limit = 100)
         => Ok(_store.RecentAudits(Math.Clamp(limit, 1, 1000)));
+
+    // Tail the newest Jellyfin log file and return the lines emitted by this plugin so an admin
+    // can see federation activity without SSHing into the server. Filters on our namespace so
+    // unrelated server noise stays out.
+    [Authorize(Policy = Policies.RequiresElevation)]
+    [HttpGet("Logs")]
+    public IActionResult GetLogs(
+        [FromServices] MediaBrowser.Common.Configuration.IApplicationPaths paths,
+        [FromQuery] int limit = 300)
+    {
+        limit = Math.Clamp(limit, 1, 2000);
+        try
+        {
+            var dir = paths.LogDirectoryPath;
+            if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir))
+                return Ok(new { file = (string?)null, lines = Array.Empty<string>() });
+            var newest = new System.IO.DirectoryInfo(dir).GetFiles("*.log")
+                .OrderByDescending(f => f.LastWriteTimeUtc).FirstOrDefault();
+            if (newest is null)
+                return Ok(new { file = (string?)null, lines = Array.Empty<string>() });
+
+            // Read with shared access (Jellyfin holds the file open for writing).
+            var collected = new System.Collections.Generic.List<string>();
+            using (var fs = new System.IO.FileStream(newest.FullName, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite))
+            using (var sr = new System.IO.StreamReader(fs))
+            {
+                string? line;
+                while ((line = sr.ReadLine()) is not null)
+                {
+                    if (line.Contains("Jellyfin.Plugin.Federation", StringComparison.Ordinal)
+                        || line.Contains("Federation.", StringComparison.Ordinal))
+                        collected.Add(line);
+                }
+            }
+            var tail = collected.Count > limit ? collected.GetRange(collected.Count - limit, limit) : collected;
+            return Ok(new { file = newest.Name, lines = tail });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "GetLogs failed");
+            return Ok(new { file = (string?)null, lines = new[] { "log read failed: " + ex.Message } });
+        }
+    }
 
     [Authorize(Policy = Policies.RequiresElevation)]
     [HttpGet("Stats")]
@@ -914,6 +972,47 @@ h1{{font-weight:400;font-size:1.2rem}}
         if (key is null) return Unauthorized();
         if (!IsWithinSchedule(key)) return StatusCode(403, "Outside allowed-hours window");
         return Ok(digest.List(key.LibraryIds, key.BlockedTags, key.MaxOfficialRating, key.StrictUnknownRating));
+    }
+
+    // Hand a share-key holder a Jellyfin API key for stream proxying, so federating needs only
+    // ONE exchanged secret (the share key). Idempotent: one media key per share key, named
+    // deterministically and reused on repeat calls. Gated by AutoProvisionMediaKey so an admin
+    // can refuse to auto-issue full Jellyfin tokens.
+    [AllowAnonymous]
+    [HttpPost("ProvisionMediaKey")]
+    public async Task<IActionResult> ProvisionMediaKey(
+        [FromHeader(Name = "X-Federation-Share")] string? shareKey,
+        [FromServices] MediaBrowser.Controller.Security.IAuthenticationManager authMgr,
+        CancellationToken ct)
+    {
+        var key = ResolveShareKey(shareKey);
+        if (key is null) return Unauthorized();
+        var config = Plugin.Instance?.Configuration;
+        if (config is null) return StatusCode(500);
+        if (!config.AutoProvisionMediaKey)
+            return StatusCode(403, "media-key auto-provisioning disabled on this server");
+
+        var appName = "jellymesh-media-" + key.Id.ToString("N");
+        try
+        {
+            var existing = await authMgr.GetApiKeys().ConfigureAwait(false);
+            var found = existing.FirstOrDefault(k => string.Equals(k.AppName, appName, StringComparison.Ordinal));
+            if (found is null)
+            {
+                await authMgr.CreateApiKey(appName).ConfigureAwait(false);
+                existing = await authMgr.GetApiKeys().ConfigureAwait(false);
+                found = existing.FirstOrDefault(k => string.Equals(k.AppName, appName, StringComparison.Ordinal));
+            }
+            if (found is null || string.IsNullOrEmpty(found.AccessToken))
+                return StatusCode(500, "failed to mint media key");
+            _logger.LogInformation("Provisioned media key for share {ShareId}", key.Id);
+            return Ok(new { MediaApiKey = found.AccessToken });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ProvisionMediaKey failed for share {ShareId}", key.Id);
+            return StatusCode(502, "mint failed");
+        }
     }
 
     private static bool IsWithinSchedule(Configuration.ShareKey key)
@@ -998,14 +1097,38 @@ h1{{font-weight:400;font-size:1.2rem}}
 
     [Authorize(Policy = Policies.RequiresElevation)]
     [HttpDelete("Shares/{id}")]
-    public IActionResult DeleteShare(Guid id)
+    public async Task<IActionResult> DeleteShare(Guid id,
+        [FromServices] MediaBrowser.Controller.Security.IAuthenticationManager authMgr)
     {
         var config = Plugin.Instance?.Configuration;
         if (config is null) return StatusCode(500);
         var removed = config.Shares.RemoveAll(s => s.Id == id);
         if (removed == 0) return NotFound();
         Plugin.Instance!.SaveConfiguration();
+
+        // Revoke the Jellyfin API key we minted for this share via ProvisionMediaKey, otherwise
+        // the peer keeps full media access after the admin "revokes" the share.
+        await RevokeProvisionedMediaKey(authMgr, id).ConfigureAwait(false);
         return NoContent();
+    }
+
+    // Deletes the deterministically-named jellymesh-media-<shareId> Jellyfin API key, if present.
+    private async Task RevokeProvisionedMediaKey(MediaBrowser.Controller.Security.IAuthenticationManager authMgr, Guid shareId)
+    {
+        var appName = "jellymesh-media-" + shareId.ToString("N");
+        try
+        {
+            var keys = await authMgr.GetApiKeys().ConfigureAwait(false);
+            foreach (var k in keys.Where(k => string.Equals(k.AppName, appName, StringComparison.Ordinal) && !string.IsNullOrEmpty(k.AccessToken)))
+            {
+                await authMgr.DeleteApiKey(k.AccessToken).ConfigureAwait(false);
+                _logger.LogInformation("Revoked provisioned media key for share {ShareId}", shareId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to revoke provisioned media key for share {ShareId}", shareId);
+        }
     }
 
     private static Configuration.ShareKey? ResolveShareKey(string? presented)
@@ -1033,6 +1156,11 @@ h1{{font-weight:400;font-size:1.2rem}}
         System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
         return Convert.ToHexString(bytes);
     }
+
+    // Rejects the " :: " part separator (and newlines) used when packing introduction fields into
+    // a single pending note, so an introducer can't smuggle extra KEY=/BASIC= parts.
+    private static bool ContainsNoteDelimiter(string? s)
+        => s is not null && (s.Contains("::", StringComparison.Ordinal) || s.Contains('\n') || s.Contains('\r'));
 
     [Authorize(Policy = Policies.RequiresElevation)]
     [HttpPost("Sync/Trigger")]
@@ -1116,11 +1244,20 @@ h1{{font-weight:400;font-size:1.2rem}}
     }
 
     [HttpGet("Search")]
-    public async Task<IActionResult> Search([FromQuery] string searchTerm, [FromQuery] int limit = 25, CancellationToken ct = default)
+    public async Task<IActionResult> Search([FromQuery] string searchTerm, [FromQuery] int limit = 25,
+        [FromServices] Services.PeerLibraryCache cache = null!, CancellationToken ct = default)
     {
         var config = Plugin.Instance?.Configuration;
         if (config is null || string.IsNullOrWhiteSpace(searchTerm))
             return Ok(new { Results = Array.Empty<object>() });
+        // Reachable by any authenticated user and fans out to every peer, so cap the inputs and
+        // cache by term: a client looping the same search can't re-amplify it across the mesh.
+        if (searchTerm.Length > 200) return BadRequest("searchTerm too long");
+        limit = Math.Clamp(limit, 1, 50);
+
+        var cacheKey = "search:" + limit + ":" + searchTerm;
+        if (cache is not null && cache.TryGet(cacheKey, out var cached))
+            return Content(cached, "application/json");
 
         var tasks = config.RemoteServers
             .Where(s => s.Enabled)
@@ -1128,8 +1265,10 @@ h1{{font-weight:400;font-size:1.2rem}}
             .ToList();
 
         var bags = await Task.WhenAll(tasks).ConfigureAwait(false);
-        var merged = bags.SelectMany(x => x).Take(limit * config.RemoteServers.Count).ToList();
-        return Ok(new { TotalRecordCount = merged.Count, Results = merged });
+        var merged = bags.SelectMany(x => x).Take(limit * Math.Max(1, config.RemoteServers.Count)).ToList();
+        var json = JsonSerializer.Serialize(new { TotalRecordCount = merged.Count, Results = merged });
+        cache?.Store(cacheKey, json);
+        return Content(json, "application/json");
     }
 
     private async Task<List<FederatedSearchHit>> QueryPeerAsync(Configuration.RemoteServer server, string searchTerm, int limit, CancellationToken ct)
@@ -1137,7 +1276,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         var results = new List<FederatedSearchHit>();
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.BaseAddress = new Uri(server.BaseUrl.TrimEnd('/'));
             http.DefaultRequestHeaders.Add("X-Emby-Token", server.ApiKey);
             Services.RemoteJellyfinClient.AddBasicAuth(http, server);
@@ -1421,6 +1560,8 @@ h1{{font-weight:400;font-size:1.2rem}}
         Guid peerGuid;
         lock (Plugin.ConfigWriteLock)
         {
+            if (!Services.SsrfGuard.IsSafePeerBaseUrl(fromCanon, out var ssrfReason))
+                return BadRequest($"peer url rejected: {ssrfReason}");
             peerGuid = Guid.NewGuid();
             config.RemoteServers.Add(new Configuration.RemoteServer
             {
@@ -1620,6 +1761,8 @@ h1{{font-weight:400;font-size:1.2rem}}
         Guid peerGuid;
         lock (Plugin.ConfigWriteLock)
         {
+            if (!Services.SsrfGuard.IsSafePeerBaseUrl(row.TargetUrl, out var ssrfReason))
+                return BadRequest($"peer url rejected: {ssrfReason}");
             peerGuid = Guid.NewGuid();
             config.RemoteServers.Add(new Configuration.RemoteServer
             {
@@ -1698,6 +1841,8 @@ h1{{font-weight:400;font-size:1.2rem}}
             {
                 lock (Plugin.ConfigWriteLock)
                 {
+                    if (!Services.SsrfGuard.IsSafePeerBaseUrl(theirCanon, out var ssrfReason))
+                        return BadRequest($"peer url rejected: {ssrfReason}");
                     config.RemoteServers.Add(new Configuration.RemoteServer
                     {
                         Id = Guid.NewGuid(),
@@ -1909,9 +2054,14 @@ h1{{font-weight:400;font-size:1.2rem}}
         return Ok(sanitized);
     }
 
+    [AllowAnonymous]
     [HttpGet("PeerDirectory")]
     public IActionResult GetPeerDirectory([FromHeader(Name = "X-Federation-Share")] string? shareKey)
     {
+        // [AllowAnonymous] because remote peers authenticate with a share-key header, not a
+        // Jellyfin token: without it the class-level [Authorize] 401s every inter-server call
+        // (even with a valid share key) and the consumer wrongly shows "no share key". Local
+        // admin calls still populate User below for the isLocal short-circuit.
         // Two callers: the local admin (auth via X-Emby-Token, no share key required) and
         // remote peers (must present a share key OR we have to opt in to public listing).
         var config = Plugin.Instance?.Configuration;
@@ -1950,7 +2100,7 @@ h1{{font-weight:400;font-size:1.2rem}}
         }
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.Timeout = TimeSpan.FromSeconds(10);
             Services.RemoteJellyfinClient.AddBasicAuth(http, peer);
             using var req = new HttpRequestMessage(HttpMethod.Get, $"{peer.BaseUrl.TrimEnd('/')}/Library/VirtualFolders");
@@ -2008,6 +2158,7 @@ h1{{font-weight:400;font-size:1.2rem}}
 
     [HttpGet("Peers/{peerId}/Libraries/{libraryId}/Items")]
     public async Task<IActionResult> ListPeerLibraryItems(string peerId, string libraryId, [FromQuery] int? limit,
+        [FromQuery] string? searchTerm,
         [FromServices] MediaBrowser.Controller.Library.ILibraryManager library,
         [FromServices] Services.PeerLibraryCache cache,
         CancellationToken ct)
@@ -2017,17 +2168,22 @@ h1{{font-weight:400;font-size:1.2rem}}
         if (config is null) return StatusCode(500);
         var peer = config.RemoteServers.FirstOrDefault(p => p.Id == pid);
         if (peer is null || !peer.Enabled) return NotFound();
+        // Don't let a caller pull a peer library the admin explicitly disabled by guessing its
+        // id: libraryId is forwarded straight to the peer as ParentId with the peer's key.
+        if (config.PeerLibrarySettings.Any(s => s.PeerId == pid && s.LibraryId == libraryId && !s.Enabled))
+            return NotFound();
         var lim = Math.Clamp(limit ?? 24, 1, 100);
-        var cacheKey = Services.PeerLibraryCache.LibItemsKey(pid, libraryId, lim);
+        var cacheKey = Services.PeerLibraryCache.LibItemsKey(pid, libraryId, lim, searchTerm);
         if (cache.TryGet(cacheKey, out var cached)) return Content(cached, "application/json");
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             http.Timeout = TimeSpan.FromSeconds(10);
             Services.RemoteJellyfinClient.AddBasicAuth(http, peer);
             var fields = "ProviderIds,MediaStreams,Container,Width,Height,RunTimeTicks";
             var prefix = !string.IsNullOrEmpty(peer.RemoteUserId) ? $"/Users/{peer.RemoteUserId}/Items" : "/Items";
-            var url = $"{peer.BaseUrl.TrimEnd('/')}{prefix}?ParentId={Uri.EscapeDataString(libraryId)}&Recursive=true&IncludeItemTypes=Movie,Series&Fields={fields}&Limit={lim}&SortBy=DateCreated&SortOrder=Descending";
+            var searchQs = string.IsNullOrWhiteSpace(searchTerm) ? string.Empty : $"&SearchTerm={Uri.EscapeDataString(searchTerm)}";
+            var url = $"{peer.BaseUrl.TrimEnd('/')}{prefix}?ParentId={Uri.EscapeDataString(libraryId)}&Recursive=true&IncludeItemTypes=Movie,Series&Fields={fields}&Limit={lim}&SortBy=DateCreated&SortOrder=Descending{searchQs}";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Add("X-Emby-Token", peer.ApiKey);
             using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
@@ -2192,8 +2348,16 @@ h1{{font-weight:400;font-size:1.2rem}}
         if (config is null) return StatusCode(500);
         var peer = config.RemoteServers.FirstOrDefault(p => p.Id == pid);
         if (peer is null) return NotFound();
-        var rows = await client.FetchPeerDirectoryAsync(peer, ct).ConfigureAwait(false);
-        return Ok(rows);
+        var res = await client.FetchPeerDirectoryAsync(peer, ct).ConfigureAwait(false);
+        var reason = res.Status switch
+        {
+            200 => res.Rows.Count == 0 ? "empty" : "ok",
+            401 => "no-share-key",
+            403 => "not-published",
+            0 => "unreachable",
+            _ => "error"
+        };
+        return Ok(new { status = res.Status, reason, rows = res.Rows });
     }
 
     [Authorize(Policy = Policies.RequiresElevation)]

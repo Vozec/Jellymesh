@@ -152,52 +152,51 @@ public class RemoteJellyfinClient
             do
             {
                 var url = $"/Users/{server.RemoteUserId}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=UserData,ProviderIds&{filter}&StartIndex={start}&Limit={pageSize}";
-                int pageYielded;
-                (total, pageYielded) = await EnumerateUserDataPageAsync(http, url, ct, this).ConfigureAwait(false);
-                if (pageYielded == 0) break;
-                start += pageYielded;
+                // Helper returns a per-call list (no shared buffer) so concurrent sync rounds
+                // can't interleave and corrupt each other's results. PageSeen is the number of
+                // items the page returned (not just the mapped ones) so pagination advances by
+                // the full page even when some items have no UserData. (yields are forbidden
+                // directly inside catch blocks; the helper avoids that constraint.)
+                var page = await EnumerateUserDataPageAsync(http, url, ct, _logger).ConfigureAwait(false);
+                total = page.Total;
+                if (page.PageSeen == 0) break;
+                start += page.PageSeen;
 
-                // Yield happens by re-enumerating - done above via helper that puts entries
-                // into a buffer, then we drain here. (yields are forbidden directly inside
-                // catch blocks; the helper avoids that constraint.)
-                foreach (var entry in _pendingBuffer) yield return entry;
-                _pendingBuffer.Clear();
+                foreach (var entry in page.Entries) yield return entry;
             } while (start < total);
         }
     }
 
-    // Re-used scratch buffer per call. Safe because FetchUserDataAsync is invoked sequentially
-    // by FederationSyncTask (one sync round at a time).
-    private readonly List<RemoteUserDataEntry> _pendingBuffer = new();
-
-    private static async Task<(int Total, int Yielded)> EnumerateUserDataPageAsync(
-        HttpClient http, string url, CancellationToken ct, RemoteJellyfinClient self)
+    private static async Task<(int Total, int PageSeen, List<RemoteUserDataEntry> Entries)> EnumerateUserDataPageAsync(
+        HttpClient http, string url, CancellationToken ct, ILogger logger)
     {
         HttpResponseMessage? resp = null;
         JsonDocument? doc = null;
+        var entries = new List<RemoteUserDataEntry>();
         try
         {
             resp = await http.GetAsync(url, ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode) return (0, 0);
+            if (!resp.IsSuccessStatusCode) return (0, 0, entries);
             var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
 
             var total = doc.RootElement.TryGetProperty("TotalRecordCount", out var t) && t.ValueKind == JsonValueKind.Number
                 ? t.GetInt32() : 0;
-            if (!doc.RootElement.TryGetProperty("Items", out var items)) return (total, 0);
+            if (!doc.RootElement.TryGetProperty("Items", out var items)) return (total, 0, entries);
 
-            var yielded = 0;
+            var seen = 0;
             foreach (var el in items.EnumerateArray())
             {
+                seen++;
                 var entry = MapUserData(el);
-                if (entry is not null) { self._pendingBuffer.Add(entry); yielded++; }
+                if (entry is not null) entries.Add(entry);
             }
-            return (total, yielded);
+            return (total, seen, entries);
         }
         catch (Exception ex)
         {
-            self._logger.LogDebug(ex, "FetchUserData page failed for {Url}", url);
-            return (0, 0);
+            logger.LogDebug(ex, "FetchUserData page failed for {Url}", url);
+            return (0, 0, entries);
         }
         finally
         {
@@ -232,7 +231,7 @@ public class RemoteJellyfinClient
     {
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             AddBasicAuth(http, peer);
             http.Timeout = TimeSpan.FromSeconds(15);
             var url = $"{peer.BaseUrl.TrimEnd('/')}/Federation/Introduce";
@@ -272,7 +271,7 @@ public class RemoteJellyfinClient
     {
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             AddBasicAuth(http, receiver);
             http.Timeout = TimeSpan.FromSeconds(10);
 
@@ -316,7 +315,8 @@ public class RemoteJellyfinClient
         if (string.IsNullOrEmpty(server.FederationShareKey)) return false;
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
+            AddBasicAuth(http, server);
             http.Timeout = TimeSpan.FromSeconds(10);
             var url = $"{server.BaseUrl.TrimEnd('/')}/Federation/Request";
             var body = JsonContent.Create(new
@@ -337,6 +337,39 @@ public class RemoteJellyfinClient
         {
             _logger.LogWarning(ex, "SendRequest to {Peer} failed", server.Name);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Ask a peer for a Jellyfin media API key using only the share key we already hold, so the
+    /// admin never has to create + paste a second token. Returns the minted key or null.
+    /// </summary>
+    public async Task<(string? Key, int Status)> ProvisionMediaKeyAsync(RemoteServer server, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(server.FederationShareKey)) return (null, 0);
+        try
+        {
+            var http = _httpClientFactory.CreateClient("federation");
+            http.Timeout = TimeSpan.FromSeconds(10);
+            AddBasicAuth(http, server);
+            var url = $"{server.BaseUrl.TrimEnd('/')}/Federation/ProvisionMediaKey";
+            using var req = new HttpRequestMessage(HttpMethod.Post, url);
+            req.Headers.Add("X-Federation-Share", server.FederationShareKey);
+            using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return (null, (int)resp.StatusCode);
+            using var s = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(s, cancellationToken: ct).ConfigureAwait(false);
+            if (doc.RootElement.TryGetProperty("MediaApiKey", out var k))
+            {
+                var key = k.GetString();
+                return (string.IsNullOrEmpty(key) ? null : key, (int)resp.StatusCode);
+            }
+            return (null, (int)resp.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ProvisionMediaKey from {Peer} failed", server.Name);
+            return (null, 0);
         }
     }
 
@@ -411,7 +444,9 @@ public class RemoteJellyfinClient
 
     private HttpClient BuildClient(RemoteServer server)
     {
-        var http = _httpClientFactory.CreateClient();
+        // "federation" client carries the mTLS primary handler (per-host client cert) + SSRF
+        // guard. Use it for all peer-bound calls so mutual TLS actually applies.
+        var http = _httpClientFactory.CreateClient("federation");
         http.BaseAddress = new Uri(server.BaseUrl.TrimEnd('/'));
         http.DefaultRequestHeaders.Add("X-Emby-Token", server.ApiKey);
         AddBasicAuth(http, server);
@@ -436,24 +471,25 @@ public class RemoteJellyfinClient
     }
 
     /// <summary>Ask a peer for their published peer-directory (name + url + tags only).</summary>
-    public async Task<List<PeerDirectoryRow>> FetchPeerDirectoryAsync(RemoteServer peer, CancellationToken ct)
+    public async Task<PeerDirectoryResult> FetchPeerDirectoryAsync(RemoteServer peer, CancellationToken ct)
     {
-        var list = new List<PeerDirectoryRow>();
+        var res = new PeerDirectoryResult();
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             AddBasicAuth(http, peer);
             http.Timeout = TimeSpan.FromSeconds(10);
             using var req = new HttpRequestMessage(HttpMethod.Get, $"{peer.BaseUrl.TrimEnd('/')}/Federation/PeerDirectory");
             if (!string.IsNullOrEmpty(peer.FederationShareKey))
                 req.Headers.Add("X-Federation-Share", peer.FederationShareKey);
             using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode) return list;
+            res.Status = (int)resp.StatusCode;
+            if (!resp.IsSuccessStatusCode) return res; // caller maps status -> reason
             using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
             foreach (var el in doc.RootElement.EnumerateArray())
             {
-                list.Add(new PeerDirectoryRow
+                res.Rows.Add(new PeerDirectoryRow
                 {
                     Name = el.TryGetProperty("name", out var n) ? n.GetString() : null,
                     Url = el.TryGetProperty("url", out var u) ? u.GetString() : null,
@@ -466,8 +502,9 @@ public class RemoteJellyfinClient
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "PeerDirectory fetch failed for {Peer}", peer.Name);
+            res.Status = 0; // network / unreachable
         }
-        return list;
+        return res;
     }
 
     // === Direct handshake (request access + invite) ===
@@ -478,9 +515,14 @@ public class RemoteJellyfinClient
         string? ourBasicAuthUser, string? ourBasicAuthPass,
         CancellationToken ct)
     {
+        if (!SsrfGuard.IsSafePeerBaseUrl(targetUrl, out var ssrfReason))
+        {
+            _logger.LogWarning("AccessRequest to {Target} blocked: {Reason}", targetUrl, ssrfReason);
+            return new HandshakeCallResult { HttpStatus = 0 };
+        }
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation-direct");
             AddBasicAuth(http, targetBasicAuthUser, targetBasicAuthPass);
             http.Timeout = TimeSpan.FromSeconds(15);
             using var req = new HttpRequestMessage(HttpMethod.Post, $"{targetUrl.TrimEnd('/')}/Federation/AccessRequest")
@@ -516,9 +558,14 @@ public class RemoteJellyfinClient
         string? ourBasicAuthUser, string? ourBasicAuthPass,
         CancellationToken ct)
     {
+        if (!SsrfGuard.IsSafePeerBaseUrl(targetUrl, out var ssrfReason))
+        {
+            _logger.LogWarning("AccessGranted to {Target} blocked: {Reason}", targetUrl, ssrfReason);
+            return new HandshakeCallResult { HttpStatus = 0 };
+        }
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation-direct");
             AddBasicAuth(http, targetBasicAuthUser, targetBasicAuthPass);
             http.Timeout = TimeSpan.FromSeconds(15);
             using var req = new HttpRequestMessage(HttpMethod.Post, $"{targetUrl.TrimEnd('/')}/Federation/AccessGranted")
@@ -552,9 +599,14 @@ public class RemoteJellyfinClient
         string? ourBasicAuthUser, string? ourBasicAuthPass,
         CancellationToken ct)
     {
+        if (!SsrfGuard.IsSafePeerBaseUrl(targetUrl, out var ssrfReason))
+        {
+            _logger.LogWarning("InviteOffer to {Target} blocked: {Reason}", targetUrl, ssrfReason);
+            return new HandshakeCallResult { HttpStatus = 0 };
+        }
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation-direct");
             AddBasicAuth(http, targetBasicAuthUser, targetBasicAuthPass);
             http.Timeout = TimeSpan.FromSeconds(15);
             using var req = new HttpRequestMessage(HttpMethod.Post, $"{targetUrl.TrimEnd('/')}/Federation/InviteOffer")
@@ -589,9 +641,14 @@ public class RemoteJellyfinClient
         string? ourBaseUrl, string? ourBasicAuthUser, string? ourBasicAuthPass,
         CancellationToken ct)
     {
+        if (!SsrfGuard.IsSafePeerBaseUrl(targetUrl, out var ssrfReason))
+        {
+            _logger.LogWarning("InviteAccepted to {Target} blocked: {Reason}", targetUrl, ssrfReason);
+            return new HandshakeCallResult { HttpStatus = 0 };
+        }
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation-direct");
             AddBasicAuth(http, targetBasicAuthUser, targetBasicAuthPass);
             http.Timeout = TimeSpan.FromSeconds(15);
             using var req = new HttpRequestMessage(HttpMethod.Post, $"{targetUrl.TrimEnd('/')}/Federation/InviteAccepted")
@@ -632,4 +689,11 @@ public class PeerDirectoryRow
     public string? Name { get; set; }
     public string? Url { get; set; }
     public List<string> Tags { get; set; } = new();
+}
+
+public class PeerDirectoryResult
+{
+    /// <summary>Upstream HTTP status. 0 = network/unreachable, 200 = ok, 401 = no/invalid share key, 403 = directory not published on the peer.</summary>
+    public int Status { get; set; }
+    public List<PeerDirectoryRow> Rows { get; set; } = new();
 }

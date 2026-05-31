@@ -181,6 +181,8 @@
             .jm-nav-link { display: flex; align-items: center; padding: 0.75em 1.5em; color: inherit; text-decoration: none; }
             .jm-nav-link:hover { background: rgba(255,255,255,0.05); }
             .jm-nav-link .material-icons { margin-right: 1em; opacity: 0.7; }
+            #jm-nav-link { position: relative; }
+            .jm-nav-badge { position: absolute; top: 50%; right: 1.1em; transform: translateY(-50%); min-width: 1.5em; height: 1.5em; padding: 0 0.4em; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; background: #e5392f; color: #fff; font-size: 0.72em; font-weight: 700; border-radius: 1em; line-height: 1; box-shadow: 0 0 0 2px rgba(0,0,0,0.25); }
         `;
         document.head.appendChild(s);
     }
@@ -390,7 +392,7 @@
                         <div class="cardPadder cardPadder-backdrop"></div>
                         <a class="cardImageContainer coveredImage cardContent" href="${href}" style="background:${fallback};">
                             <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
-                            <div class="cardImage" style="background-image:url('${imageUrl}');background-size:cover;background-position:center;"></div>
+                            <div class="cardImage" style="background-image:url('${cssUrl(imageUrl)}');background-size:cover;background-position:center;"></div>
                         </a>
                     </div>
                     <div class="cardText cardTextCentered cardText-first"><bdi>${escapeHtml(lib.name || 'Library')}</bdi></div>
@@ -423,7 +425,7 @@
                         <a class="cardImageContainer coveredImage cardContent itemAction" href="${href}" ${dataAttrs}>
                             <span class="jm-card-badge">${escapeHtml(peer.Name)}</span>
                             ${pendingBadge}
-                            <div class="cardImage" style="background-image:url('${imageUrl}');"></div>
+                            <div class="cardImage" style="background-image:url('${cssUrl(imageUrl)}');"></div>
                         </a>
                     </div>
                     <div class="cardText cardTextCentered cardText-first">
@@ -439,6 +441,13 @@
 
     function escapeHtml(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Percent-encode the chars that could break out of a CSS url('...') context. The values we
+    // drop in here are URLs with peer-controlled path segments, so percent-encoding quotes/parens/
+    // backslash/whitespace is harmless to the fetch but neutralizes CSS injection.
+    function cssUrl(u) {
+        return String(u == null ? '' : u).replace(/["'()\\\s]/g, encodeURIComponent);
     }
 
     // Polls /Federation/Sync/Progress every 800ms while a sync round is active, rendering a
@@ -544,10 +553,12 @@
         if (!ms) return null;
         const v = (ms.MediaStreams || []).find((s) => s.Type === 'Video');
         if (!v) return null;
+        // Codec/Container are peer-controlled strings and this label is dropped into innerHTML
+        // via appendBadge, so escape them.
         const parts = [];
         if (v.Height) parts.push(v.Height + 'p');
-        if (v.Codec) parts.push(v.Codec.toUpperCase());
-        if (ms.Container) parts.push(ms.Container.toUpperCase());
+        if (v.Codec) parts.push(escapeHtml(v.Codec.toUpperCase()));
+        if (ms.Container) parts.push(escapeHtml(ms.Container.toUpperCase()));
         return parts.join(' ');
     }
 
@@ -567,20 +578,28 @@
         // can end up stranded inside a hidden/detached page after you leave and come back.
         // We resolve the live host each tick and self-heal below.
         const visible = (el) => el && el.offsetParent !== null;
-        const host =
-            [
-                document.querySelector('.dashboardDocument .pageTabContent.is-active'),
-                document.querySelector('.dashboardDocument [data-role="content"]'),
-                document.querySelector('.dashboardDocument .content-primary'),
-                document.querySelector('#libraryPage .content-primary'),
-                document.querySelector('.libraryPage'),
-                document.querySelector('.dashboardContainer .MuiContainer-root'),
-                document.querySelector('.MuiContainer-root[role="region"]')
-            ].find(visible)
+        const candidates = [
+            document.querySelector('.dashboardDocument .pageTabContent.is-active'),
+            document.querySelector('.dashboardDocument .pageTabContent:not(.hide)'),
+            document.querySelector('.dashboardDocument [data-role="content"]'),
+            document.querySelector('.dashboardDocument .content-primary'),
+            document.querySelector('#libraryPage .content-primary'),
+            document.querySelector('#mediaLibraryPage .content-primary'),
+            document.querySelector('.libraryPage:not(.hide)'),
+            document.querySelector('.librarySettingsPage:not(.hide)'),
+            document.querySelector('.dashboardContainer .MuiContainer-root'),
+            document.querySelector('.MuiContainer-root[role="region"]'),
+            document.querySelector('.dashboardDocument .readOnlyContent'),
+            document.querySelector('.page:not(.hide) .content-primary')
+        ];
+        let host = candidates.find(visible)
             || (() => {
-                const h = document.querySelector('.dashboardDocument h2, .dashboardDocument h1');
+                const h = document.querySelector('.dashboardDocument h2, .dashboardDocument h1, .page:not(.hide) h2');
                 return h && visible(h) ? h.parentElement : null;
-            })();
+            })()
+            // Last resort: take the first non-null candidate even if offsetParent is briefly null
+            // during a route transition; the next tick/observer pass self-heals if it was wrong.
+            || candidates.find(Boolean);
         if (!host) return;
         // Self-heal: if a panel already lives inside the current visible host, keep it.
         // Otherwise drop any stale/stranded copy and rebuild into the live host.
@@ -592,7 +611,7 @@
         const panel = document.createElement('div');
         panel.id = 'jm-dashlibs';
         panel.innerHTML = `
-            <h2><span class="material-icons">hub</span>Federated libraries</h2>
+            <h2><span class="material-icons">video_library</span>Federated libraries</h2>
             <p class="jm-dashlibs-sub">Libraries shared by your peers. Toggle visibility, hide from the home page, or merge a peer library into one of your local libraries.</p>
             <div class="jm-toolbar">
                 <div class="jm-field">
@@ -738,6 +757,39 @@
         myExt.parentNode.insertBefore(link, myExt.nextSibling);
     }
 
+    // ----- 4b. Pending federation notifications ------------------------------
+    // Phone-style indicator: a red count bubble on the Jellymesh drawer entry, plus a toast
+    // when something NEW lands (an introduction to approve, an access/content request). Polled
+    // from /Federation/PendingCounts; stops itself for non-admins (403).
+    let jmPendingLast = null;   // null = first fetch not done yet (don't toast on initial count)
+    let jmPendingStop = false;
+    function jmSetNavBadge(total) {
+        const link = document.getElementById('jm-nav-link');
+        if (!link) return;
+        let b = link.querySelector('.jm-nav-badge');
+        if (total > 0) {
+            if (!b) { b = document.createElement('span'); b.className = 'jm-nav-badge'; link.appendChild(b); }
+            b.textContent = total > 99 ? '99+' : String(total);
+            b.style.display = '';
+        } else if (b) {
+            b.style.display = 'none';
+        }
+    }
+    function jmPollPending() {
+        if (jmPendingStop || !token()) return;
+        jApi('/Federation/PendingCounts')
+            .then((c) => {
+                const total = (c.accessRequests || 0) + (c.introductions || 0) + (c.contentRequests || 0);
+                jmSetNavBadge(total);
+                if (jmPendingLast !== null && total > jmPendingLast) {
+                    const n = total - jmPendingLast;
+                    toast(n === 1 ? '1 new federation request to review' : `${n} new federation requests to review`);
+                }
+                jmPendingLast = total;
+            })
+            .catch((e) => { if (/HTTP 40[13]/.test(String(e && e.message))) jmPendingStop = true; });
+    }
+
     // ----- 5. Tick loop ------------------------------------------------------
     function tick() {
         ensureStyle();
@@ -745,6 +797,8 @@
         ensureItemBadge();
         ensureHomeSections();
         ensureNavLink();
+        // Re-apply the cached pending badge after the drawer re-renders (no network here).
+        if (jmPendingLast) jmSetNavBadge(jmPendingLast);
         ensureDashboardLibrariesPanel();
         // Cards rendered between mutations (Jellyfin's cardBuilder sometimes sets data-id
         // after the node is in the DOM, which the MutationObserver attribute filter
@@ -757,11 +811,33 @@
         ensureStyle();
         kick();
         setInterval(tick, 800);
+        jmPollPending();
+        setInterval(jmPollPending, 30000);
     });
-    if (document.readyState !== 'loading') { ensureStyle(); kick(); }
+    if (document.readyState !== 'loading') { ensureStyle(); kick(); jmPollPending(); setInterval(jmPollPending, 30000); }
     // Run immediately on navigation (not after a 400ms delay) so injected UI appears at once;
     // a couple of short retries cover the SPA rendering the new route asynchronously.
     function onNav() { kick(); setTimeout(kick, 120); setTimeout(kick, 350); }
     window.addEventListener('hashchange', onNav);
     window.addEventListener('popstate', onNav);
+
+    // The 800ms poll can miss the brief window where the dashboard libraries content mounts
+    // (cached pages swap synchronously, then re-render). Observe DOM mutations and inject the
+    // panel as soon as the host appears, debounced to one rAF so we don't thrash. Cheap: the
+    // handler bails immediately unless we're on the libraries route without a live panel.
+    let obsScheduled = false;
+    const navObserver = new MutationObserver(() => {
+        if (obsScheduled) return;
+        if (!/^#\/dashboard\/libraries(\?|$)/.test(location.hash)) return;
+        obsScheduled = true;
+        requestAnimationFrame(() => {
+            obsScheduled = false;
+            try { ensureDashboardLibrariesPanel(); } catch (_) {}
+        });
+    });
+    function startNavObserver() {
+        if (document.body) navObserver.observe(document.body, { childList: true, subtree: true });
+        else document.addEventListener('DOMContentLoaded', startNavObserver, { once: true });
+    }
+    startNavObserver();
 })();

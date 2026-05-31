@@ -65,9 +65,15 @@ public class FederatedMediaSourceProvider : IMediaSourceProvider
                     rs.Id = $"fed_{server.Id:N}_{originalSourceId}";
                     rs.IsRemote = true;
                     rs.Path = BuildProxyUrl(server.Id, match.RemoteItemId, originalSourceId);
-                    // Note: leave rs.Protocol as set by the peer (File/Hls/Http) - the player
-                    // sees the proxy URL via Path; forcing Http here strips Hls semantics from
-                    // MediaSourceInfo that the player relies on for direct-play decisions.
+                    // Must be Http + direct-play: the player then uses Path (our /Federation/Stream
+                    // proxy, which streams the peer's bytes and accepts the signed fst). Left as the
+                    // peer's File/Hls protocol it would be filtered out of the version picker as
+                    // unplayable (the player would build /Videos/{localId}/stream and Jellyfin would
+                    // try to open a non-existent local file).
+                    rs.Protocol = MediaBrowser.Model.MediaInfo.MediaProtocol.Http;
+                    rs.SupportsDirectPlay = true;
+                    rs.SupportsDirectStream = true;
+                    rs.SupportsTranscoding = false;
                     rs.Name = $"[{server.Name}] {rs.Name}";
                     sources.Add(rs);
                 }
@@ -85,5 +91,10 @@ public class FederatedMediaSourceProvider : IMediaSourceProvider
         => throw new NotImplementedException();
 
     private static string BuildProxyUrl(Guid serverId, string remoteItemId, string sourceId)
-        => $"/Federation/Stream/{serverId:N}/{remoteItemId}?sourceId={sourceId}";
+    {
+        // <video src> can't carry a session token, so sign a short-lived fst the Stream
+        // endpoint accepts anonymously.
+        var fst = Services.FederationInterceptMiddleware.NewMediaToken(serverId.ToString("N"), remoteItemId);
+        return $"/Federation/Stream/{serverId:N}/{remoteItemId}?sourceId={sourceId}&fst={Uri.EscapeDataString(fst)}";
+    }
 }

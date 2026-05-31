@@ -15,8 +15,22 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         // Named client for all peer-bound proxy calls. AllowAutoRedirect=false stops a peer
         // 3xx from replaying our X-Emby-Token / Basic creds to an attacker-controlled redirect
         // target. Used by FederationInterceptMiddleware via CreateClient("federation").
+        serviceCollection.AddTransient<Services.SsrfGuardHandler>();
+        // Apply the mutual-TLS primary handler (per-host client cert + private-CA validation) to
+        // EVERY HttpClient the factory creates, so all peer call sites get mTLS without changes.
+        serviceCollection.ConfigureHttpClientDefaults(b =>
+            b.ConfigurePrimaryHttpMessageHandler(() => Services.PeerMtls.BuildHandler(allowAutoRedirect: true)));
+        // The federation client keeps AllowAutoRedirect=false (stops a peer 3xx replaying creds)
+        // plus the SSRF guard, on top of the same mTLS handler.
         serviceCollection.AddHttpClient("federation")
-            .ConfigurePrimaryHttpMessageHandler(() => new System.Net.Http.HttpClientHandler { AllowAutoRedirect = false });
+            .ConfigurePrimaryHttpMessageHandler(() => Services.PeerMtls.BuildHandler(allowAutoRedirect: false))
+            .AddHttpMessageHandler<Services.SsrfGuardHandler>();
+        // First-contact handshake client (AccessRequest/Granted/Invite). The target is not yet a
+        // configured peer, so the allowlist SSRF guard would wrongly block it; instead the caller
+        // gates the destination with SsrfGuard.IsSafePeerBaseUrl. Still no-redirect + mTLS so a
+        // peer 3xx can't replay our Basic creds to an attacker-controlled host.
+        serviceCollection.AddHttpClient("federation-direct")
+            .ConfigurePrimaryHttpMessageHandler(() => Services.PeerMtls.BuildHandler(allowAutoRedirect: false));
         serviceCollection.AddSingleton<RemoteItemStore>();
         serviceCollection.AddSingleton<RemoteJellyfinClient>();
         serviceCollection.AddSingleton<LocalCatalogDigest>();

@@ -47,20 +47,50 @@ public class HealthMonitorService : BackgroundService
     private static readonly TimeSpan PersistEvery = TimeSpan.FromMinutes(5);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, (DateTime LastWrite, bool LastOnline)> _lastPersist = new();
 
+    // Peers that returned a permanent refusal (401 bad share key / 403 auto-provision disabled)
+    // to ProvisionMediaKey. We stop re-asking them every cycle so a refusing peer isn't hit
+    // 2,880×/day forever; cleared only on plugin restart.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> _provisionGaveUp = new();
+
+    // Adaptive probe cadence: online peers are pinged every cycle (30s) for fast down-detection;
+    // a peer found offline is backed off to one probe every 5 min so a long-down peer isn't hit
+    // 2/min forever. A gated peer with no entry here is "due now". Coming back online removes the
+    // gate, so reconnection is picked up within at most one DownProbeInterval.
+    private static readonly TimeSpan DownProbeInterval = TimeSpan.FromMinutes(5);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> _nextProbe = new();
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Federation health monitor started, interval {Interval}s", CheckInterval.TotalSeconds);
         while (!stoppingToken.IsCancellationRequested)
         {
+          try
+          {
             var config = Plugin.Instance?.Configuration;
             if (config is not null)
             {
-                var checks = config.RemoteServers.Where(s => s.Enabled).Select(async server =>
+                // Snapshot the list before fanning out: the admin UI can mutate the live
+                // RemoteServers collection, and lazily enumerating it inside Task.WhenAll would
+                // throw "collection was modified".
+                var servers = config.RemoteServers.Where(s => s.Enabled).ToList();
+                // Only probe peers that are due this cycle: online peers (no gate) every tick,
+                // offline peers at most once per DownProbeInterval.
+                var nowTick = DateTime.UtcNow;
+                var due = servers.Where(s => !_nextProbe.TryGetValue(s.Id, out var t) || nowTick >= t).ToList();
+                var checks = due.Select(async server =>
                 {
                     var sw = Stopwatch.StartNew();
-                    var online = await _client.PingAsync(server, stoppingToken).ConfigureAwait(false);
+                    // Bound a single hung peer so it can't stall the whole round (BuildClient's
+                    // own timeout is 30s, tuned for sync pulls, not 30s-per-cycle liveness pings).
+                    using var pingCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    pingCts.CancelAfter(TimeSpan.FromSeconds(8));
+                    var online = await _client.PingAsync(server, pingCts.Token).ConfigureAwait(false);
                     sw.Stop();
                     _registry.Update(server.Id, online, sw.Elapsed);
+
+                    // Back a down peer off to the slow cadence; clear the gate once it answers.
+                    if (online) _nextProbe.TryRemove(server.Id, out _);
+                    else _nextProbe[server.Id] = DateTime.UtcNow + DownProbeInterval;
 
                     var now = DateTime.UtcNow;
                     var should = !_lastPersist.TryGetValue(server.Id, out var last)
@@ -81,7 +111,51 @@ public class HealthMonitorService : BackgroundService
                 {
                     _logger.LogWarning(ex, "Health check round failed");
                 }
+
+                // Auto-provision the media API key for any peer we hold a share key for but no
+                // media key yet, so the admin only ever exchanges ONE secret. Iterate the snapshot
+                // (not the live list) and skip peers that already refused permanently.
+                foreach (var server in servers.Where(s =>
+                    !string.IsNullOrEmpty(s.FederationShareKey) && string.IsNullOrEmpty(s.ApiKey)
+                    && !_provisionGaveUp.ContainsKey(s.Id) && _registry.IsOnline(s.Id)))
+                {
+                    try
+                    {
+                        var (mediaKey, status) = await _client.ProvisionMediaKeyAsync(server, stoppingToken).ConfigureAwait(false);
+                        if (!string.IsNullOrEmpty(mediaKey))
+                        {
+                            lock (Plugin.ConfigWriteLock)
+                            {
+                                var live = Plugin.Instance?.Configuration?.RemoteServers.FirstOrDefault(s => s.Id == server.Id);
+                                if (live is not null && string.IsNullOrEmpty(live.ApiKey))
+                                {
+                                    live.ApiKey = mediaKey;
+                                    Plugin.Instance?.SaveConfiguration();
+                                    _logger.LogInformation("Auto-provisioned media key from peer {Peer}", server.Name);
+                                }
+                            }
+                        }
+                        else if (status is 401 or 403)
+                        {
+                            // Permanent refusal: bad share key, or the peer disabled auto-provision.
+                            // Stop asking so we don't hammer it every 30s indefinitely.
+                            _provisionGaveUp.TryAdd(server.Id, 0);
+                            _logger.LogInformation("Media key auto-provision refused by {Peer} (HTTP {Status}); will not retry until restart", server.Name, status);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Media key auto-provision for {Peer} failed", server.Name);
+                    }
+                }
             }
+          }
+          catch (Exception ex)
+          {
+            // Last-resort guard: an unhandled throw out of ExecuteAsync stops the whole host
+            // (BackgroundServiceExceptionBehavior.StopHost). Never let one bad cycle kill Jellyfin.
+            _logger.LogError(ex, "Health monitor cycle failed; continuing");
+          }
 
             try
             {

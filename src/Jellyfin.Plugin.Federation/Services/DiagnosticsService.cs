@@ -110,7 +110,7 @@ public class DiagnosticsService
         var streamUrl = $"{peer.BaseUrl.TrimEnd('/')}/System/Info";
         try
         {
-            var http = _httpClientFactory.CreateClient();
+            var http = _httpClientFactory.CreateClient("federation");
             RemoteJellyfinClient.AddBasicAuth(http, peer);
             http.Timeout = TimeSpan.FromSeconds(5);
             using var req = new HttpRequestMessage(HttpMethod.Get, streamUrl);

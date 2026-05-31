@@ -50,5 +50,6 @@ public class PeerLibraryCache
     public void Clear() => _entries.Clear();
 
     public static string LibsKey(Guid peerId) => $"peer:{peerId:N}:libs";
-    public static string LibItemsKey(Guid peerId, string libId, int limit) => $"peer:{peerId:N}:lib:{libId}:limit:{limit}";
+    public static string LibItemsKey(Guid peerId, string libId, int limit, string? searchTerm = null) =>
+        $"peer:{peerId:N}:lib:{libId}:limit:{limit}:q:{searchTerm ?? string.Empty}";
 }

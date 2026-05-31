@@ -25,6 +25,29 @@ public class PluginConfiguration : BasePluginConfiguration
     public long OutboundBitrateCapBps { get; set; } = 0;
 
     /// <summary>
+    /// Base64 HMAC key used to sign short-lived federated media-stream tokens (the 'fst'
+    /// query param on /Videos/fed_X and /Federation/Stream URLs). Generated lazily on first
+    /// use and persisted so the tokens survive restarts. Rotating it invalidates in-flight
+    /// playback tokens.
+    /// </summary>
+    public string MediaSigningKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Extra hostnames the outbound SSRF guard permits beyond configured peers + our own
+    /// PublicBaseUrl + loopback. Normally empty: the allowlist auto-derives from peers.
+    /// </summary>
+    public List<string> OutboundHostAllowlist { get; set; } = new();
+
+    /// <summary>
+    /// When true (default), a peer that presents a valid federation share key can call
+    /// /Federation/ProvisionMediaKey to be handed a Jellyfin API key for stream proxying, so
+    /// the federating admin only has to exchange ONE secret (the share key) instead of also
+    /// creating a user API key by hand. Set false to require the media API key be configured
+    /// manually (the share-key holder then cannot auto-obtain a full Jellyfin token).
+    /// </summary>
+    public bool AutoProvisionMediaKey { get; set; } = true;
+
+    /// <summary>
     /// Our publicly reachable base URL (https://my-jellyfin.example.com). Sent to peers
     /// on push-invalidation calls so they can identify us in their RemoteServers list.
     /// If empty, push-invalidation is disabled (peers fall back to gossip-pull only).
@@ -240,6 +263,24 @@ public class RemoteServer
     /// reachable without Basic auth.</summary>
     public string BasicAuthUser { get; set; } = string.Empty;
     public string BasicAuthPass { get; set; } = string.Empty;
+
+    // === Mutual TLS (client certificate auth to this peer) ===
+    // Independent from Basic auth: Basic is an Authorization header, mTLS is a client
+    // certificate presented during the TLS handshake. Both can be set at once. Only used for
+    // https:// peers. Leave empty to disable.
+
+    /// <summary>PEM-encoded client certificate presented to this peer for mutual TLS.</summary>
+    public string ClientCertPem { get; set; } = string.Empty;
+
+    /// <summary>PEM-encoded private key for ClientCertPem. If empty, the key is read from ClientCertPem.</summary>
+    public string ClientCertKeyPem { get; set; } = string.Empty;
+
+    /// <summary>Password for an encrypted client private key (optional).</summary>
+    public string ClientCertPassword { get; set; } = string.Empty;
+
+    /// <summary>PEM-encoded CA certificate(s) used to validate this peer's TLS server cert when
+    /// it isn't signed by a publicly-trusted CA (self-signed / private CA). Optional.</summary>
+    public string CaCertPem { get; set; } = string.Empty;
 
     /// <summary>Share key the peer issued for us. Sent as X-Federation-Share on /Federation/Share/* calls.</summary>
     public string FederationShareKey { get; set; } = string.Empty;

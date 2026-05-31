@@ -158,7 +158,8 @@ public class PushInvalidationService : BackgroundService
         if (peers.Length == 0) return;
 
         var payload = new InvalidatePayload { FromBaseUrl = ourBaseUrl.TrimEnd('/') };
-        var http = _httpClientFactory.CreateClient();
+        // "federation" client: SSRF guard + no-redirect so a peer 3xx can't replay our share key.
+        var http = _httpClientFactory.CreateClient("federation");
         http.Timeout = TimeSpan.FromSeconds(10);
 
         // Parallelize per peer - one timing-out peer (10s) shouldn't block all others. The

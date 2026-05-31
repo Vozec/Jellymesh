@@ -9,6 +9,7 @@
 <style>
     /* These styles live INSIDE the page div so Jellyfin's SPA doesn't strip them when it
        extracts the configuration page out of body. */
+    #FederationConfigPage { font-size: 1.06em; }
     #FederationConfigPage .jm-tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.6em; margin: 0.8em 0 1.2em 0; }
     #FederationConfigPage .jm-tile { background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 0.5em; padding: 1em; cursor: pointer; text-align: left; color: #ddd; font: inherit; transition: background 0.15s, border-color 0.15s; display: block; width: 100%; }
     #FederationConfigPage .jm-tile:hover { background: #252525; border-color: #5a5a5a; }
@@ -108,7 +109,23 @@
                     <button type="button" class="jm-tile" data-modal="dlg-shares"><span class="jm-tile-icon">🔑</span><span class="jm-tile-label" data-i18n="tile.shares">Share keys</span><div class="jm-tile-hint" data-i18n="tile.shares.hint">Keys you issue to peers</div></button>
                     <button type="button" class="jm-tile" data-modal="dlg-privacy"><span class="jm-tile-icon">🛡</span><span class="jm-tile-label" data-i18n="tile.privacy">Privacy</span><div class="jm-tile-hint" data-i18n="tile.privacy.hint">Master switches + blocklist</div></button>
                     <button type="button" class="jm-tile" data-modal="dlg-diag"><span class="jm-tile-icon">📈</span><span class="jm-tile-label" data-i18n="tile.diag">Diagnostics</span><div class="jm-tile-hint" data-i18n="tile.diag.hint">Stats + audit log</div></button>
+                    <button type="button" class="jm-tile" data-modal="dlg-logs"><span class="jm-tile-icon">📜</span><span class="jm-tile-label" data-i18n="tile.logs">Logs</span><div class="jm-tile-hint" data-i18n="tile.logs.hint">Recent federation log lines</div></button>
                 </div>
+
+                <div class="jm-modal-overlay" data-modal-id="dlg-logs"><div class="jm-modal-card">
+                    <div class="jm-modal-head"><h3 data-i18n="tile.logs">Logs</h3><button type="button" class="jm-modal-close">×</button></div>
+                    <div class="jm-modal-body">
+                        <div style="display:flex;align-items:center;gap:0.6em;margin-bottom:0.6em;flex-wrap:wrap;">
+                            <span style="color:#aaa;font-size:0.9em;" data-i18n="logs.intro">Recent log lines emitted by Jellymesh.</span>
+                            <label style="color:#aaa;font-size:0.85em;display:flex;align-items:center;gap:0.3em;">
+                                <input type="checkbox" id="LogsAutoRefresh" /> <span data-i18n="logs.auto">Auto-refresh</span>
+                            </label>
+                            <button type="button" class="jm-btn" id="LogsRefresh" style="margin-left:auto;"><span data-i18n="logs.refresh">Refresh</span></button>
+                            <button type="button" class="jm-btn" id="LogsCopy"><span data-i18n="logs.copy">Copy</span></button>
+                        </div>
+                        <pre id="LogsBody" style="margin:0;max-height:55vh;overflow:auto;background:#0e0e0e;border:1px solid #2e2e2e;border-radius:0.4em;padding:0.7em;font-size:0.8em;line-height:1.4;white-space:pre-wrap;word-break:break-word;color:#cfcfcf;" data-i18n="common.loading">Loading…</pre>
+                    </div>
+                </div></div>
 
                 <div class="jm-modal-overlay" data-modal-id="dlg-settings"><div class="jm-modal-card">
                     <div class="jm-modal-head"><h3 data-i18n="tile.settings">Settings</h3><button type="button" class="jm-modal-close">×</button></div>
@@ -572,8 +589,8 @@
                 var rows = (folders || []).map(function (f) {
                     var checked = selected.has(f.ItemId) ? 'checked' : '';
                     return '<label style="display:flex;align-items:center;gap:0.5em;padding:0.4em;border-bottom:1px solid #2a2a2a;">'
-                        + '<input type="checkbox" data-libid="' + f.ItemId + '" ' + checked + ' />'
-                        + '<span><strong>' + (f.Name || t('peers.unnamed')) + '</strong> <span style="color:#888;font-size:0.85em;">' + (f.CollectionType || 'mixed') + '</span></span>'
+                        + '<input type="checkbox" data-libid="' + esc(f.ItemId) + '" ' + checked + ' />'
+                        + '<span><strong>' + esc(f.Name || t('peers.unnamed')) + '</strong> <span style="color:#888;font-size:0.85em;">' + esc(f.CollectionType || 'mixed') + '</span></span>'
                         + '</label>';
                 }).join('');
                 var body = '<p style="margin:0 0 0.6em 0;color:#aaa;">' + t('libs.pick.hint') + '</p>'
@@ -599,7 +616,14 @@
         }
         document.querySelector('#FederationConfigPage').addEventListener('click', function (e) {
             var tile = e.target.closest && e.target.closest('.jm-tile');
-            if (tile && tile.dataset.modal) { openJmModal(tile.dataset.modal); return; }
+            if (tile && tile.dataset.modal) {
+                openJmModal(tile.dataset.modal);
+                // Lazy-load the modal's data on open so the first view isn't blank until the
+                // user hits Refresh.
+                if (tile.dataset.modal === 'dlg-peerlibs') { try { loadPeerLibs(false); } catch (err) {} }
+                if (tile.dataset.modal === 'dlg-logs') { try { loadLogs(); } catch (err) {} }
+                return;
+            }
             if (e.target.classList && e.target.classList.contains('jm-modal-close')) {
                 closeJmModal(e.target.closest('.jm-modal-overlay'));
                 return;
@@ -666,10 +690,19 @@
                 var tagChips = (s.Tags || []).map(function (tag) {
                     return '<span style="background:#333;color:#ccc;padding:0.1em 0.4em;border-radius:0.3em;font-size:0.75em;margin-right:0.2em;">' + esc(tag) + '</span>';
                 }).join('');
+                // Half-configured peers are a common confusion: a media API key alone proxies
+                // playback, but catalog sync / directory / introductions all need the share key.
+                var warnChip = !s.FederationShareKey
+                    ? '<span title="' + esc(t('peers.warn.no_share_key.hint')) + '" style="background:#5e4a1e;color:#ffd98a;padding:0.1em 0.5em;border-radius:0.4em;font-size:0.8em;">⚠ ' + t('peers.warn.no_share_key') + '</span>'
+                    : '';
 
                 html += '<details data-idx="' + i + '" style="background:#1c1c1c;border:1px solid #3a3a3a;border-radius:0.4em;margin:0.6em 0;padding:0.6em 0.8em;">';
                 html += '<summary style="cursor:pointer;font-weight:600;outline:none;">'
-                    + esc(headerName) + ' ' + enabledChip + ' ' + tagChips + '</summary>';
+                    + esc(headerName) + ' ' + enabledChip + ' ' + warnChip + ' ' + tagChips + '</summary>';
+                // Preserve the peer Id across saves (collectServers only keeps rendered fields;
+                // without this the server would mint a new Guid on every save and break merge
+                // mappings + fed_<peerId> references).
+                html += '<input type="hidden" data-field="Id" value="' + esc(s.Id || '') + '" />';
 
                 html += '<div style="margin-top:0.6em;display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;">';
                 html += '<div>';
@@ -682,12 +715,23 @@
 
                 html += '<div>';
                 html += '<h5 style="margin:0.3em 0 0.3em 0;color:#9cd;">' + t('peers.section.auth') + '</h5>';
-                html += fieldRow(t('peers.field.apikey'), '<input type="text" value="' + esc(s.ApiKey || '') + '" data-field="ApiKey" placeholder="' + esc(t('peers.field.apikey.placeholder')) + '" />');
+                html += fieldRow(t('peers.field.apikey'), '<input type="text" value="' + esc(s.ApiKey || '') + '" data-field="ApiKey" placeholder="' + esc(t('peers.field.apikey.placeholder')) + '" />', t('peers.field.apikey.hint'));
                 html += fieldRow(t('peers.field.fedkey'), '<input type="text" value="' + esc(s.FederationShareKey || '') + '" data-field="FederationShareKey" placeholder="' + esc(t('peers.field.fedkey.placeholder')) + '" />');
                 html += fieldRow(t('peers.field.basicuser'), '<input type="text" value="' + esc(s.BasicAuthUser || '') + '" data-field="BasicAuthUser" placeholder="' + esc(t('peers.field.basicuser.placeholder')) + '" />');
                 html += fieldRow(t('peers.field.basicpass'), '<input type="password" value="' + esc(s.BasicAuthPass || '') + '" data-field="BasicAuthPass" placeholder="' + esc(t('peers.field.basicpass.placeholder')) + '" />');
                 html += '</div>';
                 html += '</div>';
+
+                // mTLS (client certificate auth) - collapsed by default; open when configured.
+                var mtlsOpen = (s.ClientCertPem || s.CaCertPem) ? ' open' : '';
+                html += '<details' + mtlsOpen + ' style="margin-top:0.5em;border:1px solid #333;border-radius:0.3em;padding:0.4em 0.6em;">';
+                html += '<summary style="cursor:pointer;color:#9cd;">' + t('peers.section.mtls') + '</summary>';
+                html += '<p style="color:#888;font-size:0.82em;margin:0.4em 0;">' + t('peers.mtls.hint') + '</p>';
+                html += fieldRow(t('peers.mtls.cert'), '<textarea data-field="ClientCertPem" rows="3" placeholder="-----BEGIN CERTIFICATE-----" style="width:100%;font-family:monospace;font-size:0.8em;">' + esc(s.ClientCertPem || '') + '</textarea>');
+                html += fieldRow(t('peers.mtls.key'), '<textarea data-field="ClientCertKeyPem" rows="3" placeholder="-----BEGIN PRIVATE KEY----- (leave empty if included above)" style="width:100%;font-family:monospace;font-size:0.8em;">' + esc(s.ClientCertKeyPem || '') + '</textarea>');
+                html += fieldRow(t('peers.mtls.pass'), '<input type="password" value="' + esc(s.ClientCertPassword || '') + '" data-field="ClientCertPassword" placeholder="' + esc(t('peers.mtls.pass.placeholder')) + '" />');
+                html += fieldRow(t('peers.mtls.ca'), '<textarea data-field="CaCertPem" rows="3" placeholder="-----BEGIN CERTIFICATE----- (peer\'s private CA, optional)" style="width:100%;font-family:monospace;font-size:0.8em;">' + esc(s.CaCertPem || '') + '</textarea>');
+                html += '</details>';
 
                 html += '<div style="margin-top:0.4em;display:grid;grid-template-columns:1fr 1fr;gap:0.6em 1em;">';
                 html += '<div>';
@@ -993,17 +1037,37 @@
             var list = document.getElementById('IntroDirectoryList');
             list.innerHTML = '<em>' + t('intros.directory.loading') + '</em>';
             ApiClient.fetch({ url: ApiClient.getUrl('Federation/Peers/' + peerId + '/Directory'), type: 'GET', dataType: 'json' })
-                .then(function (rows) {
-                    if (!rows || rows.length === 0) {
-                        list.innerHTML = '<em>' + t('intros.directory.empty') + '</em>';
+                .then(function (data) {
+                    var rawRows = (data && data.rows) || [];
+                    var reason = data && data.reason;
+                    if (rawRows.length === 0) {
+                        var msg = reason === 'no-share-key' ? t('intros.directory.no_share_key')
+                            : reason === 'not-published' ? t('intros.directory.not_published')
+                            : reason === 'unreachable' ? t('intros.directory.unreachable')
+                            : reason === 'error' ? t('intros.directory.error', { code: data.status || '?' })
+                            : t('intros.directory.empty');
+                        list.innerHTML = '<em>' + msg + '</em>';
+                        return;
+                    }
+                    // Build the set of hosts we already know (our peers + ourselves) so we don't
+                    // offer to introduce a peer we already have, or ourselves (we appear in a
+                    // friend's directory). Rows are serialised PascalCase: Name/Url/Tags.
+                    function jmHost(u) { try { return new URL(u).host.toLowerCase(); } catch (e) { return (u || '').toLowerCase(); } }
+                    var known = {};
+                    ((jmLastConfig && jmLastConfig.RemoteServers) || []).forEach(function (s) { if (s.BaseUrl) known[jmHost(s.BaseUrl)] = 1; });
+                    if (jmLastConfig && jmLastConfig.PublicBaseUrl) known[jmHost(jmLastConfig.PublicBaseUrl)] = 1;
+                    var rows = rawRows.filter(function (r) { var u = r.Url || r.url; return u && !known[jmHost(u)]; });
+                    if (rows.length === 0) {
+                        list.innerHTML = '<em>' + t('intros.directory.all_known') + '</em>';
                         return;
                     }
                     var html = '<div style="max-height:30vh;overflow-y:auto;border:1px solid #333;border-radius:0.3em;">';
                     rows.forEach(function (r) {
-                        var tags = (r.tags || []).map(function (tag) { return '<span class="jm-chip">' + esc(tag) + '</span>'; }).join('');
+                        var name = r.Name || r.name, url = r.Url || r.url, rtags = r.Tags || r.tags;
+                        var tags = (rtags || []).map(function (tag) { return '<span class="jm-chip">' + esc(tag) + '</span>'; }).join('');
                         html += '<label style="display:flex;align-items:center;gap:0.6em;padding:0.5em;border-bottom:1px solid #2a2a2a;cursor:pointer;">'
-                            + '<input type="radio" name="intro-target" value="' + esc(r.url) + '" />'
-                            + '<span><strong>' + esc(r.name || r.url) + '</strong> <span style="color:#888;font-size:0.85em;">' + esc(r.url) + '</span> ' + tags + '</span>'
+                            + '<input type="radio" name="intro-target" value="' + esc(url) + '" />'
+                            + '<span><strong>' + esc(name || url) + '</strong> <span style="color:#888;font-size:0.85em;">' + esc(url) + '</span> ' + tags + '</span>'
                             + '</label>';
                     });
                     html += '</div>';
@@ -1111,15 +1175,22 @@
                     renderRequests();
                     renderIntroductions();
                     refreshStatusBar();
+                    // Build the peer dropdowns AFTER the i18n dict is loaded: they emit their
+                    // placeholder via t(), which would otherwise render the raw key, and their
+                    // innerHTML rewrite drops the data-i18n attribute applyI18n acts on.
+                    populatePeerSelect();
+                    var introSel = document.getElementById('IntroPeerSelect');
+                    var html = '<option value="">' + t('intros.introducer.dropdown.placeholder') + '</option>';
+                    // Show every enabled peer; ones without a share key can't introduce (the
+                    // /Introduce call authenticates with it), so render them disabled WITH a
+                    // reason instead of silently hiding them (was confusing: "why only B?").
+                    (config.RemoteServers || []).filter(function (s) { return s.Enabled; }).forEach(function (s) {
+                        var hasKey = !!s.FederationShareKey;
+                        html += '<option value="' + esc(s.Id) + '"' + (hasKey ? '' : ' disabled')
+                            + '>' + esc(s.Name || s.BaseUrl) + (hasKey ? '' : ' ' + t('intros.introducer.no_share_key')) + '</option>';
+                    });
+                    introSel.innerHTML = html;
                 });
-                populatePeerSelect();
-                // Also populate the introduction peer dropdown - reuses populatePeerSelect's logic.
-                var introSel = document.getElementById('IntroPeerSelect');
-                var html = '<option value="">' + t('intros.introducer.dropdown.placeholder') + '</option>';
-                (config.RemoteServers || []).filter(function (s) { return s.Enabled && s.FederationShareKey; }).forEach(function (s) {
-                    html += '<option value="' + esc(s.Id) + '">' + esc(s.Name || s.BaseUrl) + '</option>';
-                });
-                introSel.innerHTML = html;
             });
             renderStats();
             if (statsTimer) clearInterval(statsTimer);
@@ -1128,6 +1199,7 @@
 
         document.querySelector('#FederationConfigPage').addEventListener('viewbeforehide', function () {
             if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+            if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
         });
 
         document.getElementById('NewShareLibrariesPick').addEventListener('click', function () {
@@ -1463,7 +1535,14 @@
                 config.IntroductionHopCap = isNaN(hopCap) ? null : hopCap;
                 config.IntroductionRatePerHour = parseInt(document.getElementById('IntroductionRatePerHour').value, 10) || 5;
                 config.IntroductionRatePerDay = parseInt(document.getElementById('IntroductionRatePerDay').value, 10) || 50;
-                config.RemoteServers = collectServers();
+                // Merge edited fields onto existing peers by Id so fields not rendered in the
+                // form (e.g. AllowedLibraryIds) and the Id itself survive a save.
+                var existingById = {};
+                (config.RemoteServers || []).forEach(function (s) { if (s.Id) existingById[s.Id] = s; });
+                config.RemoteServers = collectServers().map(function (e) {
+                    var base = (e.Id && existingById[e.Id]) ? existingById[e.Id] : {};
+                    return Object.assign({}, base, e);
+                });
                 ApiClient.updatePluginConfiguration(FederationPluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
             });
             return false;
@@ -1476,6 +1555,27 @@
             if (opts && opts.body) { o.data = opts.body; o.contentType = 'application/json'; }
             return ApiClient.fetch(o);
         }
+
+        // ===== Logs viewer =====
+        var logsTimer = null;
+        function loadLogs() {
+            var body = document.getElementById('LogsBody');
+            if (!body) return;
+            jfetch('Federation/Logs?limit=500').then(function (res) {
+                var lines = (res && res.lines) || [];
+                body.textContent = lines.length ? lines.join('\n') : t('logs.empty');
+                body.scrollTop = body.scrollHeight;
+            }).catch(function () { body.textContent = t('logs.failed'); });
+        }
+        document.getElementById('LogsRefresh').addEventListener('click', loadLogs);
+        document.getElementById('LogsCopy').addEventListener('click', function () {
+            navigator.clipboard.writeText(document.getElementById('LogsBody').textContent || '');
+            jmToast(t('logs.copied'));
+        });
+        document.getElementById('LogsAutoRefresh').addEventListener('change', function (e) {
+            if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
+            if (e.target.checked) { loadLogs(); logsTimer = setInterval(loadLogs, 5000); }
+        });
         function renderPeerLibRow(peer, lib, settings, localLibs) {
             var setting = (settings || []).find(function (s) { return s.PeerId === peer.Id && s.LibraryId === lib.id; }) || {};
             var enabled = setting.Enabled !== false;
