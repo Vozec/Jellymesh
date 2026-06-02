@@ -1,0 +1,47 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore JellyfinFederation.sln
+
+      - name: Build (Release)
+        run: dotnet build JellyfinFederation.sln -c Release --no-restore
+
+      - name: Verify tag matches plugin version
+        run: |
+          PROJ_VERSION=$(grep -oP '<Version>\K[^<]+' src/Jellyfin.Plugin.Federation/Jellyfin.Plugin.Federation.csproj)
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "csproj=$PROJ_VERSION tag=$TAG_VERSION"
+          # Tag may omit the trailing .0 (v0.9.1 vs 0.9.1.0); compare on the numeric prefix.
+          case "$PROJ_VERSION" in
+            "$TAG_VERSION"|"$TAG_VERSION".0) echo "Version OK" ;;
+            *) echo "::error::Tag $TAG_VERSION does not match csproj $PROJ_VERSION" && exit 1 ;;
+          esac
+
+      - name: Package plugin zip
+        run: bash build/package.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: build/output/*.zip
